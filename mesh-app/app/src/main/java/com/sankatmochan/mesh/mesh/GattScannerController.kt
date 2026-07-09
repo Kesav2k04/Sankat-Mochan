@@ -33,6 +33,8 @@ class GattScannerController(
     private val bluetoothManager: BluetoothManager,
     private val onBytes: (ByteArray, String) -> Unit,
     private val onPeersChanged: () -> Unit,
+    /** Read fresh on every scan hit so a policy change takes effect immediately. */
+    private val peerPolicy: () -> PeerPolicy = { PeerPolicy.AllowAll },
 ) {
     private val adapter = bluetoothManager.adapter
     private var scanner: BluetoothLeScanner? = null
@@ -71,6 +73,7 @@ class GattScannerController(
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val address = result.device.address
+            if (!peerPolicy().allows(address)) return
             if (connections.containsKey(address) || !connecting.add(address)) return
             Log.d(TAG, "connecting to $address")
             result.device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
@@ -172,6 +175,26 @@ class GattScannerController(
             @Suppress("DEPRECATION")
             gatt.writeDescriptor(cccd)
         }
+    }
+
+    /**
+     * Re-apply [peerPolicy] to links we already hold. Refusing *new* connections is
+     * not enough: when the policy tightens mid-session (the operator flips LoRa-only
+     * on), any phone we already dialled would keep relaying and quietly bypass the
+     * radio hop. Drop those links now. Peers that connected *to us* are unaffected —
+     * they live in GattServerController, which is exactly what the gateway uses.
+     */
+    fun enforcePolicy() {
+        val policy = peerPolicy()
+        connections.forEach { (address, conn) ->
+            if (policy.allows(address)) return@forEach
+            Log.d(TAG, "policy now forbids $address — disconnecting")
+            try { conn.gatt.disconnect() } catch (_: Exception) {}
+            try { conn.gatt.close() } catch (_: Exception) {}
+            connections.remove(address)
+            connecting.remove(address)
+        }
+        onPeersChanged()
     }
 
     /** Queue [bytes] for every ready peer (optionally skipping one address). */

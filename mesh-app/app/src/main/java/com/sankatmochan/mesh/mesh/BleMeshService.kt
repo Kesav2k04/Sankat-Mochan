@@ -6,6 +6,9 @@ import android.content.Context
 import android.util.Log
 import com.sankatmochan.mesh.model.MsgType
 import com.sankatmochan.mesh.model.SosMessage
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlin.random.Random
 
 /** Which person this node is playing in the demo. Transport is identical for all. */
@@ -44,13 +47,40 @@ class BleMeshService(context: Context) {
         const val OUTBOX_CAP = 20
     }
 
+    /**
+     * When true, this phone stops dialling out to other phones. It keeps advertising,
+     * so the Pi's LoRa gateway (a BLE central) still connects inbound — which makes the
+     * gateway's radio the only way a message can leave this device. Turn it on for the
+     * phone-to-phone-over-LoRa demo; leave it off for the pure BLE mesh demo.
+     *
+     * Both endpoint phones must enable it. It stops us dialling them; it cannot stop
+     * them dialling us.
+     */
+    private val _loraOnly = MutableStateFlow(false)
+    val loraOnly: StateFlow<Boolean> = _loraOnly.asStateFlow()
+
+    private fun peerPolicy(): PeerPolicy =
+        if (_loraOnly.value) PeerPolicy.DenyAll else PeerPolicy.AllowAll
+
     private val bluetoothManager =
         context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
 
     private val server = GattServerController(context, bluetoothManager, ::onBytes, ::recomputePeers)
-    private val scanner = GattScannerController(context, bluetoothManager, ::onBytes, ::recomputePeers)
+    private val scanner =
+        GattScannerController(context, bluetoothManager, ::onBytes, ::recomputePeers, ::peerPolicy)
 
     fun isBluetoothReady(): Boolean = bluetoothManager.adapter?.isEnabled == true
+
+    /** Flip LoRa-only mode. Drops any phone links we already hold. */
+    fun setLoraOnly(enabled: Boolean) {
+        if (_loraOnly.value == enabled) return
+        _loraOnly.value = enabled
+        scanner.enforcePolicy()
+        store.log(
+            if (enabled) "LoRa-only ON — ignoring nearby phones; traffic must cross the gateway radio"
+            else "LoRa-only OFF — peering directly with nearby phones again"
+        )
+    }
 
     fun start(role: MeshRole) {
         this.role = role

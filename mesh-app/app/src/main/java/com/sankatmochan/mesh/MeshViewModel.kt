@@ -54,6 +54,12 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     val sent = service.store.sent
     val eventLog = service.store.eventLog
 
+    /** True when this phone refuses to peer with other phones, forcing traffic
+     *  out through the LoRa gateway. See [BleMeshService.loraOnly]. */
+    val loraOnly = service.loraOnly
+
+    fun setLoraOnly(enabled: Boolean) = service.setLoraOnly(enabled)
+
     /** null = still on the role-picker. */
     var role by mutableStateOf<MeshRole?>(null)
         private set
