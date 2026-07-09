@@ -1,0 +1,208 @@
+package com.sankatmochan.mesh.mesh
+
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.util.Log
+import com.sankatmochan.mesh.model.MsgType
+import com.sankatmochan.mesh.model.SosMessage
+import kotlin.random.Random
+
+/** Which person this node is playing in the demo. Transport is identical for all. */
+enum class MeshRole { VICTIM, RESPONDER, RELAY }
+
+/**
+ * Orchestrates the two BLE halves (peripheral + central) into one mesh node and
+ * owns the message logic: dedup, loop-free store-and-forward, and the honest
+ * victim status ladder (Sending → reached control room → help on the way).
+ *
+ * Every node both advertises/serves AND scans/connects, so any node can relay —
+ * a 3rd phone dropped in between victim and responder needs zero code changes.
+ */
+@SuppressLint("MissingPermission")
+class BleMeshService(context: Context) {
+
+    val store = MessageStore()
+
+    /** Short per-session node id, e.g. "a3f9". Prefixes every message id. */
+    val nodeId: String = "%04x".format(Random.nextInt(0x10000))
+
+    var role: MeshRole = MeshRole.RELAY
+        private set
+
+    private var seq = 0
+    private var running = false
+
+    // Messages THIS node originated, kept so we can re-send them to any peer that
+    // connects after we first broadcast (fixes the "SOS sent before the responder
+    // was subscribed is lost forever" race). Receivers dedup, so re-sends are safe.
+    private val outbox = java.util.Collections.synchronizedList(ArrayList<SosMessage>())
+    private val knownPeers = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    private companion object {
+        const val TAG = "BleMeshService"
+        const val OUTBOX_CAP = 20
+    }
+
+    private val bluetoothManager =
+        context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+
+    private val server = GattServerController(context, bluetoothManager, ::onBytes, ::recomputePeers)
+    private val scanner = GattScannerController(context, bluetoothManager, ::onBytes, ::recomputePeers)
+
+    fun isBluetoothReady(): Boolean = bluetoothManager.adapter?.isEnabled == true
+
+    fun start(role: MeshRole) {
+        this.role = role
+        if (running) return
+        server.start()
+        scanner.start()
+        running = true
+        store.log("Mesh started as $role · node $nodeId")
+    }
+
+    fun stop() {
+        if (!running) return
+        scanner.stop()
+        server.stop()
+        running = false
+        store.setPeerCount(0)
+        store.log("Mesh stopped")
+    }
+
+    private fun nextId(): String = "$nodeId-${seq++}"
+
+    private fun recomputePeers() {
+        // Union of addresses across both roles → one physical peer counts once.
+        val current = server.subscriberAddresses() + scanner.readyAddresses()
+        store.setPeerCount(current.size)
+
+        val added = synchronized(knownPeers) {
+            val newOnes = current - knownPeers
+            knownPeers.clear()
+            knownPeers.addAll(current)
+            newOnes
+        }
+        if (added.isNotEmpty()) flushOutbox()
+    }
+
+    private fun rememberOutbound(msg: SosMessage) {
+        synchronized(outbox) {
+            outbox.add(msg)
+            while (outbox.size > OUTBOX_CAP) outbox.removeAt(0)
+        }
+    }
+
+    /** Re-broadcast everything we've originated — called when a new peer appears. */
+    private fun flushOutbox() {
+        val snapshot = synchronized(outbox) { outbox.toList() }
+        if (snapshot.isEmpty()) return
+        snapshot.forEach { broadcast(it, exceptAddress = null) }
+        store.log("Re-sent ${snapshot.size} pending message(s) to new peer")
+    }
+
+    // --- Outgoing (originated locally) ------------------------------------
+
+    fun sendSos(
+        category: String,
+        urgency: Int,
+        gist: String,
+        lang: String,
+        locationHint: String,
+        lat: Double? = null,
+        lng: Double? = null
+    ) {
+        val msg = SosMessage(
+            id = nextId(),
+            type = MsgType.SOS,
+            origin = nodeId,
+            urgency = urgency.coerceIn(1, 5),
+            category = category,
+            locationHint = locationHint,
+            gist = gist,
+            lang = lang,
+            lat = lat,
+            lng = lng,
+            ts = System.currentTimeMillis(),
+            hops = 0
+        )
+        store.markSeen(msg.id)
+        store.addSent(msg)
+        store.log("SOS sent [${msg.urgency}] ${msg.category}: ${msg.gist}")
+        rememberOutbound(msg)
+        broadcast(msg, exceptAddress = null)
+    }
+
+    /** Responder accepts a SOS → tells the victim help is coming. */
+    fun accept(sos: SosMessage) {
+        val ack = SosMessage(
+            id = nextId(),
+            type = MsgType.ACCEPTED,
+            origin = nodeId,
+            refId = sos.id,
+            gist = "Help is on the way",
+            lang = sos.lang,
+            ts = System.currentTimeMillis()
+        )
+        store.markSeen(ack.id)
+        store.log("Accepted ${sos.id} — responder en route")
+        rememberOutbound(ack)
+        broadcast(ack, exceptAddress = null)
+    }
+
+    // --- Incoming ---------------------------------------------------------
+
+    /** Called by BOTH controllers whenever raw bytes arrive from a peer. */
+    private fun onBytes(bytes: ByteArray, fromAddress: String) {
+        val msg = SosMessage.decode(bytes)
+        if (msg == null) {
+            store.log("Dropped malformed packet from $fromAddress")
+            return
+        }
+        if (!store.markSeen(msg.id)) return // dedup — also the store-and-forward loop guard
+        handle(msg, fromAddress)
+    }
+
+    private fun handle(msg: SosMessage, fromAddress: String) {
+        when (msg.type) {
+            MsgType.SOS -> {
+                store.addReceivedSos(msg)
+                store.log("SOS in [${msg.urgency}] ${msg.category}: ${msg.gist} (hop ${msg.hops})")
+                // If we're the control room, acknowledge delivery back to the victim.
+                if (role == MeshRole.RESPONDER) {
+                    val delivered = SosMessage(
+                        id = nextId(),
+                        type = MsgType.DELIVERED,
+                        origin = nodeId,
+                        refId = msg.id,
+                        gist = "reached control room",
+                        lang = msg.lang,
+                        ts = System.currentTimeMillis()
+                    )
+                    store.markSeen(delivered.id)
+                    // NOT added to the outbox: DELIVERED is a transient stage-1 hint.
+                    // Only SOS (needs re-delivery) and ACCEPTED (final status) are
+                    // kept for re-send on reconnect, which keeps outbox churn low.
+                    broadcast(delivered, exceptAddress = null)
+                }
+            }
+            MsgType.DELIVERED -> msg.refId?.let {
+                store.updateSentStatus(it, stage = 1, text = "Message reached the control room")
+                store.log("Delivery ack for $it")
+            }
+            MsgType.ACCEPTED -> msg.refId?.let {
+                store.updateSentStatus(it, stage = 2, text = "Help is on the way")
+                store.log("Help-on-the-way for $it")
+            }
+        }
+        // Store-and-forward: pass it onward to every OTHER peer. The markSeen
+        // guard above means each node forwards a given id at most once → no loops.
+        broadcast(msg.copy(hops = (msg.hops + 1).coerceAtMost(15)), exceptAddress = fromAddress)
+    }
+
+    private fun broadcast(msg: SosMessage, exceptAddress: String?) {
+        val bytes = msg.encode()
+        server.notifyAll(bytes, exceptAddress)
+        scanner.writeToAll(bytes, exceptAddress)
+    }
+}

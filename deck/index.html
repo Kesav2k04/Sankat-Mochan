@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sankat-Mochan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..800&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#eeeae1; --paper2:#e7e1d5; --ink:#15120e; --ink2:#6a6155; --line:#cfc7b6;
+    --accent:#b03626; --accentd:#8a2817; --dark:#15120e; --dark2:#1d1913;
+    --disp:"Fraunces",Georgia,serif; --body:"Newsreader",Georgia,serif; --mono:"IBM Plex Mono",monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:#0d0b08;overflow:hidden;font-family:var(--body);color:var(--ink);-webkit-font-smoothing:antialiased}
+  .deck{position:relative;width:100vw;height:100vh}
+  .s{position:absolute;inset:0;display:none;flex-direction:column;background:var(--paper);padding:9vh 8vw}
+  .s.active{display:flex}
+  .s.dark{background:var(--dark);color:var(--paper)}
+  .s.dark .lab{color:#b7ab92}.s.dark .muted{color:#a79c85}
+  /* focal reveal */
+  .s.active .r{animation:r .7s cubic-bezier(.2,.75,.2,1) both}
+  .s.active .r:nth-child(2){animation-delay:.09s}.s.active .r:nth-child(3){animation-delay:.18s}
+  .s.active .r:nth-child(4){animation-delay:.27s}.s.active .r:nth-child(5){animation-delay:.36s}
+  @keyframes r{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+
+  .lab{font-family:var(--mono);font-size:.72rem;letter-spacing:.24em;text-transform:uppercase;color:var(--ink2)}
+  .lab.acc{color:var(--accent)}
+  h1{font-family:var(--disp);font-weight:340;letter-spacing:-.025em;line-height:.97}
+  h2{font-family:var(--disp);font-weight:360;letter-spacing:-.02em;line-height:1.02}
+  .it{font-style:italic;font-weight:360}
+  .acc{color:var(--accent)}
+  .muted{color:var(--ink2);font-weight:300}
+  .num-lg{font-family:var(--disp);font-weight:300;letter-spacing:-.03em;line-height:.82}
+
+  /* progress */
+  .prog{position:fixed;left:0;bottom:0;height:2px;background:var(--accent);transition:width .4s ease;z-index:60}
+  .idx{position:fixed;right:8vw;bottom:5vh;font-family:var(--mono);font-size:.7rem;letter-spacing:.15em;color:var(--ink2);z-index:55}
+  .s.dark ~ .idx{color:#b7ab92}
+
+  /* layout helpers */
+  .spread{flex:1;display:flex;flex-direction:column;justify-content:center}
+  .btwn{justify-content:space-between}
+  .grid2{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6vw;align-items:center}
+  .grid-op{flex:1;display:grid;grid-template-columns:1fr 1.25fr;gap:5vw;align-items:center}
+  .stack>*+*{margin-top:1.4rem}
+
+  /* phone (subtle depth, clean) */
+  .phone{width:230px;aspect-ratio:9/18;border-radius:34px;background:#fff;position:relative;justify-self:center;
+    box-shadow:0 2px 1px rgba(0,0,0,.04),0 30px 60px -20px rgba(21,18,14,.5);padding:30px 16px 20px;display:flex;flex-direction:column;align-items:center;gap:.9rem;text-align:center;border:1px solid #e4ddcf}
+  .phone::before{content:"";position:absolute;top:12px;left:50%;transform:translateX(-50%);width:30%;height:5px;border-radius:3px;background:#d8d0c0}
+  .plab{font-family:var(--mono);font-size:.5rem;letter-spacing:.14em;text-transform:uppercase;color:#b6ab92}
+  .sos{width:104px;height:104px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--disp);font-weight:500;font-size:1.3rem;margin-top:.3rem}
+  .pill{font-family:var(--mono);font-size:.64rem;letter-spacing:.02em;padding:.5rem .8rem;border-radius:16px;line-height:1.3}
+  .pill.a{background:var(--accent);color:#fff}.pill.g{background:#e5ede0;color:#3f6b31}.pill.t{color:#9c9081;font-size:.56rem;letter-spacing:.1em;text-transform:uppercase}
+
+  /* dashboard (clean, layered) */
+  .dash{border-radius:8px;background:#fff;border:1px solid #e2dbcc;box-shadow:0 26px 50px -24px rgba(21,18,14,.5);overflow:hidden;display:grid;grid-template-columns:1.4fr 1fr}
+  .dq{padding:1.1rem 1.2rem;border-right:1px solid #ece5d6}
+  .dqh{font-family:var(--mono);font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);display:flex;justify-content:space-between;margin-bottom:.9rem}
+  .row{display:flex;gap:.7rem;align-items:center;padding:.6rem 0;border-top:1px solid #f0ebdd}
+  .row:first-of-type{border-top:none}
+  .row .u{width:6px;height:32px;border-radius:3px;flex:none}
+  .row.red .u{background:var(--accent)}.row.amb .u{background:#c99019}.row.low .u{background:#8a9a63}
+  .row .l1{font-family:var(--body);font-size:.84rem;line-height:1.15;color:var(--ink)}
+  .row .l2{font-family:var(--mono);font-size:.54rem;color:var(--ink2);letter-spacing:.02em;margin-top:.15rem}
+  .row .rk{font-family:var(--mono);font-size:.6rem;color:var(--accentd);margin-left:auto}
+  .dmap{position:relative;background:#f6f1e6;padding:.9rem}
+  .dmap::before{content:"";position:absolute;inset:0;background:
+    repeating-linear-gradient(0deg,transparent,transparent 27px,#ece5d4 27px,#ece5d4 28px),
+    repeating-linear-gradient(90deg,transparent,transparent 27px,#ece5d4 27px,#ece5d4 28px)}
+  .dmap .mh{font-family:var(--mono);font-size:.54rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink2);position:relative}
+  .pin{position:absolute;width:14px;height:14px;border-radius:50% 50% 50% 0;background:var(--accent);transform:rotate(-45deg);box-shadow:0 0 0 5px rgba(176,54,38,.15)}
+  .ring{position:absolute;width:44px;height:44px;border:1.5px dashed #c99019;border-radius:50%}
+  .rdot{position:absolute;width:10px;height:10px;border-radius:50%;background:#2f6a86;box-shadow:0 0 0 4px rgba(47,106,134,.18)}
+
+  /* apps */
+  .appcol{display:flex;flex-direction:column;gap:.7rem}
+  .appcol .ah{font-family:var(--mono);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2)}
+  .appcol .ah b{color:var(--accent)}
+  .appcol h3{font-family:var(--disp);font-weight:400;font-size:1.7rem;letter-spacing:-.01em;margin:.1rem 0 .5rem}
+  .appcol .li{font-family:var(--body);font-size:1.02rem;color:var(--ink);padding:.55rem 0;border-top:1px solid var(--line);line-height:1.3}
+  .appcol .who{font-family:var(--body);font-style:italic;color:var(--ink2);font-size:.9rem;margin-top:.6rem}
+
+  /* clippings (one textured slide) */
+  .clip{background:#f6f2e8;border:1px solid #ddd4be;padding:1rem 1.15rem;box-shadow:0 18px 34px -20px rgba(40,30,12,.55)}
+  .clip .mh{font-family:var(--disp);font-weight:700;font-size:.72rem;letter-spacing:.03em;text-transform:uppercase;border-bottom:1px solid var(--ink);padding-bottom:.3rem;display:flex;justify-content:space-between;align-items:baseline}
+  .clip .mh small{font-family:var(--mono);font-weight:400;font-size:.5rem;letter-spacing:.08em;color:var(--ink2)}
+  .clip .dl{font-family:var(--mono);font-size:.5rem;letter-spacing:.1em;text-transform:uppercase;color:var(--accentd);margin:.4rem 0 .3rem}
+  .clip h4{font-family:var(--disp);font-weight:600;font-size:1.1rem;line-height:1.05;letter-spacing:-.01em}
+  .clip p{font-family:var(--body);font-size:.82rem;line-height:1.4;color:#39322a;margin-top:.4rem}
+
+  /* metrics */
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:5vw}
+  .m .v{font-family:var(--disp);font-weight:300;font-size:clamp(2.2rem,4.4vw,3.6rem);letter-spacing:-.02em;line-height:.85}
+  .m .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:#b7ab92;margin-top:.9rem}
+
+  .qr{width:96px;height:96px;border:1px solid var(--paper);opacity:.9;background:repeating-linear-gradient(45deg,#2a251d,#2a251d 5px,#221e17 5px,#221e17 10px);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.46rem;color:#8a8069;text-align:center}
+  @media(max-width:900px){.grid2,.grid-op{grid-template-columns:1fr;gap:3vh}.mrow{grid-template-columns:1fr 1fr;gap:3vh}}
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- 1 COVER (dark, restrained) -->
+  <section class="s dark active">
+    <div class="spread btwn">
+      <div class="lab r">Sankat-Mochan · off-grid disaster rescue</div>
+      <div class="r">
+        <h1 style="font-size:clamp(3rem,7vw,6.6rem)">When the network dies,<br><span class="it acc">we don't.</span></h1>
+      </div>
+      <div class="lab r" style="max-width:52ch;line-height:2;text-transform:none;letter-spacing:.02em;font-family:var(--body);font-size:1.05rem;font-style:italic">
+        Coordinating rescue when the towers are gone — told from three pairs of shoes: the victim, the operator, the responder.</div>
+    </div>
+  </section>
+
+  <!-- 2 PROBLEM + one clipping -->
+  <section class="s">
+    <div class="grid2">
+      <div class="stack">
+        <div class="lab acc r">01 · Why now</div>
+        <h2 class="r" style="font-size:clamp(2rem,3.8vw,3.2rem)">In a disaster, the network is the <span class="it acc">first casualty</span> — and every rescue app assumes it's still there.</h2>
+        <p class="r muted" style="font-size:1.05rem;line-height:1.55;max-width:38ch">Cell towers fail within hours — usually from power, not damage. Exactly when people need to call for help, they can't.</p>
+      </div>
+      <div class="r">
+        <div class="clip" style="transform:rotate(-1.3deg)">
+          <div class="mh">The Federal <small>India · Jul 2026</small></div>
+          <div class="dl">Wayanad — this week</div>
+          <h4>Landslide strikes Wayanad again</h4>
+          <p>Two years after a disaster that killed over 420, the same district is hit once more — rescue under way as this is presented. The problem did not go away.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 ACT I VICTIM -->
+  <section class="s">
+    <div class="grid2">
+      <div class="stack">
+        <div class="lab acc r">Act I · the victim</div>
+        <h2 class="r" style="font-size:clamp(2rem,3.9vw,3.3rem)">One button.<br>You just <span class="it acc">speak.</span></h2>
+        <p class="r muted" style="font-size:1.05rem;line-height:1.55;max-width:36ch">No typing, no menus, no language to choose. The phone transcribes and shrinks your words on-device, then passes them hand-to-hand — a LoRa radio jumps the gaps no phone can. Seconds later she sees, in her own language, that she's been heard.</p>
+      </div>
+      <div class="r">
+        <div class="phone">
+          <div class="plab">airplane mode · on</div>
+          <div class="sos">SOS</div>
+          <div class="pill t">shown in the victim's language</div>
+          <div class="pill a">✓ Reached the control room</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 ACT II OPERATOR (product hero) -->
+  <section class="s">
+    <div class="grid-op">
+      <div class="stack">
+        <div class="lab acc r">Act II · the operator</div>
+        <h2 class="r" style="font-size:clamp(1.7rem,3.1vw,2.6rem)">“Forty landed at once. Three languages. <span class="it">So the AI reads them.”</span></h2>
+        <p class="r muted" style="font-size:1rem;line-height:1.55;max-width:34ch">On the Snapdragon NPU, offline: transcribe, score urgency, translate, map. An independent sensor rings the same sector — a machine and a human agreeing, unprompted.</p>
+      </div>
+      <div class="r">
+        <div class="dash">
+          <div class="dq">
+            <div class="dqh"><span>Incoming · auto-triaged</span><span>NPU</span></div>
+            <div class="row red"><div class="u"></div><div><div class="l1">Water rising, leg trapped, one child · sector 4</div><div class="l2">TA→EN · 0.72 · sensor ✓</div></div><span class="rk">#1</span></div>
+            <div class="row amb"><div class="u"></div><div><div class="l1">On the roof, water at the door · Chooralmala</div><div class="l2">ML→EN · 0.81</div></div><span class="rk">#2</span></div>
+            <div class="row low"><div class="u"></div><div><div class="l1">Road flooded, we are safe upstairs</div><div class="l2">HI→EN · 0.77</div></div><span class="rk">#3</span></div>
+            <div class="row amb"><div class="u"></div><div><div class="l1">Elderly, cannot move, medicine gone</div><div class="l2">GA→EN · 0.63</div></div><span class="rk">#4</span></div>
+            <div class="row low"><div class="u"></div><div><div class="l1">Shop roof leaking, family of six sheltering</div><div class="l2">HI→EN · 0.54</div></div><span class="rk">#5</span></div>
+            <div class="row low"><div class="u"></div><div><div class="l1">Cattle stranded, no injuries reported</div><div class="l2">ML→EN · 0.38</div></div><span class="rk">#6</span></div>
+            <div style="margin-top:auto;padding-top:.8rem;border-top:1px solid #f0ebdd;display:flex;justify-content:space-between;font-family:var(--mono);font-size:.54rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)"><span>▸ 34 more · re-ranking live</span><span style="color:var(--accentd)">triage 1.4 s</span></div>
+          </div>
+          <div class="dmap">
+            <div class="mh">Offline map · sector 4</div>
+            <div class="ring" style="top:36%;left:42%"></div>
+            <div class="pin" style="top:42%;left:49%"></div>
+            <div class="pin" style="top:66%;left:24%;background:#c99019;box-shadow:0 0 0 5px rgba(201,144,25,.15)"></div>
+            <div class="rdot" style="top:54%;left:70%"></div><div class="rdot" style="top:24%;left:64%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 ACT III RESPONDER -->
+  <section class="s">
+    <div class="grid2">
+      <div class="r" style="order:2">
+        <div class="phone" style="width:220px">
+          <div class="plab">responder</div>
+          <div class="pill t" style="color:var(--accent)">▲ new victim · 300 m</div>
+          <div style="font-family:var(--disp);font-weight:500;font-size:1.05rem;line-height:1.1">Water-trapped<br>sector 4 · HIGH</div>
+          <div style="font-family:var(--body);font-size:.78rem;color:var(--ink2)">"leg trapped, one child"</div>
+          <div class="pill a">Accept — I'll take it</div>
+          <div class="pill g">→ victim: help is on the way</div>
+        </div>
+      </div>
+      <div class="stack" style="order:1">
+        <div class="lab acc r">Act III · the responder</div>
+        <h2 class="r" style="font-size:clamp(2rem,3.7vw,3.1rem)">One tap — like a ride request. <span class="it acc">Accept.</span></h2>
+        <p class="r muted" style="font-size:1.05rem;line-height:1.55;max-width:36ch">The nearest responder gets the top victim. Accept, and the loop closes: the operator sees <span class="it">en route</span>, other teams see the sector is taken, and the victim hears — in her language — that help is coming. No double-searched buildings, no radio chatter.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 PROOF (the one textured slide) -->
+  <section class="s" style="padding:7vh 6vw">
+    <div class="spread btwn">
+      <div class="lab acc r">02 · It already worked — and it keeps happening</div>
+      <div class="r" style="display:grid;grid-template-columns:1.05fr .95fr;gap:4vw;align-items:center">
+        <div>
+          <div style="font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2)">Kerala floods · 2018</div>
+          <div class="num-lg acc" style="font-size:clamp(4rem,9vw,8rem);margin:.4rem 0">15,000</div>
+          <p class="muted" style="font-size:1.05rem;line-height:1.5;max-width:34ch">people located — and <span style="color:var(--ink)">1,800+ rescued</span> — by ~300 volunteers with amateur radios, from one room, when every network was down. Improvised, no AI. It still saved lives. <span style="color:var(--ink)">We made it a system.</span></p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:1.2rem">
+          <div class="clip" style="transform:rotate(1deg)">
+            <div class="mh">Onmanorama <small>Kerala · 2024</small></div>
+            <h4>Over 420 dead as landslides bury Wayanad</h4>
+            <p>Survivors escaped only on foot through the forest — no warning reached them.</p>
+          </div>
+          <div class="clip" style="transform:rotate(-1.2deg)">
+            <div class="mh">Context / TRF <small>Myanmar · 2025</small></div>
+            <h4>Survivors walked three days to make one call</h4>
+            <p>With comms down, aid took three days to reach one town — the extreme cost of a blackout.</p>
+          </div>
+        </div>
+      </div>
+      <div class="lab r" style="text-transform:none;letter-spacing:.02em;font-family:var(--body);font-style:italic;font-size:1.1rem;color:var(--ink)">
+        When the network is gone, people die waiting to be heard. An offline mesh is the only thing that still speaks.</div>
+    </div>
+  </section>
+
+  <!-- 7 NUMBERS (dark, restrained) -->
+  <section class="s dark">
+    <div class="spread btwn">
+      <div class="lab r">03 · Measured, not claimed — all on the Snapdragon NPU</div>
+      <div class="r mrow">
+        <div class="m"><div class="v" data-slot="m_e2e">—<span style="font-size:.4em"> s</span></div><div class="k">End-to-end latency</div></div>
+        <div class="m"><div class="v" data-slot="m_npu">—<span style="font-size:.4em"> ×</span></div><div class="k">NPU vs CPU</div></div>
+        <div class="m"><div class="v" data-slot="m_rssi">—<span style="font-size:.4em"> dBm</span></div><div class="k">LoRa RSSI</div></div>
+        <div class="m"><div class="v">40</div><div class="k">SOS ranked in seconds<br>vs 1 / 30–60s by hand</div></div>
+      </div>
+      <div class="lab r" style="text-transform:none;letter-spacing:.02em;font-family:var(--mono);font-size:.72rem;color:#a79c85">
+        3 devices, distinct roles, impossible on one · fallback ladder NPU → CPU → rule-based · 3-run history</div>
+    </div>
+  </section>
+
+  <!-- 8 CLOSE (dark) -->
+  <section class="s dark">
+    <div class="grid2">
+      <div class="stack">
+        <div class="lab r">The honest limit</div>
+        <p class="r" style="font-family:var(--body);font-size:1.05rem;line-height:1.55;color:#d8cfbc;max-width:38ch">In India a satellite messenger is illegal — travellers have been arrested carrying one. There's <span class="acc" style="font-weight:400">no legal, affordable off-grid alternative.</span> We don't replace towers or fix governance; we cover the hours before help arrives.</p>
+        <div class="r" style="display:flex;gap:1.2rem;align-items:center;margin-top:1rem">
+          <div class="qr">QR · repo</div>
+          <div style="font-family:var(--mono);font-size:.68rem;letter-spacing:.04em;color:#b7ab92;line-height:1.8">Krishna · Isha · Karthi<br>Keshav · Siva<br><span class="acc">Open source · MIT</span></div>
+        </div>
+      </div>
+      <div class="r" style="display:flex;flex-direction:column;justify-content:center">
+        <h2 style="font-size:clamp(2.2rem,4.6vw,4rem)">When the network<br>dies,</h2>
+        <h2 class="it acc" style="font-size:clamp(2.2rem,4.6vw,4rem);margin-top:.1rem">we don't.</h2>
+      </div>
+    </div>
+  </section>
+
+</div>
+<div class="prog" id="prog"></div>
+<div class="idx" id="idx"></div>
+<script>
+  const S=[...document.querySelectorAll('.s')],prog=document.getElementById('prog'),idx=document.getElementById('idx');let i=0;
+  function go(n){i=Math.max(0,Math.min(S.length-1,n));S.forEach((s,k)=>s.classList.toggle('active',k===i));
+    prog.style.width=((i+1)/S.length*100)+'%';idx.textContent=String(i+1).padStart(2,'0')+' / '+String(S.length).padStart(2,'0');
+    idx.style.color=S[i].classList.contains('dark')?'#b7ab92':'#6a6155';}
+  addEventListener('keydown',e=>{if(['ArrowRight',' ','PageDown'].includes(e.key)){go(i+1);e.preventDefault()}if(['ArrowLeft','PageUp'].includes(e.key)){go(i-1);e.preventDefault()}if(e.key==='Home')go(0);if(e.key==='End')go(S.length-1)});
+  document.getElementById('deck').addEventListener('click',e=>go(e.clientX/innerWidth>0.35?i+1:i-1));
+  const SHOTS={};Object.entries(SHOTS).forEach(([s,src])=>document.querySelectorAll(`[data-slot="${s}"]`).forEach(ph=>{const im=new Image();im.src=src;im.style.cssText='width:100%;height:100%;object-fit:cover';im.onload=()=>{ph.innerHTML='';ph.appendChild(im)}}));
+  go(0);
+</script>
+</body>
+</html>

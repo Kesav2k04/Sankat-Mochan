@@ -1,0 +1,94 @@
+package com.sankatmochan.mesh
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.core.content.ContextCompat
+import com.sankatmochan.mesh.mesh.MeshRole
+import com.sankatmochan.mesh.ui.RelayScreen
+import com.sankatmochan.mesh.ui.ResponderScreen
+import com.sankatmochan.mesh.ui.RoleSelectionScreen
+import com.sankatmochan.mesh.ui.VictimScreen
+import com.sankatmochan.mesh.ui.theme.SankatMochanTheme
+
+class MainActivity : ComponentActivity() {
+
+    private val vm: MeshViewModel by viewModels()
+    private var pendingRole: MeshRole? = null
+
+    // BLE permissions are MANDATORY — the mesh can't run without them.
+    private val blePermissions = arrayOf(
+        Manifest.permission.BLUETOOTH_SCAN,
+        Manifest.permission.BLUETOOTH_ADVERTISE,
+        Manifest.permission.BLUETOOTH_CONNECT,
+    )
+
+    // Location is requested in the same prompt but is OPTIONAL — if denied, the
+    // mesh still starts and SOS still sends, just without GPS coordinates.
+    private val requestedPermissions = blePermissions + Manifest.permission.ACCESS_FINE_LOCATION
+
+    private val permissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            val role = pendingRole
+            pendingRole = null
+            // Only the BLE permissions gate startup; location may be false.
+            val bleGranted = blePermissions.all { result[it] == true }
+            if (bleGranted && role != null) {
+                vm.startAsRole(role)
+            } else if (role != null) {
+                Toast.makeText(
+                    this,
+                    "Bluetooth permissions are required for the mesh to work",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            SankatMochanTheme {
+                AppRoot(vm, onPickRole = ::onPickRole)
+            }
+        }
+    }
+
+    private fun onPickRole(role: MeshRole) {
+        val missing = requestedPermissions.any {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing) {
+            pendingRole = role
+            permissionLauncher.launch(requestedPermissions)
+        } else {
+            vm.startAsRole(role)
+        }
+    }
+}
+
+@Composable
+private fun AppRoot(vm: MeshViewModel, onPickRole: (MeshRole) -> Unit) {
+    when (val role = vm.role) {
+        null -> RoleSelectionScreen(
+            nodeId = vm.nodeId,
+            bluetoothReady = vm.bluetoothReady(),
+            onPick = onPickRole
+        )
+        else -> {
+            val peers by vm.peerCount.collectAsState()
+            when (role) {
+                MeshRole.VICTIM -> VictimScreen(vm, peers) { vm.leaveRole() }
+                MeshRole.RESPONDER -> ResponderScreen(vm, peers) { vm.leaveRole() }
+                MeshRole.RELAY -> RelayScreen(vm, peers) { vm.leaveRole() }
+            }
+        }
+    }
+}

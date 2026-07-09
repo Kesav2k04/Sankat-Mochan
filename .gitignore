@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+
+# Claude Code local settings (machine-specific)
+.claude/
+
+# Android / Gradle build artifacts
+**/build/
+.gradle/
+*.iml
+.kotlin/
+mesh-app/local.properties
+local.properties
+
+# IDE
+.idea/
+
+# Python (AI pipeline, added later)
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+
+# Node
+node_modules/
+
+# logs / temp
+*.log
+
+# internal strategy & research — kept OUT of the public repo (local only)
+docs/
