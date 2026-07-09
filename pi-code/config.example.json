@@ -1,0 +1,73 @@
+{
+  "_comment": "Sankat-Mochan LoRa gateway. Copy to config.json and edit. Every value here can be overridden by an env var of the same dotted path, upper-cased with '.' -> '__' and prefixed SANKAT_ (e.g. SANKAT_LORA__TX_POWER_DBM=10).",
+
+  "log": {
+    "level": "INFO",
+    "dir": "logs",
+    "chain_file": "chain.jsonl",
+    "text_file": "gateway.log",
+    "console": true
+  },
+
+  "lora": {
+    "frequency_hz": 433000000,
+    "spreading_factor": 7,
+    "bandwidth_hz": 125000,
+    "coding_rate": 5,
+    "tx_power_dbm": 5,
+    "sync_word": 18,
+    "preamble_len": 8,
+    "crc": true,
+    "tx_repeats": 1,
+    "max_payload": 255,
+    "startup_probe": true,
+    "csma": {
+      "enabled": true,
+      "rssi_threshold_dbm": -90,
+      "max_wait_ms": 500,
+      "max_backoff_ms": 120
+    },
+    "spi": {
+      "bus": 0,
+      "speed_hz": 1000000
+    }
+  },
+
+  "radios": {
+    "field": {
+      "_comment": "Radio A — moves to the UNO Q in the disaster zone later. Verified wiring.",
+      "cs": 0,
+      "rst_gpio": 25,
+      "dio0_gpio": 24
+    },
+    "gateway": {
+      "_comment": "Radio B — stays at the relief camp with the Pi. Verified wiring.",
+      "cs": 1,
+      "rst_gpio": 17,
+      "dio0_gpio": 27
+    }
+  },
+
+  "ble": {
+    "_comment": "UUIDs must match mesh-app/.../MeshUuids.kt byte-for-byte.",
+    "service_uuid": "6b1d0a01-4c2f-4b9c-9d2f-2a7c5e3f1a01",
+    "char_uuid": "6b1d0a02-4c2f-4b9c-9d2f-2a7c5e3f1a01",
+    "enabled": true,
+    "wait_for_peers": true,
+    "peer_retry_s": 10.0,
+    "scan_timeout_s": 12.0,
+    "reconnect_backoff_s": [1, 2, 4, 8, 15],
+    "peers": {
+      "_comment": "BLE MAC of the phone each Pi-side node talks to. null = auto-assign discovered peers deterministically (lowest MAC -> field). Set explicitly for a reliable demo.",
+      "field": null,
+      "gateway": null
+    }
+  },
+
+  "uplink": {
+    "_comment": "POST each envelope the gateway node accepts to the AI-PC dashboard. Never put secrets here; use env vars.",
+    "enabled": false,
+    "url": null,
+    "timeout_s": 3.0
+  }
+}
