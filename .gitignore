@@ -28,6 +28,3 @@ node_modules/
 
 # logs / temp
 *.log
-
-# internal strategy & research — kept OUT of the public repo (local only)
-docs/

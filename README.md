@@ -26,6 +26,9 @@ messengers are illegal and cell networks fail within hours of a disaster.
 | --- | --- |
 | `mesh-app/` | **Native Android (Kotlin) BLE mesh app** — the working T0 transport slice. Victim / Responder / Relay roles; every phone is a full mesh node (GATT server + scanner); store-and-forward; native-language status ladder. |
 | `deck/` | The pitch **presentation** (`deck/index.html`) — a self-contained HTML deck; open in any browser. |
+| `docs/planning/` | Architecture, build plan, demo/stage scripts, prep plan, and the team source-of-truth doc. |
+| `docs/research/` | Fact-checked disaster evidence, model/AI-stack research, competitive analysis, and critiques. |
+| `docs/reference/` | The official Qualcomm event guide (PDF). |
 | `CLAUDE.md` / `AGENTS.md` | AI-tool usage rules for this repo (permissive-license deps only, no secrets, prompt-injection discipline, untrusted-input validation). |
 
 ## Team
@@ -64,3 +67,9 @@ open deck/index.html            # macOS — or open the file in any browser
 ## License
 
 [MIT](LICENSE). All code is open source, per hackathon rules.
+
+---
+
+*This is the team's private working repo (includes internal strategy/research under `docs/`).
+The official hackathon submission must be a **public** repo — when you create it, publish only the
+code, `deck/`, and a clean README, and leave the internal strategy/critique docs out.*
