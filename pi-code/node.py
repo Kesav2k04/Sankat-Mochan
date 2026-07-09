@@ -35,6 +35,19 @@ from sx127x import LoraConfig, LoraError, Radio, RxPacket
 _AIRWAVES = threading.Lock()
 
 
+def signal_words(rssi_dbm: float, snr_db: float) -> str:
+    """`strong signal (-67 dBm, SNR 10.5 dB)` — the number, plus what it means."""
+    if rssi_dbm >= -70:
+        quality = "strong signal"
+    elif rssi_dbm >= -90:
+        quality = "usable signal"
+    elif rssi_dbm >= -110:
+        quality = "weak signal"
+    else:
+        quality = "barely-there signal"
+    return f"{quality} ({rssi_dbm:.0f} dBm, SNR {snr_db:.1f} dB)"
+
+
 class Link:
     """Something a node can push envelope bytes at."""
     kind: str = "?"
@@ -78,11 +91,12 @@ class LoRaLink(Link):
         for attempt in range(self._repeats):
             with _AIRWAVES:
                 if not self._wait_for_quiet():
-                    self._log.warning("%s: channel busy, sending %s anyway", self.name, msg_id)
+                    self._log.warning("[%s] the 433 MHz channel is busy — sending %s anyway",
+                                      self._node, msg_id)
                 try:
                     airtime = self.radio.send(raw)
                 except LoraError as e:
-                    self._log.error("%s: transmit failed for %s: %s", self.name, msg_id, e)
+                    self._log.error("[%s] radio FAILED to transmit %s: %s", self._node, msg_id, e)
                     self._chain.emit(clog.DROP, self._node, radio=self.name, msg_id=msg_id,
                                      sha=sha, reason="tx_failed")
                     continue
@@ -95,7 +109,9 @@ class LoRaLink(Link):
                 freq_hz=self._cfg.frequency_hz, sf=self._cfg.spreading_factor,
                 bw_hz=self._cfg.bandwidth_hz,
             )
-            self._log.info("%s TX %s (%dB, %.0f ms on air)", self.name, msg_id, len(raw), airtime * 1000)
+            retry = f", retry {attempt + 1}" if attempt else ""
+            self._log.info("[%s] Pi --433 MHz--> air: sent %s (%d bytes, %.0f ms on air%s)",
+                           self._node, msg_id, len(raw), airtime * 1000, retry)
         return ok_any
 
     async def send(self, raw: bytes, msg_id: str) -> bool:
@@ -125,10 +141,22 @@ class MeshNode:
             self._seen.add(msg_id)
             return True
 
+    _DROP_WORDS = {
+        "crc_error": "it arrived corrupted (radio checksum failed)",
+        "malformed": "it was not a valid mesh message",
+    }
+
     def _drop(self, source: str, raw: bytes, reason: str, **extra) -> None:
         self._chain.emit(clog.DROP, self.name, radio=source, size=len(raw),
                          sha=env.digest(raw), reason=reason, **extra)
-        self._log.debug("%s: dropped frame from %s (%s)", self.name, source, reason)
+        self._log.info("[%s] ignored %d bytes from %s: %s", self.name, len(raw), source,
+                       self._DROP_WORDS.get(reason, reason))
+
+    def _log_text(self, msg: env.Envelope) -> None:
+        """Print what the person actually wrote, on its own line, indented."""
+        body = env.message_text(msg)
+        if body:
+            self._log.info("           message: %s", body)
 
     async def on_lora_frame(self, link: LoRaLink, pkt: RxPacket) -> None:
         if not pkt.crc_ok:
@@ -147,8 +175,10 @@ class MeshNode:
             size=len(pkt.payload), rssi_dbm=pkt.rssi_dbm, snr_db=pkt.snr_db,
             hops=msg.hops, type=msg.type, origin=msg.origin,
         )
-        self._log.info("%s RX %s from %s (%d dBm, SNR %.1f dB, hop %d)",
-                       link.name, msg.id, msg.origin, pkt.rssi_dbm, pkt.snr_db, msg.hops)
+        self._log.info("[%s] air --433 MHz--> Pi: got %s, %s, %d hop(s) so far",
+                       self.name, env.describe(msg), signal_words(pkt.rssi_dbm, pkt.snr_db),
+                       msg.hops)
+        self._log_text(msg)
 
         await self._accept(msg, source=link)
 
@@ -160,28 +190,34 @@ class MeshNode:
         self._chain.emit(clog.BLE_RX, self.name, radio=link.name, msg_id=msg.id,
                          sha=env.digest(raw), size=len(raw), hops=msg.hops,
                          type=msg.type, origin=msg.origin)
-        self._log.info("%s: BLE in %s from %s (hop %d)", self.name, msg.id, msg.origin, msg.hops)
+        self._log.info("[%s] phone --Bluetooth--> Pi: got %s, %d hop(s) so far",
+                       self.name, env.describe(msg), msg.hops)
+        self._log_text(msg)
         await self._accept(msg, source=link)
 
     async def _accept(self, msg: env.Envelope, source: Optional[Link]) -> None:
         if not self._mark_seen(msg.id):
             self._chain.emit(clog.DROP, self.name, radio=getattr(source, "name", "local"),
                              msg_id=msg.id, reason="duplicate")
-            self._log.debug("%s: %s already seen, not forwarding", self.name, msg.id)
+            self._log.info("[%s] already handled %s before — not passing it on again "
+                           "(this is normal; it stops messages looping forever)",
+                           self.name, msg.id)
             return
 
         if self._on_accept is not None:
             try:
                 await self._on_accept(msg)
             except Exception as e:  # an uplink failure must not stop the mesh
-                self._log.warning("%s: accept hook failed for %s: %s", self.name, msg.id, e)
+                self._log.warning("[%s] could not send %s to the dashboard: %s",
+                                  self.name, msg.id, type(e).__name__)
 
         await self._forward(msg.bumped(), source)
 
     async def _forward(self, msg: env.Envelope, source: Optional[Link]) -> None:
         targets = [l for l in self.links if l is not source]
         if not targets:
-            self._log.debug("%s: nowhere to forward %s", self.name, msg.id)
+            self._log.info("[%s] nowhere left to pass %s — this node is the end of the line",
+                           self.name, msg.id)
             return
         raw = msg.encode()
         await asyncio.gather(*(self._send_one(l, raw, msg) for l in targets))
@@ -190,7 +226,8 @@ class MeshNode:
         try:
             ok = await link.send(raw, msg.id)
         except Exception as e:
-            self._log.warning("%s: send to %s failed for %s: %s", self.name, link.name, msg.id, e)
+            self._log.warning("[%s] could not pass %s to %s: %s",
+                              self.name, msg.id, link.name, type(e).__name__)
             ok = False
         if not ok:
             self._chain.emit(clog.DROP, self.name, radio=link.name, msg_id=msg.id,

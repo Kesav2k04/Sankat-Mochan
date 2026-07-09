@@ -29,6 +29,31 @@ import chainlog as clog
 import node as nodemod
 
 ATT_HEADER = 3
+MIN_MTU = 23             # the BLE spec floor, and bleak's BlueZ placeholder value
+
+
+async def negotiated_mtu(client: BleakClient, logger, name: str) -> int:
+    """The real ATT MTU, asking BlueZ for it when bleak hasn't looked it up yet.
+
+    bleak's BlueZ backend hardcodes `mtu_size` to 23 — the spec minimum — until
+    `_acquire_mtu()` has run; its own docstring says so, and it emits a UserWarning.
+    Believing that placeholder caps us at 20-byte writes, which refuses every real
+    SOS envelope. Workaround adapted from bleak's own `examples/mtu_size.py` (MIT).
+    """
+    backend = getattr(client, "_backend", client)
+    if getattr(backend, "_mtu_size", None) is not None:
+        return int(backend._mtu_size)
+
+    acquire = getattr(backend, "_acquire_mtu", None)
+    if acquire is None:                      # non-BlueZ backend: mtu_size is honest
+        return int(client.mtu_size)
+    try:
+        await acquire()
+    except Exception as e:
+        logger.warning("[%s] could not ask Bluetooth for the real message-size limit (%s) — "
+                       "assuming the %d-byte minimum", name, type(e).__name__, MIN_MTU)
+        return MIN_MTU
+    return int(getattr(backend, "_mtu_size", MIN_MTU) or MIN_MTU)
 
 
 class BleLink(nodemod.Link):
@@ -48,19 +73,21 @@ class BleLink(nodemod.Link):
     def connected(self) -> bool:
         return self._client is not None and self._client.is_connected
 
-    def attach(self, client: BleakClient) -> None:
+    def attach(self, client: BleakClient, mtu: int) -> None:
         self._client = client
-        mtu = getattr(client, "mtu_size", 0) or 0
         self._max_write = max(0, mtu - ATT_HEADER)
         if self._max_write < 244:
             self._log.warning(
-                "%s: negotiated MTU %d allows only %d-byte frames. Envelopes larger than "
-                "that cannot be delivered atomically and will be refused (the phone would "
-                "otherwise see fragments as malformed envelopes).",
-                self.name, mtu, self._max_write,
-            )
+                "[%s] PROBLEM: this phone's Bluetooth will only accept %d bytes per message, "
+                "but a full SOS is up to 244. Anything bigger will be refused rather than "
+                "chopped in half (the phone would read the pieces as garbage).",
+                self._node, self._max_write)
+            self._log.warning(
+                "[%s]   fix: have the app call requestMtu(247) when the Pi connects.",
+                self._node)
         else:
-            self._log.info("%s: connected, MTU %d (%d-byte frames OK)", self.name, mtu, self._max_write)
+            self._log.info("[%s] phone connected — Bluetooth will carry up to %d bytes "
+                           "per message, enough for a full SOS", self._node, self._max_write)
 
     def detach(self) -> None:
         self._client = None
@@ -68,11 +95,16 @@ class BleLink(nodemod.Link):
 
     async def send(self, raw: bytes, msg_id: str) -> bool:
         if not self.connected:
-            self._log.debug("%s: not connected, cannot deliver %s", self.name, msg_id)
+            # Not a debug detail: the message is now lost, and nobody is holding it.
+            self._log.warning("[%s] LOST %s — the phone is not connected right now, "
+                              "so there is nowhere to deliver it", self._node, msg_id)
+            self._chain.emit(clog.DROP, self._node, radio=self.name, msg_id=msg_id,
+                             size=len(raw), reason="not_connected")
             return False
         if self._max_write and len(raw) > self._max_write:
-            self._log.error("%s: refusing to send %s — %dB exceeds the %dB single-write budget",
-                            self.name, msg_id, len(raw), self._max_write)
+            self._log.error("[%s] LOST %s — it is %d bytes, but this phone's Bluetooth only "
+                            "accepts %d bytes per message. Not delivered.",
+                            self._node, msg_id, len(raw), self._max_write)
             self._chain.emit(clog.DROP, self._node, radio=self.name, msg_id=msg_id,
                              size=len(raw), reason="mtu_too_small")
             return False
@@ -80,13 +112,15 @@ class BleLink(nodemod.Link):
             assert self._client is not None
             await self._client.write_gatt_char(self._char, raw, response=True)
         except Exception as e:
-            self._log.warning("%s: write failed for %s: %s", self.name, msg_id, e)
+            self._log.warning("[%s] could not hand %s to the phone: %s",
+                              self._node, msg_id, type(e).__name__)
             return False
 
         import envelope as env
         self._chain.emit(clog.BLE_TX, self._node, radio=self.name, msg_id=msg_id,
                          sha=env.digest(raw), size=len(raw))
-        self._log.info("%s: delivered %s to phone (%dB)", self.name, msg_id, len(raw))
+        self._log.info("[%s] Pi --Bluetooth--> phone: DELIVERED %s (%d bytes)",
+                       self._node, msg_id, len(raw))
         return True
 
 
@@ -102,11 +136,11 @@ class BleManager:
     async def discover(self) -> List[BLEDevice]:
         svc = self._cfg["service_uuid"].lower()
         timeout = float(self._cfg["scan_timeout_s"])
-        self._log.info("scanning %.0fs for phones advertising %s", timeout, svc)
+        self._log.info("looking for phones running the mesh app (%.0f second scan)...", timeout)
         found = await BleakScanner.discover(timeout=timeout, service_uuids=[svc], return_adv=True)
         devices = [d for d, _adv in found.values()]
         for d in devices:
-            self._log.info("  found mesh peer %s (%s)", d.address, d.name or "no name")
+            self._log.info("  found a phone: %s (%s)", d.address, d.name or "name not shared")
         return devices
 
     async def resolve_peers(self) -> Dict[str, str]:
@@ -119,14 +153,16 @@ class BleManager:
         devices = await self.discover()
         addrs = sorted({d.address for d in devices})
         if len(addrs) < 2:
+            found = ", ".join(addrs) if addrs else "none"
             raise RuntimeError(
-                f"need 2 phones running the mesh app, found {len(addrs)}: {addrs or 'none'}. "
+                f"I need 2 phones running the mesh app, but I can see {len(addrs)} ({found}). "
                 "Open the app on both phones, pick a role, and keep the screen on."
             )
         # Deterministic so a rerun keeps the same phone on the same side of the link.
         auto = {"field": addrs[0], "gateway": addrs[1]}
         auto.update(configured)
-        self._log.info("auto-assigned peers (lowest MAC -> field): %s", auto)
+        self._log.info("phone %s is the FIELD phone (the person sending for help)", auto["field"])
+        self._log.info("phone %s is the GATEWAY phone (the rescuer receiving)", auto["gateway"])
         return auto
 
     def maintain(self, link: BleLink, on_bytes: Callable[[bytes], "asyncio.Future"]) -> asyncio.Task:
@@ -141,22 +177,24 @@ class BleManager:
             try:
                 async with BleakClient(link.address, timeout=20.0) as client:
                     attempt = 0
-                    link.attach(client)
+                    mtu = await negotiated_mtu(client, self._log, link._node)
+                    link.attach(client, mtu)
                     self._chain.emit(clog.PEER, link._node, radio=link.name,
-                                     state="connected", mtu=getattr(client, "mtu_size", None))
+                                     state="connected", mtu=mtu)
 
                     def handler(_char, data: bytearray) -> None:
                         asyncio.create_task(on_bytes(bytes(data)))
 
                     await client.start_notify(link._char, handler)
-                    self._log.info("%s: subscribed to mesh notifications", link.name)
+                    self._log.info("[%s] now listening for messages from this phone", link._node)
 
                     while client.is_connected:
                         await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self._log.warning("%s: %s", link.name, e)
+                self._log.warning("[%s] Bluetooth trouble with %s: %s",
+                                  link._node, link.address, e)
             finally:
                 if link.connected:
                     link.detach()
@@ -165,7 +203,7 @@ class BleManager:
             self._chain.emit(clog.PEER, link._node, radio=link.name, state="disconnected")
             delay = backoff[min(attempt, len(backoff) - 1)]
             attempt += 1
-            self._log.info("%s: reconnecting in %ss", link.name, delay)
+            self._log.info("[%s] trying to reconnect to the phone in %ss", link._node, delay)
             await asyncio.sleep(delay)
 
     async def close(self) -> None:

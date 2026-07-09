@@ -74,14 +74,15 @@ async def startup_probe(radios: Dict[str, Radio], lora_cfg: LoraConfig,
         radios["gateway"].stop_receiving()
 
     if not arrived:
-        logger.error("startup probe FAILED: radio 'field' transmitted, radio 'gateway' heard nothing")
-        logger.error("check both antennas are attached, and that both radios share "
-                     "frequency/SF/bandwidth/coding-rate/sync-word")
+        logger.error("RADIO CHECK FAILED: radio 'field' transmitted, radio 'gateway' heard nothing.")
+        logger.error("  Check both antennas are screwed on, and that both radios use the same "
+                     "frequency, spreading factor, bandwidth, coding rate and sync word.")
         chain.emit(clog.START, "probe", result="failed")
         return False
 
     pkt = seen["pkt"]
-    logger.info("startup probe OK: field -> gateway, %d dBm, SNR %.1f dB", pkt.rssi_dbm, pkt.snr_db)
+    logger.info("radio check PASSED: 'field' spoke, 'gateway' heard it — %s. "
+                "The 433 MHz link works.", nodemod.signal_words(pkt.rssi_dbm, pkt.snr_db))
     chain.emit(clog.START, "probe", result="ok", radio="field->gateway",
                rssi_dbm=pkt.rssi_dbm, snr_db=pkt.snr_db)
     return True
@@ -98,7 +99,8 @@ async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
                 raise
             # Rule 10: an operator-facing failure is a message, not a traceback.
             logger.warning("%s", e)
-            logger.info("waiting for phones — retrying in %.0fs (Ctrl-C to stop)", retry)
+            logger.info("still waiting for both phones — I will look again in %.0fs "
+                        "(press Ctrl-C to stop)", retry)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=retry)
             except asyncio.TimeoutError:
@@ -137,7 +139,8 @@ async def run() -> int:
     lora_cfg = cfgmod.lora_config(cfg)
     csma = cfg["lora"]["csma"]
 
-    logger.info("LoRa: %.3f MHz SF%d BW%dk CR4/%d %d dBm sync=0x%02X",
+    logger.info("radio settings: %.3f MHz, spreading factor %d, bandwidth %d kHz, "
+                "coding rate 4/%d, power %d dBm, sync word 0x%02X (both radios must match)",
                 lora_cfg.frequency_hz / 1e6, lora_cfg.spreading_factor,
                 lora_cfg.bandwidth_hz // 1000, lora_cfg.coding_rate,
                 lora_cfg.tx_power_dbm, lora_cfg.sync_word)
@@ -157,7 +160,8 @@ async def run() -> int:
             radio = Radio(name, r["cs"], r["rst_gpio"], r["dio0_gpio"], lora_cfg)
             radio.open()
             radios[name] = radio
-            logger.info("radio %s up on CE%d (rst=GPIO%d dio0=GPIO%d)",
+            logger.info("radio '%s' is powered up and listening (chip-select CE%d, "
+                        "reset pin GPIO%d, data-ready pin GPIO%d)",
                         name, r["cs"], r["rst_gpio"], r["dio0_gpio"])
             chain.emit(clog.START, name, radio=name, freq_hz=lora_cfg.frequency_hz,
                        sf=lora_cfg.spreading_factor, tx_power_dbm=lora_cfg.tx_power_dbm)
@@ -203,9 +207,11 @@ async def run() -> int:
                 nodes[name].add_link(bl)
                 n = nodes[name]
                 manager.maintain(bl, lambda raw, n=n, bl=bl: n.on_ble_bytes(bl, raw))
-            logger.info("gateway live — field<->%s, gateway<->%s", peers["field"], peers["gateway"])
+            logger.info("READY. A message typed on the field phone now travels: "
+                        "phone -> Bluetooth -> Pi -> 433 MHz -> Pi -> Bluetooth -> phone.")
         else:
-            logger.warning("ble.enabled is false — LoRa tier only, no phones attached")
+            logger.warning("Bluetooth is switched off in the config — running the two radios "
+                           "alone, with no phones attached")
 
         await stop.wait()
         logger.info("shutting down")

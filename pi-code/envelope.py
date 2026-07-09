@@ -157,3 +157,49 @@ def digest(raw: bytes) -> str:
     """Short content hash. Logged at TX and again at RX so a reader can confirm the
     exact bytes crossed the air rather than being reconstructed locally."""
     return hashlib.sha256(raw).hexdigest()[:12]
+
+
+# --- Rendering untrusted envelopes into a log line --------------------------
+
+URGENCY_WORDS = {1: "lowest", 2: "low", 3: "normal", 4: "high", 5: "life-threatening"}
+
+# Control characters, including newline and carriage return.
+_CTRL = {c: None for c in range(0x20)}
+_CTRL[0x7F] = None
+
+
+def preview(text: str, limit: int = 60) -> str:
+    """One-line, length-capped rendering of untrusted free text (CLAUDE.md #8).
+
+    Control characters are stripped, not escaped: a gist arriving off the air that
+    contained "\\n02:09:13 INFO sankat: probe OK" would otherwise forge a log line.
+    """
+    if not isinstance(text, str) or not text:
+        return ""
+    clean = text.translate(_CTRL).strip()
+    if len(clean) > limit:
+        clean = clean[: limit - 1] + "…"
+    return clean
+
+
+def describe(msg: Envelope) -> str:
+    """`SOS c363-0 from phone c363, urgency 4/5 (high), near Block C stairwell`."""
+    bits = [f"{msg.type} {msg.id}", f"from phone {msg.origin}"]
+    if msg.type == "SOS":
+        bits.append(f"urgency {msg.urgency}/5 ({URGENCY_WORDS.get(msg.urgency, '?')})")
+    if msg.category:
+        bits.append(preview(msg.category, 24))
+    if msg.location_hint:
+        bits.append(f"near {preview(msg.location_hint, 32)}")
+    if msg.has_location:
+        bits.append(f"at {msg.lat:.5f},{msg.lng:.5f}")
+    return ", ".join(bits)
+
+
+def message_text(msg: Envelope) -> str:
+    """The words the victim actually typed, ready to sit on its own log line."""
+    body = preview(msg.gist, MAX_TEXT)
+    if not body:
+        return ""
+    lang = f" [{msg.lang}]" if msg.lang and msg.lang != "en" else ""
+    return f'"{body}"{lang}'
