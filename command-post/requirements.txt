@@ -3,3 +3,4 @@ fastapi==0.115.0          # MIT
 uvicorn[standard]==0.30.6 # BSD
 httpx==0.27.2             # BSD  — backend-agnostic OpenAI-compatible client
 python-dotenv==1.0.1      # BSD
+python-multipart==0.0.12   # BSD — FastAPI form/file uploads

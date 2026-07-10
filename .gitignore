@@ -28,3 +28,14 @@ node_modules/
 
 # logs / temp
 *.log
+
+# Transient test data / benchmark artifacts (not source)
+command-post/fleurs/
+command-post/audio/
+audio/
+command-post/backends.json
+*.output
+
+# Durable outbox / local DBs (runtime state, e.g. the Pi edge-link outbox)
+*.sqlite
+*.db

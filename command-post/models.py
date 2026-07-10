@@ -92,18 +92,29 @@ def parse_envelope(raw: bytes | str | dict) -> dict[str, Any]:
 
 
 def sample_sos(seq: int = 0) -> dict[str, Any]:
-    """A realistic test envelope for the inject button / benchmark."""
-    # Native-script Indic — this is what on-device STT (Sarvam/Whisper) actually
-    # emits. (Romanized Latin Indic is unrealistic AND much harder to translate.)
+    """Demo scenario envelopes for the inject button — exercises the full
+    intelligence pipeline: 3 reports + 1 sensor cluster at the bridge
+    (corroboration), a lone medical, a trapped pair, and a no-GPS case.
+    Native-script Indic — what on-device STT actually emits."""
+    #  lang, text, category, urgency, lat, lng, origin, locationHint
     samples = [
-        ("ta", "வீடு முழுகிக்கிட்டு இருக்கு, தண்ணி ஏறுது, யாராவது காப்பாத்துங்க", "flood", 5, 11.6854, 76.1320),
-        ("hi", "मेरी माँ को साँस लेने में तकलीफ़ हो रही है, दवाई चाहिए", "medical", 4, 11.6871, 76.1298),
-        ("ta", "சுவர் இடிஞ்சு விழுந்துச்சு, ரெண்டு பேர் உள்ளே மாட்டிக்கிட்டாங்க", "trapped", 5, 11.6840, 76.1355),
-        ("en", "Water rising fast near the old bridge, we need a boat", "flood", 3, 11.6889, 76.1301),
+        # cluster A: Chooralmala bridge flood — 3 humans within ~80m + sensor
+        ("ta", "தண்ணீர் வேகமாக ஏறுகிறது, இங்கே குழந்தைகள் இருக்கிறார்கள்", "flood", 5, 11.6854, 76.1320, "ph-01", "Chooralmala bridge"),
+        ("ml", "ഞങ്ങൾ പാലത്തിനടുത്താണ്, വെള്ളം കയറിക്കൊണ്ടിരിക്കുന്നു", "flood", 4, 11.6858, 76.1326, "ph-02", "Chooralmala bridge"),
+        ("sensor", "WLS-1 water level 2.4m and rising 12cm/min", "sensor", 4, 11.6851, 76.1317, "unoq-1", "Chooralmala bridge"),
+        ("hi", "पुल के नीचे दो परिवार फंसे हुए हैं, जल्दी आइए", "flood", 5, 11.6849, 76.1324, "ph-03", "Chooralmala bridge"),
+        # lone incidents
+        ("hi", "मेरी माँ को साँस लेने में तकलीफ़ हो रही है, दवाई चाहिए", "medical", 4, 11.6921, 76.1258, "ph-04", "Attamala"),
+        ("ta", "சுவர் இடிஞ்சு விழுந்துச்சு, ரெண்டு பேர் உள்ளே மாட்டிக்கிட்டாங்க", "trapped", 5, 11.6790, 76.1385, "ph-05", "Mundakkai"),
+        # no-GPS lane — still triaged + dispatchable, not map-pinned
+        ("ta", "பழைய கோவில் பக்கத்துல மாட்டிக்கிட்டேன், GPS வரலை", "trapped", 4, None, None, "ph-06", "old church"),
+        ("en", "Eight estate workers stranded up the hill above the school", "flood", 3, 11.6712, 76.1443, "ph-07", "Vellarimala"),
     ]
-    lang, gist, cat, urg, la, lo = samples[seq % len(samples)]
-    return {
-        "i": f"test-{seq}", "t": "SOS", "o": "test", "u": urg, "c": cat,
-        "l": "Sector 4", "g": gist, "ln": lang, "la": la, "lo": lo,
-        "ts": 0, "h": 1,
+    lang, gist, cat, urg, la, lo, origin, hint = samples[seq % len(samples)]
+    env: dict[str, Any] = {
+        "i": f"test-{seq}", "t": "SOS", "o": origin, "u": urg, "c": cat,
+        "l": hint, "g": gist, "ln": lang, "ts": 0, "h": (seq % 4) + 1,
     }
+    if la is not None:
+        env["la"], env["lo"] = la, lo
+    return env

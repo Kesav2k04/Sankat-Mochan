@@ -2,16 +2,17 @@
 Sankat-Mochan command post ("AI PC") — FastAPI.
 
 Receives SOS envelopes (from the Pi/LoRa gateway via POST /sos, or the test
-button), runs AI triage, and pushes a live triage queue to the browser
-dashboard over WebSocket. Transport-agnostic: the same POST /sos endpoint is
-fed by the LoRa gateway later — no changes here.
+button), runs AI triage, feeds the deterministic intelligence services
+(clustering → dedup/corroboration → ranking → proposal → de-confliction,
+see intelligence.py / docs/INTELLIGENCE-DESIGN.md), and pushes live snapshots
+to the dashboard over WebSocket.
 
 Run:  uvicorn app:app --host 0.0.0.0 --port 9000
 """
 from __future__ import annotations
 
 import asyncio
-import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -19,20 +20,25 @@ from dotenv import load_dotenv
 
 load_dotenv()  # MUST run before importing triage (it reads LLM_* env at import time)
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
+import stt
 import triage
+from intelligence import store
 from models import InvalidEnvelope, parse_envelope, sample_sos
 
 app = FastAPI(title="Sankat-Mochan Command Post")
 STATIC_DIR = Path(__file__).parent / "static"
+AUDIO_DIR = Path(__file__).parent / "audio_store"
+AUDIO_DIR.mkdir(exist_ok=True)
+WEB_DIST = Path(__file__).parent / "web" / "dist"  # built React app (npm run build)
 
-# ---- In-memory state (a demo doesn't need a DB) --------------------------
-_seen_ids: set[str] = set()            # dedup / loop guard (CONTRACT 1)
-_queue: dict[str, dict[str, Any]] = {} # id -> enriched record
+_seen_ids: set[str] = set()  # transport-level dedup (CONTRACT 1)
 _test_seq = 0
+_voice_seq = 0
 
 
 class Hub:
@@ -65,46 +71,133 @@ class Hub:
 hub = Hub()
 
 
+class GatewayHub:
+    """The Pi LoRa-gateway edge link (EDGE-LINK.md). One persistent bidirectional
+    WebSocket:
+      up   — the Pi sends {type:"envelope", id, env}; we ingest + reply {type:"ack", id}.
+      down — we send {type:"dispatch", id, env} (ACCEPTED / instruction) for the Pi to
+             carry over LoRa/BLE back to the victim (the return path).
+    Downlink is buffered until the far end ACKs by id, so a disconnect never loses a
+    dispatch; flushed (highest urgency first) on reconnect. Idempotent — the phone/Pi
+    dedup by envelope id, so replays are safe.
+    """
+
+    def __init__(self) -> None:
+        self._ws: WebSocket | None = None
+        self._pending: dict[str, dict[str, Any]] = {}  # id -> dispatch msg awaiting ack
+        self._seq = 0
+        self._last_ack_ms: int | None = None
+        self._lock = asyncio.Lock()
+
+    def connected(self) -> bool:
+        return self._ws is not None
+
+    def status(self) -> dict[str, Any]:
+        return {"connected": self.connected(), "queued": len(self._pending),
+                "last_ack_ms": self._last_ack_ms}
+
+    async def attach(self, ws: WebSocket) -> None:
+        await ws.accept()
+        self._ws = ws
+        await self._flush()  # replay anything the Pi missed while disconnected
+
+    async def detach(self, ws: WebSocket) -> None:
+        if self._ws is ws:
+            self._ws = None
+
+    async def send_dispatch(self, env: dict[str, Any]) -> None:
+        """Queue a downlink envelope (ACCEPTED/instruction) and try to send it now."""
+        self._seq += 1
+        mid = f"disp-{self._seq}"
+        msg = {"type": "dispatch", "id": mid, "env": env,
+               "urgency": int(env.get("u", 3))}
+        self._pending[mid] = msg
+        await self._try_send(msg)
+
+    async def _try_send(self, msg: dict[str, Any]) -> None:
+        ws = self._ws
+        if ws is None:
+            return  # stays in _pending; flushed on reconnect
+        try:
+            await ws.send_json(msg)
+        except Exception:
+            self._ws = None  # broken link; keep it pending
+
+    async def _flush(self) -> None:
+        # Criticals first (EDGE-LINK priority flush).
+        for msg in sorted(self._pending.values(), key=lambda m: -m.get("urgency", 0)):
+            await self._try_send(msg)
+
+    def ack(self, mid: str) -> None:
+        if self._pending.pop(mid, None) is not None:
+            import time as _t
+            self._last_ack_ms = int(_t.time() * 1000)
+
+
+gateway = GatewayHub()
+
+
+async def _dispatch_to_victims(incident_id: str, gist: str = "Help is on the way") -> None:
+    """Return path: push an ACCEPTED envelope down the gateway for every victim
+    report in an incident, so their phones flip to 'help is on the way' in their
+    own language. refId = the original SOS id the phone will match on."""
+    inc = store.incidents.get(incident_id)
+    if not inc:
+        return
+    for rid in inc.get("report_ids", []):
+        rep = store.reports.get(rid)
+        if not rep or rep.get("is_sensor"):
+            continue
+        env = {
+            "i": f"cp-{incident_id}-{rid}", "t": "ACCEPTED", "o": "cmdpost",
+            "r": rid, "g": gist, "ln": rep.get("lang", "en"), "ts": 0, "h": 0,
+        }
+        await gateway.send_dispatch(env)
+
+
 def _snapshot() -> dict[str, Any]:
-    records = sorted(
-        _queue.values(),
-        key=lambda r: (r.get("urgency", 0), r.get("ts", 0)),
-        reverse=True,
-    )
-    return {"kind": "snapshot", "records": records, "ai_enabled": triage.is_configured()}
+    snap = store.snapshot()
+    snap["kind"] = "snapshot"
+    snap["ai_enabled"] = triage.is_configured()
+    snap["stt_ready"] = stt.is_ready()
+    return snap
 
 
-async def _ingest(envelope: dict[str, Any]) -> dict[str, Any] | None:
-    """Validate → dedup → triage → store → broadcast. Returns the record or None."""
+async def _broadcast_snapshot() -> None:
+    await hub.broadcast(_snapshot())
+
+
+async def _ingest(envelope: dict[str, Any], audio_url: str | None = None) -> bool:
+    """Validate → dedup → triage[LLM] → intelligence[code] → broadcast."""
     if envelope["type"] != "SOS":
-        # DELIVERED / ACCEPTED just update status on an existing SOS.
+        # Return-path envelopes from the mesh (CONTRACT 1): ACCEPTED locks the
+        # incident (responder tapped Accept in the field); DELIVERED is logged.
         ref = envelope.get("refId")
-        if ref and ref in _queue:
-            _queue[ref]["status"] = (
-                "en route" if envelope["type"] == "ACCEPTED" else "delivered"
-            )
-            await hub.broadcast({"kind": "update", "record": _queue[ref]})
-        return None
-
+        if ref:
+            if envelope["type"] == "ACCEPTED":
+                store.accept_from_mesh(ref, envelope["origin"])
+            else:
+                store.delivered_from_mesh(ref, envelope["origin"])
+            await _broadcast_snapshot()
+        return False
     if envelope["id"] in _seen_ids:
-        return None  # dedup
+        return False  # transport re-broadcast dedup
     _seen_ids.add(envelope["id"])
 
-    ai = await triage.triage(envelope)
-    record = {
-        **envelope,
-        "triage": ai,
-        "eff_urgency": ai.get("urgency", envelope["urgency"]),
-        "english": ai.get("english", envelope["gist"]),
-        "status": "new",
-    }
-    # Sort key uses the AI-adjusted urgency when available.
-    record["urgency"] = record["eff_urgency"]
-    _queue[envelope["id"]] = record
-    await hub.broadcast({"kind": "new", "record": record})
-    return record
+    if envelope.get("category") == "sensor":
+        # C7: sensor envelopes skip the LLM — readings aren't language
+        ai = {"urgency": envelope.get("urgency", 3), "category": "sensor",
+              "english": envelope.get("gist", ""), "ai": False, "latency_ms": 0}
+    else:
+        ai = await triage.triage(envelope)
+    if audio_url:
+        envelope["audio"] = audio_url
+    store.add_report(envelope, ai)
+    await _broadcast_snapshot()
+    return True
 
 
+# ---- ingest ---------------------------------------------------------------
 @app.post("/sos")
 async def post_sos(request: Request) -> JSONResponse:
     """Ingest endpoint the LoRa gateway (and the test button) call."""
@@ -115,40 +208,128 @@ async def post_sos(request: Request) -> JSONResponse:
         # Rule #10: don't leak internals; log detail server-side, return generic.
         print(f"[ingest] dropped invalid envelope: {e}")
         return JSONResponse({"status": "rejected"}, status_code=400)
-    rec = await _ingest(envelope)
-    return JSONResponse({"status": "ok", "new": rec is not None})
-
-
-@app.post("/accept/{sos_id}")
-async def accept(sos_id: str) -> JSONResponse:
-    """Responder dispatch. For now marks en-route + broadcasts; the return-path
-    ACCEPTED envelope back through the mesh is wired when the gateway is up."""
-    rec = _queue.get(sos_id)
-    if not rec:
-        return JSONResponse({"status": "unknown"}, status_code=404)
-    rec["status"] = "en route"
-    await hub.broadcast({"kind": "update", "record": rec})
-    return JSONResponse({"status": "ok"})
+    new = await _ingest(envelope)
+    return JSONResponse({"status": "ok", "new": new})
 
 
 @app.post("/inject")
 async def inject() -> JSONResponse:
-    """Dev helper: push a realistic test SOS through the same path as real ones."""
+    """Dev/demo helper: push a realistic test SOS through the real path."""
     global _test_seq
     envelope = parse_envelope(sample_sos(_test_seq))
     _test_seq += 1
-    rec = await _ingest(envelope)
-    return JSONResponse({"status": "ok", "injected": rec is not None})
+    new = await _ingest(envelope)
+    return JSONResponse({"status": "ok", "injected": new})
 
 
+# ---- voice ------------------------------------------------------------------
+@app.post("/transcribe")
+async def transcribe_ep(audio: UploadFile = File(...), lang: str | None = Form(None)) -> JSONResponse:
+    """Audio → text (IndicConformer). Runs off the event loop."""
+    data = await audio.read()
+    result = await run_in_threadpool(stt.transcribe, data, lang)
+    return JSONResponse(result)
+
+
+@app.post("/voice_sos")
+async def voice_sos(
+    audio: UploadFile = File(...),
+    lang: str | None = Form(None),
+    origin: str = Form("voice"),
+    lat: float | None = Form(None),
+    lng: float | None = Form(None),
+) -> JSONResponse:
+    """Full voice path: transcribe → SOS envelope → triage → intelligence.
+    The audio itself is kept so the operator can replay it."""
+    global _voice_seq
+    data = await audio.read()
+    tr = await run_in_threadpool(stt.transcribe, data, lang)
+    if not tr.get("text"):
+        return JSONResponse({"status": "no_speech", "transcript": tr}, status_code=422)
+    vid = f"voice-{_voice_seq}"
+    _voice_seq += 1
+    audio_path = AUDIO_DIR / f"{vid}.webm"
+    audio_path.write_bytes(data)
+    env = {
+        "i": vid, "t": "SOS", "o": origin, "u": 3,
+        "c": "unknown", "g": tr["text"], "ln": tr["lang"], "h": 0,
+    }
+    if lat is not None and lng is not None:
+        env["la"], env["lo"] = lat, lng
+    new = await _ingest(parse_envelope(env), audio_url=f"/audio/{vid}.webm")
+    return JSONResponse({"status": "ok", "transcript": tr, "ingested": new})
+
+
+@app.get("/audio/{name}")
+async def audio_file(name: str) -> Response:
+    """Replay a stored voice SOS. Name is constrained to our generated ids."""
+    if not name.replace("-", "").replace(".", "").replace("webm", "").isalnum():
+        return JSONResponse({"status": "rejected"}, status_code=400)
+    path = AUDIO_DIR / name
+    if not path.exists() or not path.resolve().is_relative_to(AUDIO_DIR.resolve()):
+        return JSONResponse({"status": "unknown"}, status_code=404)
+    return FileResponse(path, media_type="audio/webm")
+
+
+# ---- dispatch lifecycle (C5/C6/C9) -----------------------------------------
+@app.post("/propose/{incident_id}")
+async def propose(incident_id: str) -> JSONResponse:
+    """C5: compute + send the nearest-responder proposal for an incident."""
+    proposal = store.propose(incident_id)
+    await _broadcast_snapshot()
+    if proposal is None:
+        return JSONResponse({"status": "awaiting responder"}, status_code=409)
+    return JSONResponse({"status": "ok", "proposal": proposal})
+
+
+@app.post("/accept/{incident_id}")
+async def accept(incident_id: str, responder: str | None = None) -> JSONResponse:
+    """C6: responder accepts → lock (first-write-wins)."""
+    ok, reason = store.accept(incident_id, responder)
+    await _broadcast_snapshot()
+    if not ok:
+        return JSONResponse({"status": reason}, status_code=409)
+    # Return path: push "help is on the way" back down the gateway to the victim(s).
+    await _dispatch_to_victims(incident_id)
+    return JSONResponse({"status": "ok"})
+
+
+@app.post("/resolve/{incident_id}")
+async def resolve(incident_id: str) -> JSONResponse:
+    """C9: incident cleared — frees the responder, archives the incident."""
+    ok = store.resolve(incident_id)
+    await _broadcast_snapshot()
+    return JSONResponse({"status": "ok" if ok else "unknown"},
+                        status_code=200 if ok else 404)
+
+
+@app.post("/responder/{responder_id}/heartbeat")
+async def responder_heartbeat(responder_id: str, request: Request) -> JSONResponse:
+    """C4: responder app beacons location/status back through the mesh."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    ok = store.heartbeat(
+        responder_id,
+        lat=body.get("lat"), lng=body.get("lng"), status=body.get("status"),
+    )
+    await _broadcast_snapshot()
+    return JSONResponse({"status": "ok" if ok else "unknown"},
+                        status_code=200 if ok else 404)
+
+
+# ---- introspection ----------------------------------------------------------
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "queued": len(_queue), "ai_enabled": triage.is_configured()}
+    return {"ok": True, "incidents": len(store.incidents),
+            "ai_enabled": triage.is_configured(), "stt_ready": stt.is_ready(),
+            "gateway": gateway.status()}
 
 
 @app.get("/queue")
 async def queue() -> dict[str, Any]:
-    """Current triage queue as JSON (debugging / gateway verification)."""
+    """Current state as JSON (debugging / gateway verification)."""
     return _snapshot()
 
 
@@ -165,10 +346,127 @@ async def ws(ws: WebSocket) -> None:
         await hub.disconnect(ws)
 
 
+@app.websocket("/gateway")
+async def gateway_ws(ws: WebSocket) -> None:
+    """The Pi LoRa-gateway edge link (EDGE-LINK.md) — bidirectional + ACKed."""
+    await gateway.attach(ws)
+    try:
+        while True:
+            msg = await ws.receive_json()
+            kind = msg.get("type")
+            if kind == "envelope":
+                # Up: an SOS/DELIVERED from the mesh. Ingest, then ACK by id so the
+                # Pi can drop it from its durable outbox. Idempotent (dedup by id).
+                try:
+                    env = parse_envelope(msg.get("env", {}))
+                    await _ingest(env)
+                except InvalidEnvelope as e:
+                    print(f"[gateway] dropped invalid envelope: {e}")
+                if msg.get("id"):
+                    await ws.send_json({"type": "ack", "id": msg["id"]})
+            elif kind == "ack":
+                # Down: the Pi confirms a dispatch — clear it from our buffer.
+                gateway.ack(msg.get("id", ""))
+            elif kind == "heartbeat":
+                await ws.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        await gateway.detach(ws)
+    except Exception:
+        await gateway.detach(ws)
+
+
+@app.on_event("startup")
+async def start_background() -> None:
+    async def watchdog() -> None:
+        while True:
+            await asyncio.sleep(30)
+            before = len(store.activity)
+            store.check_stuck()  # C4 stuck-assignment timeout
+            if len(store.activity) != before:
+                await _broadcast_snapshot()
+
+    asyncio.create_task(watchdog())
+
+
+# ---- basemap / static -------------------------------------------------------
+@app.get("/vtiles/{z}/{x}/{y}.pbf")
+async def vector_tile(z: int, x: int, y: int):
+    """Offline basemap tiles, served straight out of the local PMTiles archive.
+    Plain z/x/y HTTP so MapLibre's workers fetch them natively."""
+    if not 0 <= z <= 15:
+        return Response(status_code=204)
+    reader = _pmtiles_reader()
+    if reader is None:
+        return JSONResponse({"status": "no basemap"}, status_code=404)
+    data = reader.get(z, x, y)
+    if not data:
+        return Response(status_code=204)  # empty tile — maplibre skips it
+    return Response(
+        content=data,
+        media_type="application/x-protobuf",
+        headers={"Content-Encoding": "gzip", "Cache-Control": "max-age=86400"},
+    )
+
+
+_pmtiles_cache: list = []  # [Reader] once opened (module-lifetime mmap)
+
+
+def _pmtiles_reader():
+    if _pmtiles_cache:
+        return _pmtiles_cache[0]
+    path = STATIC_DIR / "wayanad.pmtiles"
+    if not path.exists():
+        return None
+    from pmtiles.reader import Reader, MmapSource
+
+    f = path.open("rb")  # kept open for the process lifetime (mmap backing)
+    _pmtiles_cache.append(Reader(MmapSource(f)))
+    return _pmtiles_cache[0]
+
+
+@app.get("/static/wayanad.pmtiles")
+async def pmtiles_archive(request: Request):
+    """Serve the offline basemap archive with HTTP Range support (RFC 7233)."""
+    path = STATIC_DIR / "wayanad.pmtiles"
+    if not path.exists():
+        return JSONResponse({"status": "missing"}, status_code=404)
+    size = path.stat().st_size
+    range_header = request.headers.get("range")
+    if not range_header or not range_header.startswith("bytes="):
+        return FileResponse(path, media_type="application/octet-stream")
+    try:
+        start_s, _, end_s = range_header[6:].partition("-")
+        start = int(start_s)
+        end = min(int(end_s) if end_s else size - 1, size - 1)
+        if start > end or start < 0:
+            raise ValueError
+    except ValueError:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+    with path.open("rb") as f:
+        f.seek(start)
+        chunk = f.read(end - start + 1)
+    return Response(
+        content=chunk, status_code=206, media_type="application/octet-stream",
+        headers={"Content-Range": f"bytes {start}-{end}/{size}", "Accept-Ranges": "bytes"},
+    )
+
+
 @app.get("/")
 async def index() -> FileResponse:
+    # Prefer the built React app; fall back to the vanilla dashboard.
+    if (WEB_DIST / "index.html").exists():
+        return FileResponse(WEB_DIST / "index.html")
     return FileResponse(STATIC_DIR / "index.html")
 
 
-# Serve remaining static assets (if any) under /static
+if (WEB_DIST / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+
+if (STATIC_DIR / "basemaps-assets").exists():
+    app.mount(
+        "/basemaps-assets",
+        StaticFiles(directory=STATIC_DIR / "basemaps-assets"),
+        name="basemaps-assets",
+    )
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

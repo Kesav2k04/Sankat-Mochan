@@ -13,6 +13,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import numpy as np
+import soundfile as sf
 import torch
 import torchaudio
 from transformers import AutoModel
@@ -26,10 +28,13 @@ print("loaded.\n", flush=True)
 
 
 def load_wav(path: Path) -> torch.Tensor:
-    wav, sr = torchaudio.load(str(path))
-    wav = torch.mean(wav, dim=0, keepdim=True)  # mono
+    # soundfile (libsndfile) avoids torchaudio's new torchcodec backend dependency.
+    data, sr = sf.read(str(path), dtype="float32")
+    if data.ndim > 1:
+        data = data.mean(axis=1)  # mono
+    wav = torch.from_numpy(np.ascontiguousarray(data)).unsqueeze(0)  # (1, n)
     if sr != 16000:
-        wav = torchaudio.transforms.Resample(orig_freq=sr, new_freq=16000)(wav)
+        wav = torchaudio.functional.resample(wav, sr, 16000)  # pure tensor op, no codec
     return wav
 
 
