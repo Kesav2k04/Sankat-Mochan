@@ -1,8 +1,13 @@
 <resources>
     <!--
-      Base XML theme referenced by the manifest. Compose draws the real UI;
-      this only needs to be a no-action-bar material theme so the window and
-      splash look right before Compose takes over.
+      Base XML theme referenced by the manifest. Compose draws the real UI; this only
+      needs to be a no-action-bar theme whose window matches Off-Net's dark page colour,
+      so the launch window and splash don't flash white before Compose takes over.
     -->
-    <style name="Theme.SankatMochan" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.OffNet" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/offnet_window</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>

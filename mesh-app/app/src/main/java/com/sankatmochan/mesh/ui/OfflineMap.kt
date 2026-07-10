@@ -10,9 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -86,7 +83,7 @@ fun OfflineMapCard(
     val critical = urgencyColors.critical.toArgb()
     val mine = MaterialTheme.colorScheme.secondary.toArgb()
 
-    Card(modifier.fillMaxWidth()) {
+    Tile(modifier.fillMaxWidth()) {
         AndroidView(
             factory = { ctx ->
                 OfflineTiles.configure(ctx)
@@ -117,7 +114,7 @@ fun OfflineMapCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(300.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(TileShape)
         )
     }
 }
@@ -186,12 +183,7 @@ private fun dot(argb: Int, sizePx: Int): Drawable = ShapeDrawable(OvalShape()).a
 /** First launch, while a bundled archive is unpacked out of the APK. */
 @Composable
 private fun LoadingMapNote(modifier: Modifier = Modifier) {
-    Card(
-        modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
+    Tile(modifier.fillMaxWidth()) {
         Text(
             "Preparing the offline map…",
             style = MaterialTheme.typography.bodyMedium,
@@ -207,17 +199,12 @@ private fun LoadingMapNote(modifier: Modifier = Modifier) {
  */
 @Composable
 private fun NoMapNote(pinCount: Int, modifier: Modifier = Modifier) {
-    Card(
-        modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
+    Tile(modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(
                 "No offline map installed",
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(Modifier.height(4.dp))
             Text(

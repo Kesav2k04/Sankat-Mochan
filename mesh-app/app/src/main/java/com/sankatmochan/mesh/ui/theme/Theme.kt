@@ -1,84 +1,78 @@
 package com.sankatmochan.mesh.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
-// Editorial light palette from the deck: off-white paper, near-black ink,
-// one saffron/red accent for urgency.
-private val Saffron = Color(0xFFB23A1E)
-private val SaffronDark = Color(0xFFE0653F)
-private val Ink = Color(0xFF1A1A1A)
-private val Paper = Color(0xFFF7F4EF)
-private val Slate = Color(0xFF3A5A6B)
+/*
+ * Off-Net design language v2 — "control room".
+ *
+ * One near-black neutral ground, one signal red, and a small set of state colours
+ * (green = safe, amber = pending, blue = you). Everything else is greys. The discipline
+ * is the aesthetic: when the only saturated thing on screen is the SOS surface, a person
+ * in a panic finds it without reading anything.
+ */
 
-private val LightColors = lightColorScheme(
-    primary = Saffron,
+// ── Signal ──────────────────────────────────────────────────────────────────
+internal val Signal = Color(0xFFE8484D)      // the red — SOS, critical, recording
+internal val SignalHot = Color(0xFFFF6257)   // gradient tail
+internal val Safe = Color(0xFF2ED48A)        // connected · locked · accepted
+internal val Amber = Color(0xFFF5B03E)       // pending · searching
+internal val Sky = Color(0xFF5B9DF5)         // "you" / responder
+
+// ── Neutral ground ──────────────────────────────────────────────────────────
+private val Bg = Color(0xFF0B0C0E)
+private val Tile1 = Color(0xFF141519)        // resting tile
+private val Tile2 = Color(0xFF191B20)        // raised tile
+private val Tile3 = Color(0xFF22242B)        // interactive fills / tracks
+private val Hairline = Color(0xFF23262D)
+private val TextHi = Color(0xFFF4F5F7)
+private val TextLo = Color(0xFF8F96A3)
+
+private val OffNetColors = darkColorScheme(
+    primary = Signal,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFDBD1),
-    onPrimaryContainer = Color(0xFF3B0A00),
-    secondary = Slate,
-    onSecondary = Color.White,
-    background = Paper,
-    onBackground = Ink,
-    surface = Color.White,
-    onSurface = Ink,
-    surfaceVariant = Color(0xFFEDE7E0),
-    onSurfaceVariant = Color(0xFF52453F),
-    outline = Color(0xFF857269),
-    error = Color(0xFFC62828),
+    primaryContainer = Color(0xFF35171A),
+    onPrimaryContainer = Color(0xFFFFD9D8),
+    secondary = Sky,
+    onSecondary = Color(0xFF04223C),
+    secondaryContainer = Color(0xFF14304D),
+    onSecondaryContainer = Color(0xFFD3E5FA),
+    tertiary = Safe,
+    onTertiary = Color(0xFF003825),
+    background = Bg,
+    onBackground = TextHi,
+    surface = Bg,
+    onSurface = TextHi,
+    surfaceVariant = Tile2,
+    onSurfaceVariant = TextLo,
+    outline = Color(0xFF2E323B),
+    outlineVariant = Hairline,
+    error = Color(0xFFFF6B70),
     onError = Color.White,
-    // Filled Cards read from the surfaceContainer* ramp. Left unset, they fall back to
-    // M3's cool baseline — which is why cards looked lavender on our warm paper. These
-    // keep the whole card family in the paper/ink key.
-    surfaceBright = Color.White,
-    surfaceDim = Color(0xFFDED8D0),
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF8F4EE),
-    surfaceContainer = Color(0xFFF3EEE7),
-    surfaceContainerHigh = Color(0xFFEDE7DF),
-    surfaceContainerHighest = Color(0xFFE7E0D7),
-)
-
-// Previously only four roles were set here, so every colour the app did not name
-// fell back to M3's stock purple. That is why dark mode looked like a different app.
-private val DarkColors = darkColorScheme(
-    primary = SaffronDark,
-    onPrimary = Color(0xFF5C1900),
-    primaryContainer = Color(0xFF802A12),
-    onPrimaryContainer = Color(0xFFFFDBD1),
-    secondary = Color(0xFF9FC6DA),
-    onSecondary = Color(0xFF06344A),
-    background = Color(0xFF121212),
-    onBackground = Color(0xFFECE0DB),
-    surface = Color(0xFF1E1E1E),
-    onSurface = Color(0xFFECE0DB),
-    surfaceVariant = Color(0xFF3A2F2B),
-    onSurfaceVariant = Color(0xFFD8C2BA),
-    outline = Color(0xFFA08D85),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    // Warm-neutral card ramp, so dark-mode cards carry the same brown-tinted key as the
-    // rest of the theme instead of M3's baseline cool grey.
-    surfaceBright = Color(0xFF3A3532),
-    surfaceDim = Color(0xFF121212),
-    surfaceContainerLowest = Color(0xFF0D0D0D),
-    surfaceContainerLow = Color(0xFF1A1817),
-    surfaceContainer = Color(0xFF211E1C),
-    surfaceContainerHigh = Color(0xFF2B2725),
-    surfaceContainerHighest = Color(0xFF35302D),
+    errorContainer = Color(0xFF35171A),
+    onErrorContainer = Color(0xFFFFD9D8),
+    scrim = Color(0xE6060709),
+    surfaceBright = Tile3,
+    surfaceDim = Bg,
+    surfaceContainerLowest = Color(0xFF08090B),
+    surfaceContainerLow = Tile1,
+    surfaceContainer = Tile1,
+    surfaceContainerHigh = Tile2,
+    surfaceContainerHighest = Tile3,
 )
 
 /**
  * The urgency ramp. A rescuer reads colour before words, so these are semantic and
- * deliberately outside the M3 roles: darkened for light mode, lightened for dark,
- * so the label on top keeps its contrast either way.
+ * deliberately outside the M3 roles — saturated enough to separate at a glance on the
+ * dark ground, never neon.
  */
 data class UrgencyPalette(
     val critical: Color,
@@ -87,7 +81,6 @@ data class UrgencyPalette(
     val low: Color,
     val info: Color,
 ) {
-    /** Background for an urgency of 1..5. */
     fun forLevel(urgency: Int): Color = when (urgency) {
         5 -> critical
         4 -> high
@@ -97,7 +90,7 @@ data class UrgencyPalette(
     }
 
     /** Text that sits on [forLevel]. Amber needs ink; the rest carry white. */
-    fun onLevel(urgency: Int): Color = if (urgency == 3) Color(0xFF221A00) else Color.White
+    fun onLevel(urgency: Int): Color = if (urgency == 3) Color(0xFF241A00) else Color.White
 
     fun labelFor(urgency: Int): String = when (urgency) {
         5 -> "CRITICAL"
@@ -108,39 +101,70 @@ data class UrgencyPalette(
     }
 }
 
-private val LightUrgency = UrgencyPalette(
-    critical = Color(0xFFB3261E),
-    high = Color(0xFFD84315),
-    medium = Color(0xFFF9A825),
-    low = Color(0xFF558B2F),
-    info = Color(0xFF616161),
+private val OffNetUrgency = UrgencyPalette(
+    critical = Signal,
+    high = Color(0xFFF97850),
+    medium = Amber,
+    low = Safe,
+    info = Color(0xFF7C8493),
 )
 
-private val DarkUrgency = UrgencyPalette(
-    critical = Color(0xFFE04A3F),
-    high = Color(0xFFF4703A),
-    medium = Color(0xFFFFC94D),
-    low = Color(0xFF8BC34A),
-    info = Color(0xFF9E9E9E),
+/**
+ * Brand gradients, read from inside composition. Kept here so every hero surface pulls
+ * the same red instead of each screen inventing its own.
+ */
+data class BrandGradients(
+    val sos: Brush,
+    val sosPressed: Brush,
+    val safe: Brush,
+    val page: Brush,
+) {
+    val sosGlow: Color = Signal
+}
+
+private val OffNetGradients = BrandGradients(
+    sos = Brush.linearGradient(listOf(Color(0xFFF2545B), Color(0xFFE23B44))),
+    sosPressed = Brush.linearGradient(listOf(Color(0xFFD7434B), Color(0xFFC22F38))),
+    safe = Brush.linearGradient(listOf(Color(0xFF2FC98A), Color(0xFF23B77A))),
+    page = Brush.verticalGradient(listOf(Color(0xFF0D0F12), Bg)),
 )
 
-private val LocalUrgencyPalette = staticCompositionLocalOf { LightUrgency }
+private val LocalUrgencyPalette = staticCompositionLocalOf { OffNetUrgency }
+private val LocalBrandGradients = staticCompositionLocalOf { OffNetGradients }
 
-/** Urgency colours for the active theme. Read from inside composition. */
 val urgencyColors: UrgencyPalette
     @Composable get() = LocalUrgencyPalette.current
 
+val brandGradients: BrandGradients
+    @Composable get() = LocalBrandGradients.current
+
+// Editorial ramp: heavy, tight display for the few headline moments; wide-tracked
+// micro-labels for tile captions; calm body. Platform font — nothing to ship.
+private val OffNetTypography = Typography().run {
+    copy(
+        displayMedium = displayMedium.copy(fontWeight = FontWeight.Black, letterSpacing = (-1).sp, lineHeight = 52.sp),
+        displaySmall = displaySmall.copy(fontWeight = FontWeight.Black, letterSpacing = (-0.8).sp, lineHeight = 42.sp),
+        headlineLarge = headlineLarge.copy(fontWeight = FontWeight.Black, letterSpacing = (-0.6).sp),
+        headlineMedium = headlineMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp),
+        headlineSmall = headlineSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp),
+        titleLarge = titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp),
+        titleMedium = titleMedium.copy(fontWeight = FontWeight.Bold),
+        labelMedium = labelMedium.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
+        labelSmall = labelSmall.copy(letterSpacing = 1.4.sp, fontWeight = FontWeight.SemiBold),
+    )
+}
+
 @Composable
-fun SankatMochanTheme(
-    useDarkTheme: Boolean = isSystemInDarkTheme(),
+fun OffNetTheme(
     content: @Composable () -> Unit
 ) {
     CompositionLocalProvider(
-        LocalUrgencyPalette provides if (useDarkTheme) DarkUrgency else LightUrgency
+        LocalUrgencyPalette provides OffNetUrgency,
+        LocalBrandGradients provides OffNetGradients,
     ) {
         MaterialTheme(
-            colorScheme = if (useDarkTheme) DarkColors else LightColors,
-            typography = Typography(),
+            colorScheme = OffNetColors,
+            typography = OffNetTypography,
             content = content
         )
     }
