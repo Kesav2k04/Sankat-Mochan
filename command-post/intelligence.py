@@ -226,7 +226,7 @@ class Store:
                 return inc
         return None
 
-    def attach_voice(self, report_id: str, audio_url: str, transcript: str,
+    def attach_voice(self, report_id: str, audio_url: str, transcript: str | None,
                      ai: dict[str, Any] | None = None) -> bool:
         """Attach a reassembled mesh recording to its original SOS.
 
@@ -238,7 +238,7 @@ class Store:
         if report is None:
             return False
         report["audio"] = audio_url
-        clean = transcript.strip()
+        clean = (transcript or "").strip()
         if clean:
             report["voice_transcript"] = clean
             report["voice_english"] = (ai or {}).get("english") or clean
@@ -259,7 +259,9 @@ class Store:
             self._rank_all()
         self.log(
             f"voice attached to {report_id}" +
-            (" and transcribed" if clean else " (transcription unavailable)")
+            (" and transcribed" if clean else
+             " (transcription pending)" if transcript is None else
+             " (transcription unavailable)")
         )
         return True
 

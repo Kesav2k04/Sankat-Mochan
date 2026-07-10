@@ -19,6 +19,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 load_dotenv()  # MUST run before importing triage (it reads LLM_* env at import time)
+load_dotenv(Path(__file__).parent / ".postgres.env", override=False)
 
 from fastapi import FastAPI, File, Form, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
@@ -27,6 +28,7 @@ from starlette.concurrency import run_in_threadpool
 
 import stt
 import triage
+from database import database
 from intelligence import store
 from models import InvalidEnvelope, parse_envelope, sample_sos
 
@@ -40,6 +42,11 @@ _seen_ids: set[str] = set()  # transport-level dedup (CONTRACT 1)
 _test_seq = 0
 _voice_seq = 0
 MAX_MESH_AUDIO_BYTES = 110_000  # VoiceChunk.MAX_CHUNKS * MAX_CHUNK plus small slack
+MAX_BROWSER_AUDIO_BYTES = 5_000_000
+_voice_status = {
+    "received": 0, "transcribing": 0, "failed": 0,
+    "last_received_ms": None, "last_clip": None,
+}
 
 
 class Hub:
@@ -89,13 +96,20 @@ class GatewayHub:
         self._seq = 0
         self._last_ack_ms: int | None = None
         self._lock = asyncio.Lock()
+        self._edge_status = {"voice_inflight": 0, "voice_queued": 0}
 
     def connected(self) -> bool:
         return self._ws is not None
 
     def status(self) -> dict[str, Any]:
         return {"connected": self.connected(), "queued": len(self._pending),
-                "last_ack_ms": self._last_ack_ms}
+                "last_ack_ms": self._last_ack_ms, **self._edge_status}
+
+    def update_edge_status(self, msg: dict[str, Any]) -> None:
+        for key in ("voice_inflight", "voice_queued"):
+            value = msg.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 512:
+                self._edge_status[key] = value
 
     async def attach(self, ws: WebSocket) -> None:
         await ws.accept()
@@ -164,11 +178,21 @@ def _snapshot() -> dict[str, Any]:
     snap["ai_enabled"] = triage.is_configured()
     snap["stt_ready"] = stt.is_ready()
     snap["gateway"] = gateway.status()
+    snap["database"] = database.status()
+    snap["voice"] = dict(_voice_status)
     return snap
 
 
 async def _broadcast_snapshot() -> None:
-    await hub.broadcast(_snapshot())
+    snapshot = _snapshot()
+    try:
+        await database.persist_snapshot(snapshot)
+    except Exception as exc:
+        # Database loss must not stop SOS ingest or the live dashboard. The error is
+        # operator-visible in logs/health; voice uploads still fail closed with 503.
+        database.error = f"{type(exc).__name__}: {exc}"
+        print(f"[database] snapshot write failed: {database.error}")
+    await hub.broadcast(snapshot)
 
 
 async def _ingest(envelope: dict[str, Any], audio_url: str | None = None) -> bool:
@@ -246,21 +270,39 @@ async def voice_sos(
     """Full voice path: transcribe → SOS envelope → triage → intelligence.
     The audio itself is kept so the operator can replay it."""
     global _voice_seq
-    data = await audio.read()
+    data = await audio.read(MAX_BROWSER_AUDIO_BYTES + 1)
+    if not data or len(data) > MAX_BROWSER_AUDIO_BYTES:
+        return JSONResponse({"status": "rejected"}, status_code=400)
+    vid = f"voice-{_voice_seq}"
+    _voice_seq += 1
+    content_type = "audio/webm"
+    if database.enabled:
+        await database.store_voice(
+            clip_id=vid, report_id=None, origin=origin, codec=1,
+            content_type=content_type, audio=data,
+        )
+        audio_url = f"/audio/{vid}"
+    else:
+        audio_path = AUDIO_DIR / f"{vid}.webm"
+        audio_path.write_bytes(data)
+        audio_url = f"/audio/{vid}.webm"
     tr = await run_in_threadpool(stt.transcribe, data, lang)
     if not tr.get("text"):
         return JSONResponse({"status": "no_speech", "transcript": tr}, status_code=422)
-    vid = f"voice-{_voice_seq}"
-    _voice_seq += 1
-    audio_path = AUDIO_DIR / f"{vid}.webm"
-    audio_path.write_bytes(data)
     env = {
         "i": vid, "t": "SOS", "o": origin, "u": 3,
         "c": "unknown", "g": tr["text"], "ln": tr["lang"], "h": 0,
     }
     if lat is not None and lng is not None:
         env["la"], env["lo"] = lat, lng
-    new = await _ingest(parse_envelope(env), audio_url=f"/audio/{vid}.webm")
+    if database.enabled:
+        await database.store_voice(
+            clip_id=vid, report_id=vid, origin=origin, codec=1,
+            content_type=content_type, audio=data, transcript=tr["text"],
+        )
+    _voice_status.update(received=_voice_status["received"] + 1,
+                         last_received_ms=int(time.time() * 1000), last_clip=vid)
+    new = await _ingest(parse_envelope(env), audio_url=audio_url)
     return JSONResponse({"status": "ok", "transcript": tr, "ingested": new})
 
 
@@ -295,28 +337,69 @@ async def mesh_voice(
         return JSONResponse({"status": "rejected"}, status_code=400)
 
     extension = ".3gp" if codec == 2 else ".ogg"
-    audio_name = f"{clip_id}{extension}"
-    audio_path = AUDIO_DIR / audio_name
-    audio_path.write_bytes(data)
-    audio_url = f"/audio/{audio_name}"
+    content_type = "audio/3gpp" if codec == 2 else "audio/ogg"
+    if database.enabled:
+        await database.store_voice(
+            clip_id=clip_id, report_id=ref_id, origin=origin, codec=codec,
+            content_type=content_type, audio=data,
+        )
+        audio_url = f"/audio/{clip_id}"
+    else:
+        audio_name = f"{clip_id}{extension}"
+        audio_path = AUDIO_DIR / audio_name
+        audio_path.write_bytes(data)
+        audio_url = f"/audio/{audio_name}"
 
-    tr = await run_in_threadpool(stt.transcribe, data, lang)
-    transcript = str(tr.get("text", "")).strip()
-    ai = None
-    if transcript:
-        original = store.reports[ref_id]
-        ai = await triage.triage({
-            "gist": transcript,
-            "lang": tr.get("lang") or lang or original.get("lang", "en"),
-            "urgency": original.get("urgency", 3),
-            "category": original.get("category", "other"),
-        })
-    store.attach_voice(ref_id, audio_url, transcript, ai)
+    # Make the recording playable and ACK the Pi before loading/running the STT model.
+    # Otherwise first-model-load latency exceeds the Pi's HTTP timeout and the clip looks
+    # lost even though it reached this process.
+    store.attach_voice(ref_id, audio_url, None, None)
+    _voice_status.update(received=_voice_status["received"] + 1,
+                         last_received_ms=int(time.time() * 1000), last_clip=clip_id)
     await _broadcast_snapshot()
+    asyncio.create_task(_transcribe_mesh_voice(
+        clip_id=clip_id, ref_id=ref_id, origin=origin, codec=codec,
+        content_type=content_type, data=data, lang=lang, audio_url=audio_url,
+    ), name=f"transcribe-{clip_id}")
     return JSONResponse({
         "status": "ok", "clip_id": clip_id, "ref_id": ref_id,
-        "transcribed": bool(transcript),
+        "stored": True, "transcription": "pending",
     })
+
+
+async def _transcribe_mesh_voice(*, clip_id: str, ref_id: str, origin: str,
+                                 codec: int, content_type: str, data: bytes,
+                                 lang: str | None, audio_url: str) -> None:
+    _voice_status["transcribing"] += 1
+    try:
+        tr = await run_in_threadpool(stt.transcribe, data, lang)
+        transcript = str(tr.get("text", "")).strip()
+        ai = None
+        if transcript and ref_id in store.reports:
+            original = store.reports[ref_id]
+            ai = await triage.triage({
+                "gist": transcript,
+                "lang": tr.get("lang") or lang or original.get("lang", "en"),
+                "urgency": original.get("urgency", 3),
+                "category": original.get("category", "other"),
+            })
+        if ref_id in store.reports:
+            store.attach_voice(ref_id, audio_url, transcript, ai)
+        if database.enabled:
+            await database.store_voice(
+                clip_id=clip_id, report_id=ref_id, origin=origin, codec=codec,
+                content_type=content_type, audio=data, transcript=transcript or None,
+            )
+        if not transcript:
+            _voice_status["failed"] += 1
+    except Exception as exc:
+        _voice_status["failed"] += 1
+        print(f"[voice] background transcription failed for {clip_id}: {type(exc).__name__}")
+        if ref_id in store.reports:
+            store.attach_voice(ref_id, audio_url, "", None)
+    finally:
+        _voice_status["transcribing"] = max(0, _voice_status["transcribing"] - 1)
+        await _broadcast_snapshot()
 
 
 @app.get("/audio/{name}")
@@ -324,10 +407,17 @@ async def audio_file(name: str) -> Response:
     """Replay a stored voice SOS. Name is constrained to our generated ids."""
     if not name.replace("-", "").replace(".", "").replace("webm", "").isalnum():
         return JSONResponse({"status": "rejected"}, status_code=400)
+    stored = await database.get_voice(name)
+    if stored is not None:
+        data, content_type = stored
+        return Response(content=data, media_type=content_type,
+                        headers={"Cache-Control": "private, max-age=3600"})
     path = AUDIO_DIR / name
     if not path.exists() or not path.resolve().is_relative_to(AUDIO_DIR.resolve()):
         return JSONResponse({"status": "unknown"}, status_code=404)
-    return FileResponse(path, media_type="audio/webm")
+    media_type = ("audio/3gpp" if path.suffix == ".3gp" else
+                  "audio/ogg" if path.suffix == ".ogg" else "audio/webm")
+    return FileResponse(path, media_type=media_type)
 
 
 # ---- dispatch lifecycle (C5/C6/C9) -----------------------------------------
@@ -383,13 +473,40 @@ async def responder_heartbeat(responder_id: str, request: Request) -> JSONRespon
 async def health() -> dict[str, Any]:
     return {"ok": True, "incidents": len(store.incidents),
             "ai_enabled": triage.is_configured(), "stt_ready": stt.is_ready(),
-            "gateway": gateway.status()}
+            "gateway": gateway.status(), "database": database.status(),
+            "voice": dict(_voice_status)}
 
 
 @app.get("/queue")
 async def queue() -> dict[str, Any]:
     """Current state as JSON (debugging / gateway verification)."""
     return _snapshot()
+
+
+@app.get("/sessions")
+async def sessions() -> dict[str, Any]:
+    """Historical runs. The active dashboard always remains on the current session."""
+    return {"current": database.session_id, "sessions": await database.list_sessions()}
+
+
+@app.get("/sessions/{session_id}")
+async def session_history(session_id: str) -> Any:
+    result = await database.get_session(session_id)
+    if result is None:
+        return JSONResponse({"status": "unknown"}, status_code=404)
+    return result
+
+
+@app.get("/sessions/{session_id}/audio/{clip_id}")
+async def historical_audio(session_id: str, clip_id: str) -> Response:
+    if not clip_id.replace("-", "").isalnum() or len(clip_id) > 48:
+        return JSONResponse({"status": "rejected"}, status_code=400)
+    stored = await database.get_session_voice(session_id, clip_id)
+    if stored is None:
+        return JSONResponse({"status": "unknown"}, status_code=404)
+    data, content_type = stored
+    return Response(content=data, media_type=content_type,
+                    headers={"Cache-Control": "private, max-age=3600"})
 
 
 @app.websocket("/ws")
@@ -436,6 +553,9 @@ async def gateway_ws(ws: WebSocket) -> None:
                         and isinstance(connected, bool)):
                     store.mesh_responder(node_id, connected)
                     await _broadcast_snapshot()
+            elif kind == "status":
+                gateway.update_edge_status(msg)
+                await _broadcast_snapshot()
     except WebSocketDisconnect:
         pass
     except Exception:
@@ -448,6 +568,8 @@ async def gateway_ws(ws: WebSocket) -> None:
 
 @app.on_event("startup")
 async def start_background() -> None:
+    await database.start()
+    await database.persist_snapshot(_snapshot())
     async def watchdog() -> None:
         while True:
             await asyncio.sleep(30)
@@ -457,6 +579,15 @@ async def start_background() -> None:
                 await _broadcast_snapshot()
 
     asyncio.create_task(watchdog())
+
+
+@app.on_event("shutdown")
+async def close_database() -> None:
+    try:
+        await database.persist_snapshot(_snapshot())
+        await database.close()
+    except Exception as exc:
+        print(f"[database] shutdown write failed: {type(exc).__name__}")
 
 
 # ---- basemap / static -------------------------------------------------------

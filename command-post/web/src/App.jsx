@@ -63,7 +63,14 @@ export default function App() {
         <ActivityDrawer activity={cp.activity} />
       </div>
 
-      <StatusBar metrics={cp.metrics} aiEnabled={cp.ai_enabled} sttReady={cp.stt_ready} />
+      <StatusBar
+        metrics={cp.metrics}
+        gateway={cp.gateway}
+        database={cp.database}
+        voice={cp.voice}
+        aiEnabled={cp.ai_enabled}
+        sttReady={cp.stt_ready}
+      />
     </div>
   );
 }

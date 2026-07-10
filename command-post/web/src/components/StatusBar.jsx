@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 // Bottom status bar — instrumentation at a glance (C13 metrics).
-export default function StatusBar({ metrics, aiEnabled, sttReady }) {
+export default function StatusBar({ metrics, gateway, database, voice, aiEnabled, sttReady }) {
   const [, tick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 5000);
@@ -20,6 +20,17 @@ export default function StatusBar({ metrics, aiEnabled, sttReady }) {
       <span>LAST RX {lastRx == null ? "—" : lastRx < 60 ? `${lastRx}s AGO` : `${Math.floor(lastRx / 60)}m AGO`}</span>
       {m.median_triage_ms != null && <span>MEDIAN TRIAGE {m.median_triage_ms}ms</span>}
       <span>{ai}</span>
+      <span>VOICE RX <b className="text-foreground">{voice?.received ?? 0}</b></span>
+      {voice?.transcribing > 0 && <span className="text-[#946200]">TRANSCRIBING {voice.transcribing}</span>}
+      {voice?.failed > 0 && <span className="text-primary">VOICE STT FAILED {voice.failed}</span>}
+      {(gateway?.voice_inflight > 0 || gateway?.voice_queued > 0) && (
+        <span className="text-[#946200]">
+          VOICE {gateway.voice_inflight ?? 0} ASSEMBLING · {gateway.voice_queued ?? 0} QUEUED
+        </span>
+      )}
+      <span title={database?.session_id || ""}>
+        DB {database?.connected ? "ON" : "OFF"} · SESSION {database?.session_id?.slice(0, 8) || "—"}
+      </span>
       <span className={`ml-auto font-semibold ${m.critical_open ? "text-primary" : ""}`}>
         {m.critical_open ?? 0} CRITICAL OPEN
       </span>

@@ -9,6 +9,7 @@ with dispatch. Backend-agnostic AI so we can benchmark and pick the fastest.
 
 ```bash
 cd command-post
+./setup-postgres.sh           # one-time: generated local secret + PostgreSQL container
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # optional: set LLM_BASE_URL to enable AI
@@ -17,6 +18,21 @@ uvicorn app:app --host 0.0.0.0 --port 9000
 
 Open <http://localhost:9000>. Click **Inject test SOS** to see the loop with no
 hardware. Works with **no LLM** (rule-based fallback) until you set a backend.
+
+## Run sessions and voice storage
+
+Every backend process start creates a new UUID session and an empty live dashboard.
+PostgreSQL keeps the previous sessions for audit/history; it does not reload them into
+the new run. Completed mesh voice clips are reassembled durably on the Pi, stored as
+PostgreSQL `BYTEA`, transcribed, and attached to their original SOS report.
+
+- `GET /sessions` lists stored runs.
+- `GET /sessions/{uuid}` returns a run's final/latest snapshot.
+- `GET /sessions/{uuid}/audio/{clip}` streams historical audio.
+
+`setup-postgres.sh` writes the generated password only to `.postgres.env` (mode 600,
+gitignored). To require an external PostgreSQL instead, set `DATABASE_URL` and
+`SANKAT_DATABASE_REQUIRED=true` in the environment.
 
 ## AI backend (any OpenAI-compatible server)
 
@@ -51,4 +67,5 @@ plus the `.env` line for the winner.
 - `POST /inject`      push a realistic test SOS
 - `POST /accept/{id}` dispatch a responder
 - `GET  /health`      status
+- `GET  /sessions`    stored run history
 - `WS   /ws`          live feed to the dashboard

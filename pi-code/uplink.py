@@ -90,6 +90,9 @@ class VoiceAssembler:
     def __init__(self) -> None:
         self._clips: dict[str, dict[str, Any]] = {}
 
+    def count(self) -> int:
+        return len(self._clips)
+
     def accept(self, chunk: envmod.VoiceChunk) -> CompletedVoice | None:
         state = self._clips.get(chunk.clip_id)
         if state is None:
@@ -162,6 +165,9 @@ class VoiceUploadOutbox:
         with contextlib.suppress(OSError):
             meta_path.unlink()
 
+    def count(self) -> int:
+        return len(list(self.root.glob("*.json")))
+
 
 class EdgeUplink:
     def __init__(
@@ -204,6 +210,7 @@ class EdgeUplink:
     def send_voice_chunk(self, chunk: envmod.VoiceChunk) -> None:
         """Reassemble and durably queue a complete clip for the command post."""
         complete = self.voice_assembler.accept(chunk)
+        self._wake.set()  # publish in-flight progress even before the clip completes
         if complete is None:
             return
         # The working mobile protocol sends the text SOS immediately before its voice
@@ -253,6 +260,7 @@ class EdgeUplink:
                     await self._flush(ws)  # replay everything the Mac missed
                     await self._flush_voices()
                     await self._flush_peer_states(ws)
+                    await self._flush_status(ws)
                     reader = asyncio.create_task(self._reader(ws))
                     sender = asyncio.create_task(self._sender(ws, stop))
                     stopper = asyncio.create_task(stop.wait())
@@ -290,10 +298,18 @@ class EdgeUplink:
             await self._flush(ws)
             await self._flush_voices()
             await self._flush_peer_states(ws)
+            await self._flush_status(ws)
 
     async def _flush_peer_states(self, ws) -> None:
         for state in self._peer_states.values():
             await ws.send(json.dumps(state))
+
+    async def _flush_status(self, ws) -> None:
+        await ws.send(json.dumps({
+            "type": "status",
+            "voice_inflight": self.voice_assembler.count(),
+            "voice_queued": self.voice_outbox.count(),
+        }))
 
     async def _flush_voices(self) -> None:
         if not self.voice_url:
@@ -319,7 +335,11 @@ class EdgeUplink:
                 files={"audio": (meta["audio_name"], audio, content_type)},
                 timeout=120,
             )
-            return 200 <= response.status_code < 300
+            if 200 <= response.status_code < 300:
+                return True
+            self.log.warning("voice upload returned HTTP %d; clip remains queued",
+                             response.status_code)
+            return False
         except Exception as exc:
             self.log.warning("voice upload down (%s: %s); clip remains queued",
                              type(exc).__name__, exc)

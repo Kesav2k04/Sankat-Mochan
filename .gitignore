@@ -22,6 +22,8 @@ __pycache__/
 venv/
 .env
 .env.*
+!.env.example
+!**/.env.example
 
 # Node
 node_modules/
@@ -34,6 +36,7 @@ node_modules/
 command-post/fleurs/
 command-post/audio/
 command-post/audio_store/
+command-post/.postgres.env
 audio/
 command-post/backends.json
 *.output

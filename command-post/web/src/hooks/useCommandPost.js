@@ -15,6 +15,8 @@ const EMPTY = {
   ai_enabled: false,
   stt_ready: false,
   gateway: { connected: false, queued: 0, last_ack_ms: null },
+  database: { connected: false, session_id: null },
+  voice: { received: 0, transcribing: 0, failed: 0, last_received_ms: null, last_clip: null },
 };
 
 export function useCommandPost() {
