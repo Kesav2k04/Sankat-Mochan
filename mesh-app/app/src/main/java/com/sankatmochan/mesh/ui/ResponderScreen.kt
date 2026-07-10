@@ -45,12 +45,15 @@ fun ResponderScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
     val sosList by vm.receivedSos.collectAsState()
     // Lives in the store, so it survives rotation and leaving/re-entering the screen.
     val accepted by vm.acceptedIds.collectAsState()
+    val voice by vm.voiceClips.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
             MeshTopBar("Incoming calls", peers, onBack)
 
-            if (sosList.isEmpty()) {
+            // A voice message can arrive before any text SOS does, so the empty state
+            // must account for both.
+            if (sosList.isEmpty() && voice.isEmpty()) {
                 EmptyQueue(peers)
             } else {
                 val waiting = sosList.count { it.id !in accepted }
@@ -71,6 +74,11 @@ fun ResponderScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
                                 meLng = vm.lng
                             )
                         }
+                    }
+                    // Voice above text: a recording that is still arriving is the most
+                    // time-sensitive thing on this screen.
+                    items(voice, key = { it.clipId }) { clip ->
+                        VoiceClipCard(clip)
                     }
                     items(sosList, key = { it.id }) { sos ->
                         SosCard(

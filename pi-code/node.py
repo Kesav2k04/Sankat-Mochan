@@ -85,6 +85,20 @@ class LoRaLink(Link):
             time.sleep(random.uniform(0.005, self._csma["max_backoff_ms"] / 1000.0))
         return False
 
+    def _recover(self) -> bool:
+        """Re-initialise a radio that reset itself. Returns False if it stays broken."""
+        try:
+            self.radio.reinit()
+        except Exception as e:
+            self._log.error("[%s] radio '%s' could not be revived: %s: %s",
+                            self._node, self.name, type(e).__name__, e)
+            self._chain.emit(clog.DROP, self._node, radio=self.name, reason="radio_dead")
+            return False
+        self._log.warning("[%s] radio '%s' had reset itself; re-initialised it",
+                          self._node, self.name)
+        self._chain.emit(clog.START, self._node, radio=self.name, result="reinit")
+        return True
+
     def _send_blocking(self, raw: bytes, msg_id: str) -> bool:
         sha = env.digest(raw)
         ok_any = False
@@ -99,6 +113,11 @@ class LoRaLink(Link):
                     self._log.error("[%s] radio FAILED to transmit %s: %s", self._node, msg_id, e)
                     self._chain.emit(clog.DROP, self._node, radio=self.name, msg_id=msg_id,
                                      sha=sha, reason="tx_failed")
+                    # A radio that has fallen out of LoRa mode will fail every frame from
+                    # here on. Put it back before the next one, or a 45-chunk voice clip
+                    # dies 45 times over.
+                    if not self._recover():
+                        return ok_any
                     continue
             ok_any = True
             self._chain.emit(

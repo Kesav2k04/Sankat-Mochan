@@ -19,6 +19,9 @@
 
     <!-- GPS for the victim's SOS coordinates. Works fully offline (satellites,
          no internet). FINE = precise lat/lng; COARSE as a fallback. -->
+    <!-- Voice SOS: recorded on the victim's phone, encoded to Opus, sent as LoRa chunks. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 

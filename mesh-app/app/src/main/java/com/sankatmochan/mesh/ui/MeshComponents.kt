@@ -4,15 +4,15 @@ import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -167,16 +167,22 @@ fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
     )
 }
 
-/** Row of [OptionChip]s. `options` maps a wire value to the label the user reads. */
+/**
+ * Wrapping row of [OptionChip]s. `options` maps a wire value to the label the user reads.
+ * FlowRow wraps onto a second line rather than scrolling sideways, so no option can hide
+ * off the right edge — every category and urgency stays visible at a glance.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChipRow(
     options: List<Pair<String, String>>,
     selected: String,
     onSelect: (String) -> Unit,
 ) {
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.horizontalScroll(rememberScrollState())
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
         options.forEach { (value, label) ->
             OptionChip(label = label, selected = value == selected) { onSelect(value) }

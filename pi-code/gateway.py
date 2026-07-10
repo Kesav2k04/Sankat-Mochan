@@ -182,8 +182,12 @@ async def run() -> int:
             logger.info("edge link to AI PC: %s (durable outbox, HTTP fallback %s)",
                         ws_url, up["url"])
 
-        async def on_accept(msg: env.Envelope) -> None:
+        async def on_accept(msg) -> None:
             # Durable + idempotent: enqueued to the outbox, sent, deleted only on ACK.
+            # Voice chunks are opaque binary carried phone-to-phone; the dashboard takes
+            # JSON envelopes only, so they are not uplinked (matches the voice-SOS design).
+            if isinstance(msg, env.VoiceChunk):
+                return
             if edge is not None:
                 edge.send_envelope(msg.to_dict())
 

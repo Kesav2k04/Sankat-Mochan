@@ -6,6 +6,7 @@ import android.content.Context
 import android.util.Log
 import com.sankatmochan.mesh.model.MsgType
 import com.sankatmochan.mesh.model.SosMessage
+import com.sankatmochan.mesh.model.VoiceChunk
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +27,7 @@ enum class MeshRole { VICTIM, RESPONDER, RELAY }
 class BleMeshService(context: Context) {
 
     val store = MessageStore()
+    val voiceClips = VoiceClipStore(context)
 
     /** Short per-session node id, e.g. "a3f9". Prefixes every message id. */
     val nodeId: String = "%04x".format(Random.nextInt(0x10000))
@@ -34,6 +36,7 @@ class BleMeshService(context: Context) {
         private set
 
     private var seq = 0
+    private var voiceSeq = 0
     private var running = false
 
     // Messages THIS node originated, kept so we can re-send them to any peer that
@@ -186,6 +189,12 @@ class BleMeshService(context: Context) {
 
     /** Called by BOTH controllers whenever raw bytes arrive from a peer. */
     private fun onBytes(bytes: ByteArray, fromAddress: String) {
+        // A JSON envelope always starts '{'; a voice frame starts 0xA5, which is not a
+        // legal UTF-8 lead byte. The two can never be confused.
+        if (VoiceChunk.looksLikeVoice(bytes)) {
+            onVoiceChunk(bytes, fromAddress)
+            return
+        }
         val msg = SosMessage.decode(bytes)
         if (msg == null) {
             store.log("Dropped malformed packet from $fromAddress")
@@ -193,6 +202,41 @@ class BleMeshService(context: Context) {
         }
         if (!store.markSeen(msg.id)) return // dedup — also the store-and-forward loop guard
         handle(msg, fromAddress)
+    }
+
+    private fun onVoiceChunk(bytes: ByteArray, fromAddress: String) {
+        val chunk = VoiceChunk.decode(bytes)
+        if (chunk == null) {
+            store.log("Dropped malformed voice packet from $fromAddress")
+            return
+        }
+        // Dedup on the chunk id, not the clip id — otherwise the first chunk to arrive
+        // would suppress all twenty-one of its siblings.
+        if (!store.markSeen(chunk.id)) return
+        voiceClips.accept(chunk)
+        if (chunk.index == 0) {
+            store.log("Voice message ${chunk.clipId} incoming (${chunk.total} pieces, hop ${chunk.hops})")
+        }
+        // Relay it onward exactly like an SOS, one hop further along.
+        broadcastBytes(chunk.bumped().encode(), exceptAddress = fromAddress)
+    }
+
+    /**
+     * Send a recorded clip. Every chunk is marked seen locally first, so the copy that
+     * loops back from a relay is dropped rather than re-broadcast.
+     */
+    fun sendVoice(clip: ByteArray, codec: Int) {
+        val chunks = try {
+            VoiceChunk.split(nodeId, voiceSeq++, clip, codec)
+        } catch (e: IllegalArgumentException) {
+            store.log("Voice message too long to send")
+            return
+        }
+        store.log("Sending voice message: ${clip.size} bytes in ${chunks.size} pieces")
+        chunks.forEach { chunk ->
+            store.markSeen(chunk.id)
+            broadcastBytes(chunk.encode(), exceptAddress = null)
+        }
     }
 
     private fun handle(msg: SosMessage, fromAddress: String) {
@@ -233,7 +277,12 @@ class BleMeshService(context: Context) {
     }
 
     private fun broadcast(msg: SosMessage, exceptAddress: String?) {
-        val bytes = msg.encode()
+        broadcastBytes(msg.encode(), exceptAddress)
+    }
+
+    /** Both BLE halves. The peripheral half is what keeps working in LoRa-only mode,
+     *  where the central half is deliberately switched off. */
+    private fun broadcastBytes(bytes: ByteArray, exceptAddress: String?) {
         server.notifyAll(bytes, exceptAddress)
         scanner.writeToAll(bytes, exceptAddress)
     }

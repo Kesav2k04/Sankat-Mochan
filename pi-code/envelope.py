@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import struct
 from dataclasses import dataclass, replace
-from typing import Any, Dict, Optional
+from typing import Any, ClassVar, Dict, Optional, Union
 
 MAX_BYTES = 244          # ATT payload budget at a 247-byte MTU (247 - 3 ATT header)
 DECODE_TOLERANCE = 8     # mirrors the Kotlin side's small slack on inbound size
@@ -23,6 +24,33 @@ MAX_TEXT = 200
 MAX_HOPS = 15
 
 TYPES = ("SOS", "DELIVERED", "ACCEPTED")
+
+# --- voice chunks -----------------------------------------------------------
+#
+# Audio cannot ride the JSON envelope: base64 would cost 33% of a channel that only
+# carries ~5 kbps. So a voice chunk is a binary frame, told apart from a JSON envelope
+# by its first byte — a JSON envelope always starts with '{' (0x7B), and 0xA5 is not a
+# legal UTF-8 lead byte, so the two can never be confused.
+#
+#   0      magic    0xA5
+#   1      version  1
+#   2      type     1 = voice
+#   3..6   origin   4 ASCII chars (the phone's node id)
+#   7..8   seq      uint16, which clip from this phone
+#   9..10  index    uint16, which chunk of that clip
+#   11..12 total    uint16, how many chunks the clip has
+#   13     hops     uint8
+#   14     codec    uint8
+#   15     length   uint8, payload bytes that follow
+#   16..            payload
+VOICE_MAGIC = 0xA5
+VOICE_VERSION = 1
+VOICE_TYPE = 1
+VOICE_HEADER = 16
+VOICE_STRUCT = ">BBB4sHHHBBB"
+MAX_VOICE_CHUNK = 200    # keeps a frame at 216 B — inside LoRa's 255 and the BLE MTU
+MAX_VOICE_CHUNKS = 512   # a clip longer than this is not a rescue message
+CODECS = {1: "ogg/opus", 2: "3gpp/amr-nb"}
 
 
 @dataclass(frozen=True)
@@ -87,6 +115,73 @@ class Envelope:
         return raw
 
 
+@dataclass(frozen=True)
+class VoiceChunk:
+    """One slice of a recorded voice message, in flight across the mesh.
+
+    Deliberately shaped like [Envelope] — it exposes `id`, `type`, `origin`, `hops`,
+    `bumped()` and `encode()` — so the mesh node forwards, deduplicates and logs it
+    without knowing what it is. Only the phones ever reassemble a clip.
+    """
+    origin: str
+    seq: int
+    index: int
+    total: int
+    payload: bytes
+    hops: int = 0
+    codec: int = 1
+
+    type: ClassVar[str] = "VOICE"
+
+    @property
+    def id(self) -> str:
+        """Unique per chunk, so mesh dedup drops a repeat without dropping the clip."""
+        return f"{self.origin}-v{self.seq}-{self.index}"
+
+    @property
+    def clip_id(self) -> str:
+        return f"{self.origin}-v{self.seq}"
+
+    def bumped(self) -> "VoiceChunk":
+        return replace(self, hops=min(self.hops + 1, MAX_HOPS))
+
+    def encode(self) -> bytes:
+        if len(self.payload) > MAX_VOICE_CHUNK:
+            raise ValueError(f"voice chunk payload {len(self.payload)} > {MAX_VOICE_CHUNK}")
+        origin = self.origin.encode("ascii")[:4].ljust(4, b"\0")
+        head = struct.pack(VOICE_STRUCT, VOICE_MAGIC, VOICE_VERSION, VOICE_TYPE,
+                           origin, self.seq, self.index, self.total,
+                           min(self.hops, MAX_HOPS), self.codec, len(self.payload))
+        return head + self.payload
+
+
+def _decode_voice(raw: bytes) -> Optional[VoiceChunk]:
+    """Parse + validate a binary voice chunk. Untrusted input (CLAUDE.md #8): every
+    field is range-checked and the declared length must match the frame exactly."""
+    if len(raw) < VOICE_HEADER or len(raw) > VOICE_HEADER + MAX_VOICE_CHUNK:
+        return None
+    magic, version, vtype, origin_b, seq, index, total, hops, codec, length = \
+        struct.unpack(VOICE_STRUCT, raw[:VOICE_HEADER])
+    if magic != VOICE_MAGIC or version != VOICE_VERSION or vtype != VOICE_TYPE:
+        return None
+    if codec not in CODECS:
+        return None
+    if not 1 <= total <= MAX_VOICE_CHUNKS or index >= total:
+        return None
+    if length > MAX_VOICE_CHUNK or len(raw) != VOICE_HEADER + length:
+        return None
+    try:
+        origin = origin_b.rstrip(b"\0").decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    if not origin or not origin.isalnum():
+        return None
+    return VoiceChunk(
+        origin=origin, seq=seq, index=index, total=total,
+        payload=raw[VOICE_HEADER:], hops=min(hops, MAX_HOPS), codec=codec,
+    )
+
+
 def _clamp_str(value: Any, limit: int) -> str:
     return value[:limit] if isinstance(value, str) else ""
 
@@ -111,9 +206,15 @@ def _clamp_int(o: Dict[str, Any], key: str, default: int, lo: int, hi: int) -> i
     return max(lo, min(hi, v))
 
 
-def decode(raw: bytes) -> Optional[Envelope]:
+def decode(raw: bytes) -> Optional[Union[Envelope, VoiceChunk]]:
     """Parse + validate. Returns None for anything we should drop on the floor."""
-    if not raw or len(raw) > MAX_BYTES + DECODE_TOLERANCE:
+    if not raw:
+        return None
+    # A JSON envelope always begins '{'. 0xA5 is not a legal UTF-8 lead byte, so the
+    # binary voice frame can never be mistaken for one, in either direction.
+    if raw[0] == VOICE_MAGIC:
+        return _decode_voice(raw)
+    if len(raw) > MAX_BYTES + DECODE_TOLERANCE:
         return None
     try:
         text = raw.decode("utf-8")
@@ -182,8 +283,12 @@ def preview(text: str, limit: int = 60) -> str:
     return clean
 
 
-def describe(msg: Envelope) -> str:
+def describe(msg: Union[Envelope, "VoiceChunk"]) -> str:
     """`SOS c363-0 from phone c363, urgency 4/5 (high), near Block C stairwell`."""
+    if isinstance(msg, VoiceChunk):
+        return (f"VOICE {msg.clip_id}, from phone {msg.origin}, "
+                f"piece {msg.index + 1} of {msg.total} ({len(msg.payload)} bytes of "
+                f"{CODECS.get(msg.codec, 'audio')})")
     bits = [f"{msg.type} {msg.id}", f"from phone {msg.origin}"]
     if msg.type == "SOS":
         bits.append(f"urgency {msg.urgency}/5 ({URGENCY_WORDS.get(msg.urgency, '?')})")
@@ -196,8 +301,10 @@ def describe(msg: Envelope) -> str:
     return ", ".join(bits)
 
 
-def message_text(msg: Envelope) -> str:
+def message_text(msg: Union[Envelope, "VoiceChunk"]) -> str:
     """The words the victim actually typed, ready to sit on its own log line."""
+    if isinstance(msg, VoiceChunk):
+        return ""          # audio has no text to echo
     body = preview(msg.gist, MAX_TEXT)
     if not body:
         return ""
