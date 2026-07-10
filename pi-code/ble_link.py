@@ -288,15 +288,19 @@ class BleManager:
                                ", ".join(p.describe() for p in group))
         return roster
 
-    def maintain(self, link: BleLink, on_bytes: Callable[[bytes], "asyncio.Future"]) -> asyncio.Task:
-        task = asyncio.create_task(self._keep_connected(link, on_bytes), name=f"ble-{link.address}")
+    def maintain(self, link: BleLink, on_bytes: Callable[[bytes], "asyncio.Future"],
+                 on_state: Callable[[bool], None] | None = None) -> asyncio.Task:
+        task = asyncio.create_task(
+            self._keep_connected(link, on_bytes, on_state), name=f"ble-{link.address}"
+        )
         self._tasks.append(task)
         return task
 
-    async def _keep_connected(self, link: BleLink, on_bytes) -> None:
+    async def _keep_connected(self, link: BleLink, on_bytes, on_state=None) -> None:
         backoff = list(self._cfg["reconnect_backoff_s"]) or [5]
         attempt = 0
         while True:
+            announced = False
             try:
                 async with BleakClient(link.address, timeout=20.0) as client:
                     attempt = 0
@@ -317,6 +321,9 @@ class BleManager:
                     await asyncio.wait_for(client.start_notify(link._char, handler),
                                            timeout=GATT_OP_TIMEOUT_S)
                     link.mark_subscribed()
+                    if on_state is not None:
+                        on_state(True)
+                        announced = True
                     self._log.info("[%s] now listening for messages from this phone", link._node)
 
                     while client.is_connected:
@@ -332,6 +339,8 @@ class BleManager:
                 self._log.warning("[%s] Bluetooth trouble with %s: %s: %s",
                                   link._node, link.address, type(e).__name__, e)
             finally:
+                if announced and on_state is not None:
+                    on_state(False)
                 if link.connected:
                     link.detach()
 

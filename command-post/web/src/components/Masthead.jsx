@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 
 // Top masthead — brand + camp identity, live clock, link-state chips.
-export default function Masthead({ connected, aiEnabled }) {
+export default function Masthead({ connected, gatewayConnected, aiEnabled }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -38,7 +38,7 @@ export default function Masthead({ connected, aiEnabled }) {
           }`}
         >
           <Radio className={connected ? "blink" : ""} />
-          {connected ? "MESH LIVE · LoRa + BT" : "RECONNECTING"}
+          {connected ? "COMMAND POST LIVE" : "RECONNECTING"}
         </Badge>
         <Badge
           variant="outline"
@@ -52,8 +52,15 @@ export default function Masthead({ connected, aiEnabled }) {
         <Badge variant="outline" className="font-mono text-[10px] tracking-wide text-muted-foreground">
           OFFLINE TILES
         </Badge>
-        <Badge className="gap-1.5 font-mono text-[10px] tracking-wide bg-primary/10 text-primary border border-primary/25">
-          <TriangleAlert /> NO UPLINK
+        <Badge
+          className={`gap-1.5 font-mono text-[10px] tracking-wide border ${
+            gatewayConnected
+              ? "bg-[#2e7d32]/10 text-[#2e7d32] border-[#2e7d32]/25"
+              : "bg-primary/10 text-primary border-primary/25"
+          }`}
+        >
+          {gatewayConnected ? <Radio className="blink" /> : <TriangleAlert />}
+          {gatewayConnected ? "FIELD UPLINK · LoRa + BT" : "NO FIELD UPLINK"}
         </Badge>
       </div>
     </header>

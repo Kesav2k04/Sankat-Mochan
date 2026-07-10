@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 // Live connection to the command-post backend (snapshot protocol).
 //   WS /ws -> {kind:"snapshot", incidents, responders, capacity, activity,
-//              metrics, ai_enabled, stt_ready}
+//              metrics, ai_enabled, stt_ready, gateway}
 // Actions: POST /inject, /propose/{id}, /accept/{id}, /resolve/{id}.
 // The backend is the single source of truth (C6): every action just triggers
 // a fresh snapshot broadcast — no client-side state mutation.
@@ -14,6 +14,7 @@ const EMPTY = {
   metrics: {},
   ai_enabled: false,
   stt_ready: false,
+  gateway: { connected: false, queued: 0, last_ack_ms: null },
 };
 
 export function useCommandPost() {
@@ -46,9 +47,15 @@ export function useCommandPost() {
       };
     }
 
-    connect();
+    // Defer the first connect by a tick so React StrictMode's dev-only
+    // mount→unmount→remount doesn't open a socket and abort it mid-connect
+    // ("WebSocket is closed before the connection is established" console noise).
+    // The unmount clears this timer, so exactly ONE socket is ever created.
+    // Production (StrictMode stripped) is unaffected.
+    const startTimer = setTimeout(connect, 0);
     return () => {
       closedByUs = true;
+      clearTimeout(startTimer);
       clearTimeout(retry);
       wsRef.current?.close();
     };

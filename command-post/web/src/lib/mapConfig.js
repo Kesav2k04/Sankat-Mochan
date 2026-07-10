@@ -12,17 +12,42 @@
 // relay for custom protocols silently stalled; plain HTTP is bulletproof).
 import { layers, namedFlavor } from "@protomaps/basemaps";
 
-// Demo area — matches the sample SOS coordinates in the backend (models.py:
-// Wayanad, Kerala ~11.685, 76.130). Re-extract wayanad.pmtiles if you move it.
-export const MAP_CENTER = [76.131, 11.686]; // [lng, lat] (MapLibre order)
-export const MAP_ZOOM = 13;
+// ── Where the map looks ───────────────────────────────────────────────────
+// Bangalore (dev/testing). Real SOS from phones in the city will pin correctly;
+// city-wide zoom covers whichever neighbourhood you're in.
+export const MAP_CENTER = [77.5946, 12.9716]; // [lng, lat] (MapLibre order)
+export const MAP_ZOOM = 12;
 export const MAP_MIN_ZOOM = 8;
-export const MAP_MAX_ZOOM = 16.9; // extract carries data to z15; overzoom is fine
+export const MAP_MAX_ZOOM = 18;
 
-// Protomaps "light" flavor, nudged toward our warm paper palette.
+// ── DEV basemaps: CARTO styled vector maps (no API key; need internet) ──
+// Swap the exported style below to change the look.
+const CARTO = {
+  voyager: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",       // clean + colorful (default)
+  positron: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",     // light + minimal
+  darkMatter: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",// dark "ops" look
+};
+
+// Satellite imagery (Esri World Imagery, no key) — dramatic real terrain/buildings.
+const SATELLITE_STYLE = {
+  version: 8,
+  sources: {
+    sat: {
+      type: "raster",
+      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution: "Imagery © Esri",
+    },
+  },
+  layers: [{ id: "sat", type: "raster", source: "sat" }],
+};
+
+// ── VENUE basemap: fully offline vector from static/*.pmtiles (no network) ──
+// To go offline for the demo: regenerate a .pmtiles for your area (pmtiles
+// extract), point /vtiles at it, and set `TILE_STYLE = OFFLINE_STYLE` below.
 const flavor = { ...namedFlavor("light"), background: "#eee7d9" };
-
-export const TILE_STYLE = {
+const OFFLINE_STYLE = {
   version: 8,
   glyphs: `${location.origin}/basemaps-assets/fonts/{fontstack}/{range}.pbf`,
   sprite: `${location.origin}/basemaps-assets/sprites/v4/light`,
@@ -32,9 +57,13 @@ export const TILE_STYLE = {
       tiles: [`${location.origin}/vtiles/{z}/{x}/{y}.pbf`],
       minzoom: 0,
       maxzoom: 15,
-      bounds: [76.05, 11.6, 76.22, 11.77],
       attribution: "© OpenStreetMap contributors",
     },
   },
   layers: layers("protomaps", flavor, { lang: "en" }),
 };
+
+// DEV → CARTO Voyager (Bangalore). Alternatives: CARTO.positron, CARTO.darkMatter,
+// SATELLITE_STYLE — or OFFLINE_STYLE for the no-internet venue demo.
+export const TILE_STYLE = CARTO.voyager;
+export { OFFLINE_STYLE, SATELLITE_STYLE };

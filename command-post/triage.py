@@ -51,11 +51,14 @@ SYSTEM_PROMPT = (
 
 def _fallback(envelope: dict[str, Any]) -> dict[str, Any]:
     """No-LLM path: trust the victim's own fields."""
+    gist = str(envelope.get("gist", "")).strip()
+    category = str(envelope.get("category", "other") or "other")
     return {
         "urgency": int(envelope.get("urgency", 3)),
-        "category": envelope.get("category", "other") or "other",
-        "english": envelope.get("gist", ""),
-        "rationale": "self-reported (no AI backend)",
+        "category": category,
+        "english": gist or f"{category.replace('_', ' ').title()} SOS — no text details received",
+        "rationale": ("self-reported (no AI backend)" if gist
+                      else "structured SOS; no victim text received"),
         "ai": False,
         "latency_ms": 0,
     }
@@ -74,10 +77,12 @@ async def triage(
     base_url/model override the env defaults (used by bench.py to compare backends)."""
     url = (base_url or BASE_URL).rstrip("/")
     mdl = model or MODEL
-    if not url:
+    gist = str(envelope.get("gist", "")).strip()
+    # A model cannot translate absent data. Never let a language hint or category tempt
+    # it to invent victim words; keep the structured SOS and label it honestly.
+    if not url or not gist:
         return _fallback(envelope)
 
-    gist = envelope.get("gist", "")
     lang = envelope.get("lang", "en")
     user_msg = (
         f"lang hint: {lang}\n"

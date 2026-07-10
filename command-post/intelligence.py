@@ -13,6 +13,7 @@ dashboard's AI-activity drawer and the judges' explainability story.
 from __future__ import annotations
 
 import math
+import os
 import time
 import uuid
 from typing import Any
@@ -25,7 +26,16 @@ AGING_HALF_LIFE_S = 15 * 60    # C3: how fast the in-tier aging boost grows
 STUCK_TIMEOUT_S = 10 * 60      # C4: assigned-but-silent → auto re-open
 OFFLINE_AFTER_S = 15 * 60      # C4: responder heartbeat timeout
 RESPONDER_SPEED_KMH = 12.0     # C5: rough field speed for the approx ETA
-OPERATING_BBOX = (75.9, 11.4, 76.4, 11.95)  # C1: lon/lat sanity box (Wayanad)
+# Wire parsing already rejects invalid latitude/longitude ranges. Do not silently erase
+# a valid phone fix merely because the laptop moved from Wayanad to Bengaluru. Deployments
+# that need a tighter incident area can opt in with "west,south,east,north".
+_bbox_raw = os.getenv("SANKAT_OPERATING_BBOX", "").strip()
+try:
+    OPERATING_BBOX = tuple(float(v) for v in _bbox_raw.split(",")) if _bbox_raw else None
+    if OPERATING_BBOX is not None and len(OPERATING_BBOX) != 4:
+        OPERATING_BBOX = None
+except ValueError:
+    OPERATING_BBOX = None
 
 ACTIVE_STATES = {"new", "triaged", "awaiting responder", "proposed", "assigned", "en route", "on-scene"}
 
@@ -52,7 +62,10 @@ class Store:
         self.activity: list[dict[str, Any]] = []          # C13 append-only audit log
         self.metrics = {"pkt_rx": 0, "last_rx": None, "resolved": 0,
                         "response_times_s": [], "triage_latencies_ms": []}
-        self._seed_responders()
+        # Demo roster OFF by default → the dashboard shows ONLY real data.
+        # Set SANKAT_SEED_RESPONDERS=1 to pre-load the NDRF/FIRE/MEDIC/K9 roster.
+        if os.getenv("SANKAT_SEED_RESPONDERS", "0") == "1":
+            self._seed_responders()
 
     # ---- C13 audit log ------------------------------------------------
     def log(self, text: str) -> None:
@@ -88,6 +101,34 @@ class Store:
             r["status"] = status
         return True
 
+    def mesh_responder(self, rid: str, connected: bool) -> None:
+        """Reflect an actual responder BLE link reported by the Pi."""
+        responder = self.responders.get(rid)
+        if responder is None:
+            responder = {
+                "id": rid,
+                "callsign": f"FIELD {rid.upper()}",
+                "capability": "mesh responder",
+                "lat": None,
+                "lng": None,
+                "status": "offline",
+                "assigned_incident": None,
+                "last_seen": _now(),
+            }
+            self.responders[rid] = responder
+        previous = responder["status"]
+        responder["status"] = "available" if connected else "offline"
+        responder["last_seen"] = _now()
+        if responder["status"] != previous:
+            self.log(f"responder {rid} {'connected to' if connected else 'left'} the Pi gateway")
+
+    def mesh_responders_offline(self) -> None:
+        """A dead Pi uplink means its BLE responders are no longer dispatchable."""
+        for responder in self.responders.values():
+            if responder.get("capability") == "mesh responder" and responder["status"] != "offline":
+                responder["status"] = "offline"
+                responder["last_seen"] = _now()
+
     def _refresh_responder_staleness(self) -> None:
         for r in self.responders.values():
             if _now() - r["last_seen"] > OFFLINE_AFTER_S and r["status"] != "offline":
@@ -118,6 +159,8 @@ class Store:
             "confidence": ai.get("confidence"), "ai": bool(ai.get("ai")),
             "latency_ms": ai.get("latency_ms", 0),
             "audio": env.get("audio"),  # set by /voice_sos when audio saved
+            "voice_transcript": None,
+            "voice_english": None,
             "rationale": ai.get("rationale", ""),
         }
         self._sanitize_coords(report)
@@ -145,6 +188,8 @@ class Store:
         keep them on the record but don't let them anchor a cluster."""
         lat, lng = report.get("lat"), report.get("lng")
         if lat is None or lng is None:
+            return
+        if OPERATING_BBOX is None:
             return
         w, s, e, n = OPERATING_BBOX
         if not (s <= lat <= n and w <= lng <= e):
@@ -180,6 +225,43 @@ class Store:
             if report_id in inc["report_ids"]:
                 return inc
         return None
+
+    def attach_voice(self, report_id: str, audio_url: str, transcript: str,
+                     ai: dict[str, Any] | None = None) -> bool:
+        """Attach a reassembled mesh recording to its original SOS.
+
+        The text is used only when STT produced non-blank output. A failed/empty
+        transcription still leaves playable audio on the report and never replaces a
+        truthful structured headline with invented content.
+        """
+        report = self.reports.get(report_id)
+        if report is None:
+            return False
+        report["audio"] = audio_url
+        clean = transcript.strip()
+        if clean:
+            report["voice_transcript"] = clean
+            report["voice_english"] = (ai or {}).get("english") or clean
+            # Preserve typed mobile text byte-for-byte. A voice transcript becomes the
+            # primary text only when the phone sent no typed details.
+            if not report["gist"]:
+                report["gist"] = clean
+                report["english"] = report["voice_english"]
+            report["urgency"] = max(
+                report["urgency"], int((ai or {}).get("urgency", report["urgency"]))
+            )
+            report["rationale"] = (ai or {}).get("rationale", report["rationale"])
+            report["ai"] = bool((ai or {}).get("ai"))
+            report["latency_ms"] = (ai or {}).get("latency_ms", 0)
+        incident = self._incident_of(report_id)
+        if incident is not None:
+            self._recompute_incident(incident)
+            self._rank_all()
+        self.log(
+            f"voice attached to {report_id}" +
+            (" and transcribed" if clean else " (transcription unavailable)")
+        )
+        return True
 
     def _cluster(self, report: dict[str, Any]) -> dict[str, Any]:
         """C1 incremental clustering: attach to the nearest active incident
@@ -251,7 +333,9 @@ class Store:
         cats = [m["category"] for m in humans] or [m["category"] for m in members]
         inc["category"] = max(set(cats), key=cats.count)
         worst = max(members, key=lambda m: (m["urgency"], m["received_at"]))
-        inc["headline"] = worst["english"]
+        # The phone's exact words are the source of truth. AI translation remains on
+        # the report as secondary text and must never replace what the mobile sent.
+        inc["headline"] = worst["gist"] or worst["english"]
         if inc["status"] == "new" and any(m["ai"] for m in members):
             inc["status"] = "triaged"
 

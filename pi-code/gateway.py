@@ -176,19 +176,28 @@ async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
     return None
 
 
-def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog) -> None:
+def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog,
+                 edge: EdgeUplink | None = None) -> None:
     """Attach one discovered phone to the correct side of the physical radio hop."""
     name = "gateway" if phone.role == "responder" else "field"
     bl = ble_link.BleLink(phone.address, cfg["ble"]["char_uuid"], logger, chain, name)
     nodes[name].add_link(bl)
     node = nodes[name]
-    manager.maintain(bl, lambda raw, node=node, bl=bl: node.on_ble_bytes(bl, raw))
+    on_state = None
+    if phone.role == "responder" and edge is not None:
+        on_state = lambda connected: edge.set_peer_state(
+            phone.node_id, phone.role, connected
+        )
+    manager.maintain(
+        bl, lambda raw, node=node, bl=bl: node.on_ble_bytes(bl, raw), on_state=on_state
+    )
     logger.info("attached phone %s to radio '%s'", phone.describe(), name)
 
 
 async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
                              stop: asyncio.Event,
-                             attached_node_ids: set[str]) -> None:
+                             attached_node_ids: set[str],
+                             edge: EdgeUplink | None = None) -> None:
     """Keep accepting phones after startup, notably responders arriving later.
 
     Node ids are stable while Android BLE addresses rotate, so they are the identity
@@ -217,7 +226,7 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
             for phone in roster[name]:
                 if phone.node_id in attached_node_ids:
                     continue
-                attach_phone(phone, manager, nodes, cfg, logger, chain)
+                attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
                 attached_node_ids.add(phone.node_id)
                 if phone.role == "responder":
                     logger.info("responder %s joined — acceptance updates can now travel "
@@ -293,7 +302,11 @@ async def run() -> int:
             # Durable + idempotent: enqueued to the outbox, sent, deleted only on ACK.
             # Voice chunks are opaque binary carried phone-to-phone; the dashboard takes
             # JSON envelopes only, so they are not uplinked (matches the voice-SOS design).
-            if isinstance(msg, (env.VoiceChunk, env.VoiceNack)):
+            if isinstance(msg, env.VoiceChunk):
+                if edge is not None:
+                    edge.send_voice_chunk(msg)
+                return
+            if isinstance(msg, env.VoiceNack):
                 return
             if edge is not None:
                 edge.send_envelope(msg.to_dict())
@@ -330,11 +343,11 @@ async def run() -> int:
             attached_node_ids: set[str] = set()
             for name in NODE_NAMES:
                 for phone in peers[name]:
-                    attach_phone(phone, manager, nodes, cfg, logger, chain)
+                    attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
                     attached_node_ids.add(phone.node_id)
             peer_discovery_task = asyncio.create_task(
                 discover_new_peers(manager, nodes, cfg, logger, chain, stop,
-                                   attached_node_ids),
+                                   attached_node_ids, edge),
                 name="ble-peer-discovery",
             )
             logger.info("READY. SOS messages are accepted immediately; no responder phone "
