@@ -38,10 +38,16 @@ CREATE TABLE IF NOT EXISTS command_post_voice_messages (
     content_type TEXT NOT NULL,
     audio BYTEA NOT NULL,
     transcript TEXT,
+    web_audio BYTEA,
+    web_content_type TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (session_id, clip_id)
 );
 CREATE INDEX IF NOT EXISTS idx_voice_session ON command_post_voice_messages(session_id);
+-- Browser-playable transcode of the raw AMR clip, kept alongside the original (never a
+-- second row — protects the audit trail). Added idempotently so existing DBs migrate.
+ALTER TABLE command_post_voice_messages ADD COLUMN IF NOT EXISTS web_audio BYTEA;
+ALTER TABLE command_post_voice_messages ADD COLUMN IF NOT EXISTS web_content_type TEXT;
 """
 
 
@@ -118,20 +124,27 @@ class SessionDatabase:
 
     async def store_voice(self, *, clip_id: str, report_id: str | None, origin: str,
                           codec: int, content_type: str, audio: bytes,
-                          transcript: str | None = None) -> None:
+                          transcript: str | None = None,
+                          web_audio: bytes | None = None,
+                          web_content_type: str | None = None) -> None:
         if self.pool is None:
             raise RuntimeError("PostgreSQL is unavailable")
+        # COALESCE on the web copy so a later transcript-only update never wipes an
+        # already-stored browser-playable transcode (and vice-versa).
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """INSERT INTO command_post_voice_messages
-                   (session_id,clip_id,report_id,origin,codec,content_type,audio,transcript)
-                   VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+                   (session_id,clip_id,report_id,origin,codec,content_type,audio,
+                    transcript,web_audio,web_content_type)
+                   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                    ON CONFLICT(session_id,clip_id) DO UPDATE SET
                      report_id=excluded.report_id, content_type=excluded.content_type,
                      audio=excluded.audio,
-                     transcript=COALESCE(excluded.transcript,command_post_voice_messages.transcript)""",
+                     transcript=COALESCE(excluded.transcript,command_post_voice_messages.transcript),
+                     web_audio=COALESCE(excluded.web_audio,command_post_voice_messages.web_audio),
+                     web_content_type=COALESCE(excluded.web_content_type,command_post_voice_messages.web_content_type)""",
                 uuid.UUID(self.session_id), clip_id, report_id, origin, codec,
-                content_type, audio, transcript,
+                content_type, audio, transcript, web_audio, web_content_type,
             )
 
     async def get_voice(self, clip_id: str) -> tuple[bytes, str] | None:
@@ -151,6 +164,20 @@ class SessionDatabase:
                 sid, clip_id,
             )
         return (bytes(row["audio"]), row["content_type"]) if row else None
+
+    async def get_web_audio(self, clip_id: str) -> tuple[bytes, str] | None:
+        """Browser-playable transcode for a clip, or None if not (yet) transcoded."""
+        if self.pool is None:
+            return None
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """SELECT web_audio,web_content_type FROM command_post_voice_messages
+                   WHERE session_id=$1 AND clip_id=$2""",
+                uuid.UUID(self.session_id), clip_id,
+            )
+        if row is None or row["web_audio"] is None:
+            return None
+        return bytes(row["web_audio"]), (row["web_content_type"] or "audio/wav")
 
     async def list_sessions(self) -> list[dict[str, Any]]:
         if self.pool is None:
