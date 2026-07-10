@@ -49,15 +49,60 @@ Link state + outbox depth surfaced on the dashboard and the Pi chainlog:
 **Pi (`pi-code/`) — module written, wiring pending:**
 - [x] `uplink.py` — `DurableOutbox` (SQLite, ack-to-delete) + `EdgeUplink` WS client
       (auto-reconnect/backoff, priority flush, HTTP-POST /sos fallback, downlink handler).
-- [ ] Wire into `gateway.py`: replace `_make_uplink` → `EdgeUplink.send_envelope` on the
-      gateway node's `on_accept`; provide `on_dispatch(env)` that injects the ACCEPTED
-      envelope into the mesh node (→ LoRa/BLE → victim phone). Needs node.py send API.
-- [ ] `pip install websockets` on the Pi; config `SANKAT_UPLINK__WS=ws://<mac>:9000/gateway`
-      (+ http fallback `:9000/sos`).
+- [x] Wired into `gateway.py`: `EdgeUplink.send_envelope` on the gateway node's `on_accept`
+      (VoiceChunk skipped); `on_dispatch(env)` injects the ACCEPTED envelope via
+      `node.originate` → LoRa/BLE → victim phone. ws url derived from the http url.
+      Merged with the teammate's voice-SOS work + pushed (merge 366716f). Compiles clean;
+      needs a smoke-test on the actual Pi.
+- [ ] `pip install websockets` on the Pi; set `SANKAT_UPLINK__ENABLED=true` +
+      `SANKAT_UPLINK__URL=http://<mac-ip>:9000/sos` (ws `.../gateway` derived automatically).
 
 **Ops:**
-- [ ] Direct-Ethernet static-IP (primary) OR Pi hostapd hotspot (fallback), documented.
 - [ ] End-to-end: phone SOS → LoRa → Pi → WS → Mac dashboard; Accept → dispatch → victim phone.
+
+## Network setup — NO INTERNET, two independent local links
+The Pi↔Mac link never touches the internet or the camp's WiFi. It's a private link
+between just these two boxes. Keep BOTH ready; if one fails, switch to the other
+(change one env var + restart the gateway — the durable outbox loses nothing).
+The Mac is the SERVER; the Pi connects to it. The Mac command post must bind
+`--host 0.0.0.0 --port 9000`, and **macOS may prompt/Firewall-block the first inbound
+connection → allow it** (System Settings → Network → Firewall → allow Python/uvicorn).
+
+### Link 1 (PRIMARY) — direct Ethernet, static IPs (most reliable, zero RF)
+USB-Ethernet adapter on the Mac, cable to the Pi.
+- **Mac:** System Settings → Network → [USB LAN] → Configure IPv4 **Manually**:
+  IP `10.55.0.2`, mask `255.255.255.0`, **no router**.
+- **Pi:**
+  ```
+  sudo nmcli con add type ethernet ifname eth0 con-name edge ipv4.method manual \
+       ipv4.addresses 10.55.0.1/24 && sudo nmcli con up edge
+  export SANKAT_UPLINK__ENABLED=true SANKAT_UPLINK__URL=http://10.55.0.2:9000/sos
+  ```
+- **Verify (on Pi):** `curl http://10.55.0.2:9000/health` → JSON with `gateway:{...}`.
+
+### Link 2 (FALLBACK) — Pi hosts its own WiFi hotspot (no router, no internet)
+- **Pi:**
+  ```
+  sudo nmcli device wifi hotspot ifname wlan0 ssid sankat password rescue1234
+  ```
+  Pi becomes the AP at `10.42.0.1` and hands the Mac a `10.42.0.x` address.
+- **Mac:** join WiFi `sankat`; find the Mac's address: `ipconfig getifaddr en0`
+  (e.g. `10.42.0.240`).
+- **Pi:** `export SANKAT_UPLINK__URL=http://<that-mac-ip>:9000/sos` and restart the gateway.
+- **Verify (on Pi):** `curl http://<mac-ip>:9000/health`.
+
+### Switching links
+Change `SANKAT_UPLINK__URL` to the Mac's address on the active link and restart
+`gateway.py`. In-flight SOS are held in the SQLite outbox and flush on reconnect, so
+the switch is lossless.
+
+### Resilience layers already in place (no code needed)
+1. durable SQLite outbox (delete-only-on-ACK) — a dead link loses nothing.
+2. auto-reconnect with backoff.
+3. HTTP `POST /sos` fallback if the WebSocket drops while the local link is up.
+4. two independent local links (Ethernet ⇄ hotspot) for "the camp has no infrastructure".
+(BLE Pi↔Mac deliberately NOT built — a co-located cable/hotspot is strictly better; BLE
+is a heavy last resort for a failure the above already covers.)
 
 ## Wire protocol (frozen — both ends implement this)
 - up:   `{"type":"envelope","id":<mid>,"env":{…CONTRACT 1 short keys…}}` → reply `{"type":"ack","id":<mid>}`
