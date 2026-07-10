@@ -27,10 +27,11 @@ import httpx
 #   vLLM      : http://localhost:8000/v1
 #   llama.cpp : http://localhost:8080/v1
 BASE_URL = os.getenv("LLM_BASE_URL", "").rstrip("/")
-# Default to Llama 3.2 (Ollama tag `llama3.2`, the 3B instruct build). The faithful
-# `translate` step below — NOT the model — is the real safeguard against invented
-# content on voice clips. Override with LLM_MODEL / LLM_BASE_URL for LM Studio/vLLM/etc.
-MODEL = os.getenv("LLM_MODEL", "llama3.2")
+# Default to Llama 3.2 3B — the exact Ollama tag `llama3.2:3b` (a bare `llama3.2`
+# resolves to `:latest`, which may not be pulled). The faithful `translate` step below —
+# NOT the model — is the real safeguard against invented content on voice clips.
+# Override with LLM_MODEL / LLM_BASE_URL for LM Studio/vLLM/etc.
+MODEL = os.getenv("LLM_MODEL", "llama3.2:3b")
 API_KEY = os.getenv("LLM_API_KEY", "not-needed")
 TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "20"))
 
