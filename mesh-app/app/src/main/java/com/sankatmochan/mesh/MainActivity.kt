@@ -1,11 +1,21 @@
 package com.sankatmochan.mesh
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -84,7 +94,35 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_LONG
                 ).show()
             }
+            // Right after the permission answer, make sure the radios themselves are on.
+            enforceRadios()
         }
+
+    // The mesh is useless with Bluetooth or location switched off, so we chase them the whole
+    // time the app is in front: on launch, on every return to the foreground, and the instant
+    // either radio is toggled off underneath us. `suppressNextRadioCheck` stops the resume that
+    // fires when we come back FROM one of these prompts from immediately firing another — so a
+    // user who declines is nagged again next time they open the app, not trapped in a loop.
+    private var suppressNextRadioCheck = false
+
+    private val enableBtLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            suppressNextRadioCheck = true
+            // Bluetooth handled — if it's on now but location is still off, chase that next.
+            if (isBluetoothOn() && !isLocationOn()) promptEnableLocation()
+        }
+
+    private val locationSettingsLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            suppressNextRadioCheck = true
+        }
+
+    // Re-check the moment a radio flips off while we're in the foreground.
+    private val radioStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            enforceRadios()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // targetSdk 35 on Android 15+ draws the app edge-to-edge with no automatic
@@ -99,13 +137,39 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             OffNetTheme {
-                AppRoot(vm, onPickRole = ::onPickRole)
+                AppRoot(vm, onPickRole = ::onPickRole, onSosSent = ::requestBatterySaver)
             }
         }
         // No role picker anymore — the phone is a victim's SOS console the moment it opens.
         // A retained ViewModel keeps its role across configuration changes, so only ask on a
         // genuinely cold start.
         if (vm.role == null) onPickRole(MeshRole.VICTIM)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Watch for a radio being switched off while we're up.
+        val filter = IntentFilter().apply {
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(LocationManager.MODE_CHANGED_ACTION)
+        }
+        ContextCompat.registerReceiver(
+            this, radioStateReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        if (suppressNextRadioCheck) {
+            suppressNextRadioCheck = false
+        } else {
+            enforceRadios()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            unregisterReceiver(radioStateReceiver)
+        } catch (_: IllegalArgumentException) {
+            // Never registered (e.g. paused before the first resume) — nothing to undo.
+        }
     }
 
     private fun onPickRole(role: MeshRole) {
@@ -119,10 +183,93 @@ class MainActivity : ComponentActivity() {
             vm.selectRole(role)
         }
     }
+
+    // --- Radio enforcement -------------------------------------------------
+
+    private fun bluetoothAdapter(): BluetoothAdapter? =
+        (getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+
+    private fun isBluetoothOn(): Boolean = bluetoothAdapter()?.isEnabled == true
+
+    private fun isLocationOn(): Boolean =
+        (getSystemService(Context.LOCATION_SERVICE) as? LocationManager)?.isLocationEnabled == true
+
+    /**
+     * Chase Bluetooth first, then location — one system prompt at a time. Android forbids a
+     * normal app from flipping either radio on silently, so the strongest we can do is put the
+     * enable dialog (Bluetooth) or the settings screen (location) in front of the user.
+     */
+    private fun enforceRadios() {
+        // ACTION_REQUEST_ENABLE needs BLUETOOTH_CONNECT, and while that permission is still
+        // pending the permission dialog owns the screen — so hold off entirely until it's
+        // granted, rather than stacking a radio prompt on top of it.
+        val btPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!btPermission) return
+
+        if (bluetoothAdapter() != null && !isBluetoothOn()) {
+            promptEnableBluetooth()
+            return
+        }
+        if (!isLocationOn()) {
+            promptEnableLocation()
+        }
+    }
+
+    private fun promptEnableBluetooth() {
+        try {
+            enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+        } catch (_: SecurityException) {
+            // BLUETOOTH_CONNECT was revoked between the check and the launch — the permission
+            // flow will pick it up on the next pass.
+        }
+    }
+
+    private fun promptEnableLocation() {
+        Toast.makeText(
+            this,
+            "Turn on Location so your SOS carries your coordinates",
+            Toast.LENGTH_LONG
+        ).show()
+        try {
+            locationSettingsLauncher.launch(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        } catch (_: Exception) {
+            suppressNextRadioCheck = true // no settings screen to resolve to; don't loop
+        }
+    }
+
+    /**
+     * Fired the moment an SOS goes out. Android won't let an app turn Battery saver on itself,
+     * so we drop the user straight onto the Battery-saver screen to flip it — unless it's
+     * already on, in which case we stay out of the way.
+     */
+    private fun requestBatterySaver() {
+        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        if (pm?.isPowerSaveMode == true) return
+        Toast.makeText(
+            this,
+            "Turn on Battery saver to make your phone last on the mesh",
+            Toast.LENGTH_LONG
+        ).show()
+        try {
+            startActivity(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS))
+        } catch (_: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            } catch (_: Exception) {
+                // No settings activity to resolve to — nothing more we can do.
+            }
+        }
+    }
 }
 
 @Composable
-private fun AppRoot(vm: MeshViewModel, onPickRole: (MeshRole) -> Unit) {
+private fun AppRoot(
+    vm: MeshViewModel,
+    onPickRole: (MeshRole) -> Unit,
+    onSosSent: () -> Unit,
+) {
     // The role picker is gone: the app is the victim's SOS console by default, and the
     // settings gear swaps in the responder. Until the first role actually starts (while the
     // permission prompt is up) we still render the victim console so there is never a blank
@@ -130,6 +277,10 @@ private fun AppRoot(vm: MeshViewModel, onPickRole: (MeshRole) -> Unit) {
     val role = vm.role ?: MeshRole.VICTIM
     var settingsOpen by remember { mutableStateOf(false) }
     val openSettings = { settingsOpen = true }
+
+    // Task 3: on the responder screen the back gesture returns to the user (home) console
+    // rather than closing the app — "user" is the previous page now that the picker is gone.
+    BackHandler(enabled = role == MeshRole.RESPONDER) { onPickRole(MeshRole.VICTIM) }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         // One animated container: switching role cross-fades and rises the whole page, so the
@@ -152,7 +303,7 @@ private fun AppRoot(vm: MeshViewModel, onPickRole: (MeshRole) -> Unit) {
                 LoraOnlyBanner(enabled = loraOnly, onChange = vm::setLoraOnly)
                 Box(modifier = Modifier.weight(1f)) {
                     when (current) {
-                        MeshRole.VICTIM -> VictimScreen(vm, peers, onOpenSettings = openSettings)
+                        MeshRole.VICTIM -> VictimScreen(vm, peers, onOpenSettings = openSettings, onSosSent = onSosSent)
                         MeshRole.RESPONDER -> ResponderScreen(vm, peers, onOpenSettings = openSettings)
                         MeshRole.RELAY -> RelayScreen(vm, peers, onBack = openSettings)
                     }

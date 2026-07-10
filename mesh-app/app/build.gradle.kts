@@ -35,6 +35,11 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        // The bundled Bengaluru map archive is already PNG-packed; leave it uncompressed so
+        // the APK build doesn't burn time squeezing ~16 MB for no gain.
+        noCompress += "mbtiles"
+    }
 }
 
 dependencies {
