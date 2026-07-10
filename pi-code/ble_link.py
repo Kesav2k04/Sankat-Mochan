@@ -20,10 +20,10 @@ oversized frames rather than corrupt them silently.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 from bleak import BleakClient, BleakScanner
-from bleak.backends.device import BLEDevice
 
 import chainlog as clog
 import node as nodemod
@@ -34,6 +34,11 @@ MIN_MTU = 23             # the BLE spec floor, and bleak's BlueZ placeholder val
 # A subscribe or write that never gets an ATT response hangs until the spec's 30 s
 # ATT transaction timeout, which then drops the link. Fail sooner and say why.
 GATT_OP_TIMEOUT_S = 10.0
+
+# The app's scan-response beacon: one role byte, then the node id in ASCII.
+# Must stay in step with MeshRole's ordinals in BleMeshService.kt.
+ROLE_NAMES = {0: "victim", 1: "responder", 2: "relay"}
+MAX_NODE_ID = 8
 
 
 async def negotiated_mtu(client: BleakClient, logger, name: str) -> int:
@@ -148,8 +153,41 @@ class BleLink(nodemod.Link):
         return True
 
 
+@dataclass(frozen=True)
+class MeshPhone:
+    """One phone running the app, as seen in a single scan."""
+    address: str
+    node_id: str
+    role: str
+    rssi: int
+
+    def describe(self) -> str:
+        return f"{self.node_id} ({self.role}, {self.rssi} dBm, {self.address})"
+
+
+def parse_beacon(payload: bytes) -> Optional[tuple]:
+    """Decode the app's service-data beacon: [role byte][node id ascii].
+
+    Untrusted input (CLAUDE.md #8): every field is length- and range-checked, and a
+    beacon that fails any check is discarded rather than half-trusted.
+    """
+    if not payload or len(payload) < 2 or len(payload) > 1 + MAX_NODE_ID:
+        return None
+    role = ROLE_NAMES.get(payload[0])
+    if role is None:
+        return None
+    try:
+        node_id = payload[1:].decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    if not node_id.isalnum():
+        return None
+    return role, node_id
+
+
 class BleManager:
-    """Keeps one BLE central connection alive per Pi-side node, with reconnect."""
+    """Keeps the BLE central connections alive, with reconnect. A Pi-side node may
+    hold any number of phones."""
 
     def __init__(self, cfg: Dict, logger, chain: clog.ChainLog):
         self._cfg = cfg["ble"]
@@ -157,60 +195,106 @@ class BleManager:
         self._chain = chain
         self._tasks: List[asyncio.Task] = []
 
-    async def discover(self) -> List[BLEDevice]:
-        """Devices whose *live* advertisement carries the mesh service UUID.
+    async def discover(self) -> tuple:
+        """Scan once. Returns (phones, stale_addresses).
 
-        BlueZ hands back everything it currently knows about a device, merging scan
-        responses and cached properties, so `BleakScanner`'s own service filter is not
-        enough: a phone can surface here on an address that is not the one the mesh
-        app is advertising on. Re-check the UUID against the advertisement we were
-        actually given this scan, and drop anything that does not carry it — picking
-        such an address connects fine, then wedges on the first GATT operation.
+        `phones` are advertisers carrying a readable role beacon; `stale_addresses` are
+        advertisers running a build old enough that it broadcasts no beacon at all.
+        They are counted separately because they mean two different things to the
+        operator: one is "pick a role", the other is "reinstall the app".
+
+        Two reasons not to trust the address here. BlueZ merges scan responses and
+        cached properties, so a device can surface on an address the mesh app is not
+        actually serving on — connecting to it succeeds, then wedges on the first GATT
+        operation. And Android rotates its resolvable private address, so the same
+        phone appears under a different MAC between runs. The node id in the beacon is
+        the only stable identity we have.
         """
         svc = self._cfg["service_uuid"].lower()
         timeout = float(self._cfg["scan_timeout_s"])
         self._log.info("looking for phones running the mesh app (%.0f second scan)...", timeout)
         found = await BleakScanner.discover(timeout=timeout, service_uuids=[svc], return_adv=True)
 
-        devices: List[BLEDevice] = []
+        phones: List[MeshPhone] = []
+        stale: List[str] = []
         for device, adv in found.values():
             advertised = {u.lower() for u in (adv.service_uuids or ())}
-            label = f"{device.address} ({device.name or 'name not shared'}, {adv.rssi} dBm)"
-            if svc in advertised:
-                self._log.info("  found a phone running the mesh app: %s", label)
-                devices.append(device)
-            else:
-                self._log.info("  ignoring %s — it is not advertising the mesh app", label)
-        return devices
+            if svc not in advertised:
+                self._log.info("  ignoring %s — it is not advertising the mesh app", device.address)
+                continue
+            beacon = {k.lower(): v for k, v in (adv.service_data or {}).items()}.get(svc)
+            parsed = parse_beacon(bytes(beacon)) if beacon else None
+            if parsed is None:
+                stale.append(device.address)
+                continue
+            role, node_id = parsed
+            phone = MeshPhone(device.address, node_id, role, adv.rssi)
+            self._log.info("  found phone %s", phone.describe())
+            phones.append(phone)
+        return phones, stale
 
-    async def resolve_peers(self) -> Dict[str, str]:
-        """Map node name -> phone BLE address, from config or by discovery."""
-        configured = {k: v for k, v in self._cfg["peers"].items() if v}
-        if len(configured) == 2:
-            self._log.info("using configured peers: %s", configured)
-            return configured
+    async def resolve_roster(self) -> Dict[str, List[MeshPhone]]:
+        """Split the phones across the two radios: responders sit behind the gateway
+        radio, everyone else behind the field radio.
 
-        devices = await self.discover()
-        addrs = sorted({d.address for d in devices})
-        if len(addrs) < 2:
-            found = ", ".join(addrs) if addrs else "none"
+        That split is the whole point. A victim and a responder on the same radio would
+        talk to each other over Bluetooth through this Pi and never key the transmitter;
+        putting them on opposite radios means an SOS can only arrive by crossing 433 MHz.
+        """
+        phones, stale = await self.discover()
+
+        # A phone that broadcasts no role is running a build from before the beacon
+        # existed. Say that, rather than blaming the operator's role choice.
+        if not phones and stale:
             raise RuntimeError(
-                f"I need 2 phones running the mesh app, but I can see {len(addrs)} ({found}). "
-                "Open the app on both phones, pick a role, and keep the screen on."
+                f"{len(stale)} phone(s) are running the mesh app, but none of them broadcast "
+                "a role, so I cannot tell a rescuer from someone calling for help. They are on "
+                "an old build: rebuild the app and reinstall it on every phone."
             )
-        if len(addrs) > 2:
+        if stale:
+            self._log.warning(
+                "%d phone(s) are on an old build and will be left out of the mesh (%s). "
+                "Rebuild and reinstall to include them.", len(stale), ", ".join(stale))
+        if not phones:
             raise RuntimeError(
-                f"I can see {len(addrs)} phones running the mesh app ({', '.join(addrs)}) and "
-                "cannot tell which two you mean. Close the app on the others, or name the two "
-                "you want under \"ble\": {\"peers\": {\"field\": \"...\", \"gateway\": \"...\"}} "
-                "in config.json."
+                "No phone is running the mesh app. Open it on each phone, pick a role, "
+                "and keep the screen on."
             )
-        # Deterministic so a rerun keeps the same phone on the same side of the link.
-        auto = {"field": addrs[0], "gateway": addrs[1]}
-        auto.update(configured)
-        self._log.info("phone %s is the FIELD phone (the person sending for help)", auto["field"])
-        self._log.info("phone %s is the GATEWAY phone (the rescuer receiving)", auto["gateway"])
-        return auto
+
+        # Android rotates its BLE address, so the same phone can appear twice in one
+        # scan. Collapse on node id and keep whichever address was heard loudest.
+        by_node: Dict[str, MeshPhone] = {}
+        for p in phones:
+            best = by_node.get(p.node_id)
+            if best is None or p.rssi > best.rssi:
+                by_node[p.node_id] = p
+        if len(by_node) < len(phones):
+            self._log.info("  (%d addresses collapsed to %d phones by node id — "
+                           "Android rotates its Bluetooth address)", len(phones), len(by_node))
+
+        responders = [p for p in by_node.values() if p.role == "responder"]
+        others = sorted((p for p in by_node.values() if p.role != "responder"),
+                        key=lambda p: p.node_id)
+
+        if not responders:
+            roles = ", ".join(sorted(p.role for p in by_node.values()))
+            raise RuntimeError(
+                f"I can see {len(by_node)} phone(s) ({roles}) but none picked \"I am responding\". "
+                "Open the app on the rescuer's phone and choose that role."
+            )
+        if not others:
+            raise RuntimeError(
+                "Every phone I can see picked \"I am responding\". At least one phone must "
+                "choose \"I need help\" or \"Relay only\", or there is nothing to carry."
+            )
+
+        # Loudest responder anchors the gateway; any extras join it there.
+        responders.sort(key=lambda p: p.rssi, reverse=True)
+        roster = {"field": others, "gateway": responders}
+        for name, group in roster.items():
+            self._log.info("radio '%s' will carry %d phone(s): %s", name, len(group),
+                           ", ".join(p.describe() for p in group))
+        return roster
 
     def maintain(self, link: BleLink, on_bytes: Callable[[bytes], "asyncio.Future"]) -> asyncio.Task:
         task = asyncio.create_task(self._keep_connected(link, on_bytes), name=f"ble-{link.address}")

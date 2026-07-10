@@ -89,17 +89,17 @@ async def startup_probe(radios: Dict[str, Radio], lora_cfg: LoraConfig,
 
 
 async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
-    """Poll for the two phones until they appear (or the operator gives up)."""
+    """Poll until at least one responder and one other phone appear (or the operator gives up)."""
     retry = float(cfg["ble"]["peer_retry_s"])
     while not stop.is_set():
         try:
-            return await manager.resolve_peers()
+            return await manager.resolve_roster()
         except RuntimeError as e:
             if not cfg["ble"]["wait_for_peers"]:
                 raise
             # Rule 10: an operator-facing failure is a message, not a traceback.
             logger.warning("%s", e)
-            logger.info("still waiting for both phones — I will look again in %.0fs "
+            logger.info("still waiting — I will look again in %.0fs "
                         "(press Ctrl-C to stop)", retry)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=retry)
@@ -203,12 +203,16 @@ async def run() -> int:
                 logger.info("stopped before any phone appeared")
                 return 0
             for name in NODE_NAMES:
-                bl = ble_link.BleLink(peers[name], cfg["ble"]["char_uuid"], logger, chain, name)
-                nodes[name].add_link(bl)
-                n = nodes[name]
-                manager.maintain(bl, lambda raw, n=n, bl=bl: n.on_ble_bytes(bl, raw))
-            logger.info("READY. A message typed on the field phone now travels: "
-                        "phone -> Bluetooth -> Pi -> 433 MHz -> Pi -> Bluetooth -> phone.")
+                for phone in peers[name]:
+                    bl = ble_link.BleLink(phone.address, cfg["ble"]["char_uuid"],
+                                          logger, chain, name)
+                    nodes[name].add_link(bl)
+                    n = nodes[name]
+                    manager.maintain(bl, lambda raw, n=n, bl=bl: n.on_ble_bytes(bl, raw))
+            logger.info("READY. An SOS from any phone on the field radio now travels: "
+                        "phone -> Bluetooth -> Pi -> 433 MHz -> Pi -> Bluetooth -> responder. "
+                        "The responder is on the far radio, so nothing reaches it without "
+                        "crossing the air.")
         else:
             logger.warning("Bluetooth is switched off in the config — running the two radios "
                            "alone, with no phones attached")

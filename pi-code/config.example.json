@@ -56,12 +56,8 @@
     "wait_for_peers": true,
     "peer_retry_s": 10.0,
     "scan_timeout_s": 12.0,
-    "reconnect_backoff_s": [1, 2, 4, 8, 15],
-    "peers": {
-      "_comment": "BLE MAC of the phone each Pi-side node talks to. null = auto-assign discovered peers deterministically (lowest MAC -> field). Set explicitly for a reliable demo.",
-      "field": null,
-      "gateway": null
-    }
+    "_peers_comment": "There is no peer list any more. Phones are matched by the role they picked in the app, which they broadcast in their advertisement: every RESPONDER attaches to the gateway radio, everyone else to the field radio. Pinning by MAC would not work anyway — Android rotates its Bluetooth address between runs.",
+    "reconnect_backoff_s": [1, 2, 4, 8, 15]
   },
 
   "uplink": {

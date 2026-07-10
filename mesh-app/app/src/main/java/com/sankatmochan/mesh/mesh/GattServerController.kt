@@ -56,7 +56,12 @@ class GattServerController(
 
     fun subscriberAddresses(): Set<String> = subscribers.keys.toSet()
 
-    fun start() {
+    /**
+     * [role] and [nodeId] are broadcast in the scan response so the Pi gateway can tell
+     * a responder from a victim before it connects, and can recognise the same phone
+     * after Android rotates its Bluetooth address.
+     */
+    fun start(role: MeshRole, nodeId: String) {
         val server = bluetoothManager.openGattServer(context, serverCallback)
         if (server == null) {
             Log.w(TAG, "openGattServer returned null")
@@ -83,10 +88,10 @@ class GattServerController(
         service.addCharacteristic(messageChar)
         server.addService(service)
 
-        startAdvertising()
+        startAdvertising(role, nodeId)
     }
 
-    private fun startAdvertising() {
+    private fun startAdvertising(role: MeshRole, nodeId: String) {
         val adv = adapter?.bluetoothLeAdvertiser
         if (adv == null) {
             Log.w(TAG, "device has no BLE advertiser")
@@ -98,13 +103,25 @@ class GattServerController(
             .setConnectable(true)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
-        // Only the 128-bit service UUID (no device name) — keeps us inside the
-        // 31-byte advertising budget.
+
+        // The main PDU has 31 bytes: 3 for flags and 18 for the 128-bit service UUID.
+        // Ten are left, and service data under a 128-bit UUID needs 18 + payload — so
+        // the beacon goes in the scan response, which is a second 31-byte PDU.
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
             .addServiceUuid(ParcelUuid(MeshUuids.SERVICE_UUID))
             .build()
-        adv.startAdvertising(settings, data, advertiseCallback)
+
+        // [role ordinal][node id, ASCII]. Parsed by parse_beacon() in pi-code/ble_link.py;
+        // the ordinals of MeshRole are load-bearing on both sides.
+        val beacon = byteArrayOf(role.ordinal.toByte()) +
+            nodeId.take(MAX_NODE_ID).toByteArray(Charsets.US_ASCII)
+        val scanResponse = AdvertiseData.Builder()
+            .setIncludeDeviceName(false)
+            .addServiceData(ParcelUuid(MeshUuids.SERVICE_UUID), beacon)
+            .build()
+
+        adv.startAdvertising(settings, data, scanResponse, advertiseCallback)
     }
 
     private val advertiseCallback = object : AdvertiseCallback() {
@@ -249,5 +266,8 @@ class GattServerController(
         const val TAG = "GattServer"
         const val MAX_NOTIFY_RETRIES = 5
         const val RETRY_DELAY_MS = 25L
+
+        /** Kept in step with MAX_NODE_ID in pi-code/ble_link.py. */
+        const val MAX_NODE_ID = 8
     }
 }

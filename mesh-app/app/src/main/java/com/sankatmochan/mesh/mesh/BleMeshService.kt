@@ -85,7 +85,8 @@ class BleMeshService(context: Context) {
     fun start(role: MeshRole) {
         this.role = role
         if (running) return
-        server.start()
+        // The role goes into the advertisement, so the gateway can route by it.
+        server.start(role, nodeId)
         scanner.start()
         running = true
         store.log("Mesh started as $role · node $nodeId")
