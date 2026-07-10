@@ -1,10 +1,5 @@
 package com.sankatmochan.mesh.ui
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
-import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
@@ -33,6 +28,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,9 +40,9 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MyLocation
-import androidx.compose.material.icons.rounded.Podcasts
 import androidx.compose.material.icons.rounded.Sos
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -68,13 +65,11 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sankatmochan.mesh.MeshViewModel
@@ -114,7 +109,7 @@ private val URGENCIES = listOf(
  * where I am?" — without a word of jargon. Everything optional lives behind Details.
  */
 @Composable
-fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
+fun VictimScreen(vm: MeshViewModel, peers: Int, onOpenSettings: () -> Unit) {
     var gist by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("trapped") }
     var location by remember { mutableStateOf("") }
@@ -125,6 +120,17 @@ fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
 
     val sent by vm.sent.collectAsState()
     val latest = sent.lastOrNull()
+
+    // When Details unfolds, ride the scroll up so the drawer settles near the top with its
+    // fields in easy reach, instead of expanding off the bottom of the screen. We wait out
+    // the expand animation so the drawer's full height is measured before scrolling.
+    val detailsReveal = remember { BringIntoViewRequester() }
+    LaunchedEffect(detailsOpen) {
+        if (detailsOpen) {
+            delay(Motion.Mid.toLong())
+            detailsReveal.bringIntoView()
+        }
+    }
 
     // Acknowledgement, not a send lock: the button stays live, so a second tap always
     // gets through.
@@ -138,7 +144,11 @@ fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
-            MeshTopBar("Send for help", "no signal needed", peers, onBack)
+            MeshTopBar(
+                "Send for help", "no signal needed", peers,
+                onSettings = onOpenSettings,
+                actions = { LocationIndicator(vm) },
+            )
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -166,59 +176,18 @@ fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
                     onSend = { vm.sendSos(category, urgency, gist, lang, location) }
                 )
 
-                // Can anyone hear me? / Do they know where I am?
-                Row(
-                    Modifier.fillMaxWidth().entrance(2),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    StateTile(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Rounded.Podcasts,
-                        label = "mesh",
-                        ok = peers > 0,
-                        okText = "$peers in range",
-                        waitText = "Searching…",
-                        detail = if (peers > 0) "Goes out instantly"
-                        else "Held until a link appears"
-                    )
-                    StateTile(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Rounded.MyLocation,
-                        label = "gps",
-                        ok = vm.lat != null && vm.lng != null,
-                        okText = "Locked",
-                        waitText = "Searching…",
-                        detail = if (vm.lat != null) "Rides with the SOS"
-                        else "Needs open sky"
-                    )
-                }
+                // The mesh and GPS state used to live in two "Searching…" tiles here; both are
+                // now folded into the single location indicator in the top bar, keeping the
+                // console focused on the one thing that matters — the SOS button.
 
                 VoiceTile(vm, Modifier.entrance(3))
-
-                // GPS problems the user can actually fix.
-                if (vm.needsPreciseLocation) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        StatusRow(
-                            urgencyColors.medium,
-                            "Only approximate location allowed",
-                            Modifier.weight(1f)
-                        )
-                        val context = LocalContext.current
-                        TextButton(onClick = { openAppSettings(context) }) {
-                            Text("Fix")
-                        }
-                    }
-                } else if (vm.lat == null) {
-                    StatusRow(urgencyColors.medium, vm.locationStatus)
-                }
 
                 DetailsTile(
                     open = detailsOpen,
                     onToggle = { detailsOpen = !detailsOpen },
-                    modifier = Modifier.entrance(4),
+                    modifier = Modifier
+                        .entrance(4)
+                        .bringIntoViewRequester(detailsReveal),
                 ) {
                     Column(Modifier.padding(top = 4.dp)) {
                         Field("What is happening?") {
@@ -342,45 +311,72 @@ private fun SosTile(
     }
 }
 
-/** A bento state cell: icon badge, tracked caption, bold value, one-line detail. */
+/**
+ * The single location tell in the top bar: a GPS pin, green once we hold a fix and red
+ * while we don't. Tapping it drops a small overlay with the exact coordinates (or the
+ * current search status when there is no fix yet) — the full picture on demand, without a
+ * tile taking up the console.
+ */
 @Composable
-private fun StateTile(
-    modifier: Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    ok: Boolean,
-    okText: String,
-    waitText: String,
-    detail: String,
-) {
-    val tint = if (ok) urgencyColors.low else urgencyColors.medium
-    Tile(modifier = modifier.height(150.dp)) {
-        Column(Modifier.fillMaxSize().padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconBadge(icon, tint = tint, size = 34.dp)
-                Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(tint)
-                )
+private fun LocationIndicator(vm: MeshViewModel) {
+    var open by remember { mutableStateOf(false) }
+    val la = vm.lat
+    val lo = vm.lng
+    val hasFix = la != null && lo != null
+    val tint = if (hasFix) urgencyColors.low else urgencyColors.critical
+
+    Box {
+        Box(
+            Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                .bounceClick(pressedScale = 0.9f) { open = true }
+                .semantics {
+                    contentDescription =
+                        if (hasFix) "Location locked — show coordinates"
+                        else "No location fix — show status"
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Rounded.MyLocation,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                SectionLabel("gps fix", color = tint)
+                Spacer(Modifier.height(6.dp))
+                if (hasFix) {
+                    Text(
+                        "%.6f, %.6f".format(la, lo),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    vm.fixTime?.let {
+                        Text(
+                            "updated ${relativeTime(it)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    Text(
+                        vm.locationStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            Spacer(Modifier.weight(1f))
-            SectionLabel(label)
-            Text(
-                if (ok) okText else waitText,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 15.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }
@@ -721,16 +717,4 @@ private fun StepLabel(text: String, done: Boolean, modifier: Modifier, align: Te
         modifier = modifier,
         textAlign = align
     )
-}
-
-private fun openAppSettings(context: Context) {
-    val intent = Intent(
-        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-        Uri.fromParts("package", context.packageName, null)
-    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    try {
-        context.startActivity(intent)
-    } catch (e: Exception) {
-        Log.w("VictimScreen", "cannot open app settings: ${e.message}")
-    }
 }

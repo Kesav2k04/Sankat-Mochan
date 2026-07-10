@@ -45,14 +45,14 @@ import com.sankatmochan.mesh.model.SosMessage
 import com.sankatmochan.mesh.ui.theme.urgencyColors
 
 @Composable
-fun ResponderScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
+fun ResponderScreen(vm: MeshViewModel, peers: Int, onOpenSettings: () -> Unit) {
     val sosList by vm.receivedSos.collectAsState()
     val accepted by vm.acceptedIds.collectAsState()
     val voice by vm.voiceClips.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
-            MeshTopBar("Incoming", "live SOS queue", peers, onBack)
+            MeshTopBar("Incoming", "live SOS queue", peers, onSettings = onOpenSettings)
 
             if (sosList.isEmpty() && voice.isEmpty()) {
                 EmptyQueue(peers)

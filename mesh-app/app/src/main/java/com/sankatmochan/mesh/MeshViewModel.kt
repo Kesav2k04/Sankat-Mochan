@@ -151,25 +151,31 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setLoraOnly(enabled: Boolean) = service.setLoraOnly(enabled)
 
-    /** null = still on the role-picker. */
+    /** null = not started yet. The app boots straight into VICTIM; the settings modal
+     *  flips between VICTIM (the user) and RESPONDER. */
     var role by mutableStateOf<MeshRole?>(null)
         private set
 
     fun bluetoothReady(): Boolean = service.isBluetoothReady()
 
-    fun startAsRole(role: MeshRole) {
+    /**
+     * Start, or switch, this phone's job. Idempotent: re-selecting the current role does
+     * nothing. Switching between two live roles tears the old one down first, because
+     * [BleMeshService.start] is a no-op while already running and would otherwise leave the
+     * advertisement stuck on the previous role.
+     */
+    fun selectRole(role: MeshRole) {
+        if (this.role == role) return
+        if (this.role != null) {
+            stopLocation()
+            service.stop()
+        }
         this.role = role
         service.start(role)
         // The victim's fix travels in the SOS; the responder's fix is what turns a pair
         // of coordinates into "420 m northeast of you". A relay needs neither, so it
         // does not pay for a running GNSS receiver.
         if (role == MeshRole.VICTIM || role == MeshRole.RESPONDER) startLocation()
-    }
-
-    fun leaveRole() {
-        stopLocation()
-        service.stop()
-        role = null
     }
 
     /**

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CellTower
 import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,34 +39,33 @@ import androidx.compose.ui.unit.dp
 import com.sankatmochan.mesh.ui.theme.urgencyColors
 
 /**
- * Shared header: circular back chip, screen title over a quiet caption, live peer pill.
- * No bar fill — the page is one sheet.
+ * Shared header: optional circular back chip, screen title over a quiet caption, custom
+ * [actions], the live peer pill, and an optional settings gear on the far right. No bar
+ * fill — the page is one sheet.
  */
 @Composable
-fun MeshTopBar(title: String, caption: String, peers: Int, onBack: () -> Unit) {
+fun MeshTopBar(
+    title: String,
+    caption: String,
+    peers: Int,
+    onBack: (() -> Unit)? = null,
+    onSettings: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                .bounceClick(pressedScale = 0.9f, onClick = onBack)
-                .semantics { contentDescription = "Leave this role" },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Rounded.ChevronLeft,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface
+        if (onBack != null) {
+            TopBarChip(
+                icon = Icons.Rounded.ChevronLeft,
+                description = "Leave this role",
+                onClick = onBack,
             )
+            Spacer(Modifier.size(14.dp))
         }
-        Spacer(Modifier.size(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 title,
@@ -81,7 +82,42 @@ fun MeshTopBar(title: String, caption: String, peers: Int, onBack: () -> Unit) {
             )
         }
         Spacer(Modifier.size(10.dp))
+        actions()
+        Spacer(Modifier.size(8.dp))
         PeerBadge(peers)
+        if (onSettings != null) {
+            Spacer(Modifier.size(8.dp))
+            TopBarChip(
+                icon = Icons.Rounded.Settings,
+                description = "Settings",
+                onClick = onSettings,
+            )
+        }
+    }
+}
+
+/** The header's circular action chip — a hairline circle over the sheet. */
+@Composable
+fun TopBarChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+            .bounceClick(pressedScale = 0.9f, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 

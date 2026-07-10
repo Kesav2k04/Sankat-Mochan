@@ -26,13 +26,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.sankatmochan.mesh.mesh.MeshRole
 import com.sankatmochan.mesh.ui.LoraOnlyBanner
 import com.sankatmochan.mesh.ui.RelayScreen
 import com.sankatmochan.mesh.ui.ResponderScreen
-import com.sankatmochan.mesh.ui.RoleSelectionScreen
+import com.sankatmochan.mesh.ui.RoleSettingsDialog
 import com.sankatmochan.mesh.ui.VictimScreen
 import com.sankatmochan.mesh.ui.theme.OffNetTheme
 
@@ -62,7 +65,7 @@ class MainActivity : ComponentActivity() {
             // Only the BLE permissions gate startup; location may be false.
             val bleGranted = blePermissions.all { result[it] == true }
             if (bleGranted && role != null) {
-                vm.startAsRole(role)
+                vm.selectRole(role)
                 // Android 12+ lets the user answer a FINE request with "Approximate", which
                 // grants COARSE only and shuts GPS off. Nothing else in the app can tell
                 // them, and a silent approximate grant means no coordinates in the SOS.
@@ -99,6 +102,10 @@ class MainActivity : ComponentActivity() {
                 AppRoot(vm, onPickRole = ::onPickRole)
             }
         }
+        // No role picker anymore — the phone is a victim's SOS console the moment it opens.
+        // A retained ViewModel keeps its role across configuration changes, so only ask on a
+        // genuinely cold start.
+        if (vm.role == null) onPickRole(MeshRole.VICTIM)
     }
 
     private fun onPickRole(role: MeshRole) {
@@ -109,49 +116,59 @@ class MainActivity : ComponentActivity() {
             pendingRole = role
             permissionLauncher.launch(requestedPermissions)
         } else {
-            vm.startAsRole(role)
+            vm.selectRole(role)
         }
     }
 }
 
 @Composable
 private fun AppRoot(vm: MeshViewModel, onPickRole: (MeshRole) -> Unit) {
-    // One animated container: leaving or entering a role cross-fades and rises the whole
-    // page, so the app moves like one surface instead of screens popping.
+    // The role picker is gone: the app is the victim's SOS console by default, and the
+    // settings gear swaps in the responder. Until the first role actually starts (while the
+    // permission prompt is up) we still render the victim console so there is never a blank
+    // frame.
+    val role = vm.role ?: MeshRole.VICTIM
+    var settingsOpen by remember { mutableStateOf(false) }
+    val openSettings = { settingsOpen = true }
+
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        // One animated container: switching role cross-fades and rises the whole page, so the
+        // app moves like one surface instead of screens popping.
         AnimatedContent(
-            targetState = vm.role,
+            targetState = role,
             transitionSpec = {
                 (fadeIn(tween(280, delayMillis = 60)) +
                     slideInVertically(tween(380, delayMillis = 60, easing = FastOutSlowInEasing)) { it / 18 })
                     .togetherWith(fadeOut(tween(140)))
             },
             label = "role"
-        ) { role ->
-            when (role) {
-                null -> RoleSelectionScreen(
-                    nodeId = vm.nodeId,
-                    bluetoothReady = vm.bluetoothReady(),
-                    onPick = onPickRole
-                )
-                else -> {
-                    val peers by vm.peerCount.collectAsState()
-                    val loraOnly by vm.loraOnly.collectAsState()
-                    // safeDrawingPadding keeps the content clear of the status bar, the
-                    // navigation bar, and the keyboard, and consumes those insets so the
-                    // child top bars don't pad for the status bar a second time.
-                    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-                        LoraOnlyBanner(enabled = loraOnly, onChange = vm::setLoraOnly)
-                        Box(modifier = Modifier.weight(1f)) {
-                            when (role) {
-                                MeshRole.VICTIM -> VictimScreen(vm, peers) { vm.leaveRole() }
-                                MeshRole.RESPONDER -> ResponderScreen(vm, peers) { vm.leaveRole() }
-                                MeshRole.RELAY -> RelayScreen(vm, peers) { vm.leaveRole() }
-                            }
-                        }
+        ) { current ->
+            val peers by vm.peerCount.collectAsState()
+            val loraOnly by vm.loraOnly.collectAsState()
+            // safeDrawingPadding keeps the content clear of the status bar, the navigation
+            // bar, and the keyboard, and consumes those insets so the child top bars don't
+            // pad for the status bar a second time.
+            Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+                LoraOnlyBanner(enabled = loraOnly, onChange = vm::setLoraOnly)
+                Box(modifier = Modifier.weight(1f)) {
+                    when (current) {
+                        MeshRole.VICTIM -> VictimScreen(vm, peers, onOpenSettings = openSettings)
+                        MeshRole.RESPONDER -> ResponderScreen(vm, peers, onOpenSettings = openSettings)
+                        MeshRole.RELAY -> RelayScreen(vm, peers, onBack = openSettings)
                     }
                 }
             }
         }
+    }
+
+    if (settingsOpen) {
+        RoleSettingsDialog(
+            current = role,
+            onSelect = {
+                settingsOpen = false
+                onPickRole(it)
+            },
+            onDismiss = { settingsOpen = false },
+        )
     }
 }
