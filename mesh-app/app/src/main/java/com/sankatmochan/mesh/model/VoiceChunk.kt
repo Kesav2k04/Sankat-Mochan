@@ -36,7 +36,7 @@ data class VoiceChunk(
     val total: Int,
     val payload: ByteArray,
     val hops: Int = 0,
-    val codec: Int = CODEC_OGG_OPUS,
+    val codec: Int = CODEC_3GPP_AMR,
 ) {
     /** Unique per chunk, so mesh dedup drops a repeat without dropping the clip. */
     val id: String get() = "$origin-v$seq-$index"
@@ -89,6 +89,14 @@ data class VoiceChunk(
         const val TYPE_VOICE = 1
         const val HEADER = 16
         const val CODEC_OGG_OPUS = 1
+        /** AMR-NB in a 3GPP container. Honours its 4.75 kbps setting, where the platform
+         *  Opus encoder ignores the bitrate hint and lands near 14 kbps. */
+        const val CODEC_3GPP_AMR = 2
+        val KNOWN_CODECS = setOf(CODEC_OGG_OPUS, CODEC_3GPP_AMR)
+
+        /** File suffix a MediaPlayer will recognise for each codec. */
+        fun extensionFor(codec: Int): String =
+            if (codec == CODEC_3GPP_AMR) ".3gp" else ".ogg"
 
         /** Keeps a frame at 216 B — inside LoRa's 255 and any sane BLE MTU. */
         const val MAX_CHUNK = 200
@@ -120,7 +128,7 @@ data class VoiceChunk(
             val codec = bb.get().toInt() and 0xFF
             val length = bb.get().toInt() and 0xFF
 
-            if (codec != CODEC_OGG_OPUS) return null
+            if (codec !in KNOWN_CODECS) return null
             if (total < 1 || total > MAX_CHUNKS || index >= total) return null
             if (length > MAX_CHUNK || bytes.size != HEADER + length) return null
 
@@ -135,13 +143,13 @@ data class VoiceChunk(
         }
 
         /** Split an encoded clip into wire-ready chunks. */
-        fun split(origin: String, seq: Int, clip: ByteArray): List<VoiceChunk> {
+        fun split(origin: String, seq: Int, clip: ByteArray, codec: Int): List<VoiceChunk> {
             val total = (clip.size + MAX_CHUNK - 1) / MAX_CHUNK
             require(total in 1..MAX_CHUNKS) { "clip needs $total chunks" }
             return (0 until total).map { i ->
                 val from = i * MAX_CHUNK
                 val to = minOf(from + MAX_CHUNK, clip.size)
-                VoiceChunk(origin, seq, i, total, clip.copyOfRange(from, to))
+                VoiceChunk(origin, seq, i, total, clip.copyOfRange(from, to), codec = codec)
             }
         }
     }

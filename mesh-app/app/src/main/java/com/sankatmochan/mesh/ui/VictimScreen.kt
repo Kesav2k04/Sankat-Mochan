@@ -145,6 +145,7 @@ fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
                 SosButton(
                     justSent = justSent,
                     repeat = sent.isNotEmpty(),
+                    withVoice = vm.pendingVoice != null,
                     onSend = { vm.sendSos(category, urgency, gist, lang, location) }
                 )
 
@@ -204,11 +205,12 @@ fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
 }
 
 @Composable
-private fun SosButton(justSent: Boolean, repeat: Boolean, onSend: () -> Unit) {
+private fun SosButton(justSent: Boolean, repeat: Boolean, withVoice: Boolean, onSend: () -> Unit) {
     val palette = urgencyColors
     val bg = if (justSent) palette.low else palette.critical
     val label = when {
         justSent -> "SENT"
+        withVoice -> "SEND SOS + VOICE"
         repeat -> "SEND AGAIN"
         else -> "SEND SOS"
     }
@@ -278,6 +280,7 @@ private fun ReachabilityNote(peers: Int) {
 @Composable
 private fun VoiceButton(vm: MeshViewModel) {
     val recording = vm.isRecording
+    val attached = vm.pendingVoice != null
     var remaining by remember { mutableIntStateOf(MAX_VOICE_SECONDS) }
 
     // Hard stop at the cap even if the finger never lifts.
@@ -288,7 +291,7 @@ private fun VoiceButton(vm: MeshViewModel) {
             delay(1000)
             remaining--
         }
-        vm.stopRecordingAndSend()
+        vm.stopRecording()
     }
 
     Column {
@@ -304,7 +307,7 @@ private fun VoiceButton(vm: MeshViewModel) {
                             vm.startRecording()
                             // Suspends until the finger lifts or the gesture is cancelled.
                             val completed = tryAwaitRelease()
-                            if (completed) vm.stopRecordingAndSend() else vm.cancelRecording()
+                            if (completed) vm.stopRecording() else vm.cancelRecording()
                         }
                     )
                 }
@@ -319,14 +322,33 @@ private fun VoiceButton(vm: MeshViewModel) {
                 )
                 Spacer(Modifier.size(10.dp))
                 Text(
-                    text = if (recording) "Recording — release to send ($remaining s)"
+                    text = if (recording) "Recording — release to attach ($remaining s)"
+                    else if (attached) "Re-record voice message"
                     else "Hold to record a voice message",
                     fontWeight = FontWeight.Bold,
                     color = if (recording) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-        if (vm.voiceStatus.isNotBlank() && !recording) {
+        if (attached && !recording) {
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = urgencyColors.low,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.size(6.dp))
+                Text(
+                    "Voice attached (${vm.pendingVoiceBytes} bytes) — sends with your SOS",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { vm.discardVoice() }) { Text("Remove") }
+            }
+        } else if (vm.voiceStatus.isNotBlank() && !recording) {
             Spacer(Modifier.height(4.dp))
             Text(
                 vm.voiceStatus,

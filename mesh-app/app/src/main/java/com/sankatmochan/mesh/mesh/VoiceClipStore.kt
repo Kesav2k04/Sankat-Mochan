@@ -16,6 +16,7 @@ data class VoiceClip(
     val total: Int,
     val received: Int,
     val hops: Int,
+    val codec: Int,
     val file: File?,          // non-null once every chunk has arrived
 ) {
     val complete: Boolean get() = file != null
@@ -58,14 +59,15 @@ class VoiceClipStore(context: Context) {
         val received = slots.count { it != null }
         var file: File? = null
         if (received == slots.size) {
-            file = writeClip(chunk.clipId, slots)
+            file = writeClip(chunk.clipId, chunk.codec, slots)
             if (file != null) parts.remove(chunk.clipId)
         }
         publish(chunk, received, file)
     }
 
-    private fun writeClip(clipId: String, slots: Array<ByteArray?>): File? = try {
-        val out = File(dir, "$clipId.ogg")
+    private fun writeClip(clipId: String, codec: Int, slots: Array<ByteArray?>): File? = try {
+        // MediaPlayer sniffs the container, but a correct suffix keeps it honest.
+        val out = File(dir, clipId + VoiceChunk.extensionFor(codec))
         out.outputStream().use { s -> slots.forEach { s.write(it!!) } }
         Log.i(TAG, "clip $clipId complete: ${out.length()} bytes")
         out
@@ -83,6 +85,7 @@ class VoiceClipStore(context: Context) {
                 total = chunk.total,
                 received = received,
                 hops = maxOf(existing?.hops ?: 0, chunk.hops),
+                codec = chunk.codec,
                 file = file ?: existing?.file,
             )
             (current.filterNot { it.clipId == chunk.clipId } + updated)

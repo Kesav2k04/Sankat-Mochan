@@ -102,6 +102,13 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     var voiceStatus by mutableStateOf("")
         private set
 
+    /** A recorded clip waiting to be sent. It travels with the next SOS, not on its own,
+     *  so the rescuer always gets the coordinates and urgency before the audio. */
+    var pendingVoice by mutableStateOf<ByteArray?>(null)
+        private set
+
+    val pendingVoiceBytes: Int get() = pendingVoice?.size ?: 0
+
     /** Begin recording. The caller must already hold RECORD_AUDIO. */
     fun startRecording() {
         if (isRecording) return
@@ -113,11 +120,8 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
         voiceStatus = "Recording…"
     }
 
-    /**
-     * Stop and transmit. A 5-second Opus clip is ~22 LoRa frames and about 7 seconds of
-     * airtime at SF7, so the channel is busy for a while after this returns.
-     */
-    fun stopRecordingAndSend() {
+    /** Stop and keep the clip. Nothing goes on air until the SOS button is pressed. */
+    fun stopRecording() {
         if (!isRecording) return
         isRecording = false
         val clip = recorder.stop()
@@ -125,8 +129,13 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
             voiceStatus = "Nothing recorded — hold the button while you speak"
             return
         }
-        service.sendVoice(clip)
-        voiceStatus = "Voice message sent (${clip.size} bytes)"
+        pendingVoice = clip
+        voiceStatus = "Voice attached — it will be sent with your SOS"
+    }
+
+    fun discardVoice() {
+        pendingVoice = null
+        voiceStatus = ""
     }
 
     fun cancelRecording() {
@@ -163,8 +172,22 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
         role = null
     }
 
-    fun sendSos(category: String, urgency: Int, gist: String, lang: String, locationHint: String) =
+    /**
+     * Send the SOS, then the attached recording if there is one.
+     *
+     * Order matters. The text envelope is one 104-byte frame — under a fifth of a second
+     * on air — and carries the urgency and the coordinates. The audio is ~16 frames and
+     * several seconds. The rescuer must have the actionable part before the channel
+     * disappears under the clip.
+     */
+    fun sendSos(category: String, urgency: Int, gist: String, lang: String, locationHint: String) {
         service.sendSos(category, urgency, gist, lang, locationHint, lat, lng)
+        pendingVoice?.let { clip ->
+            service.sendVoice(clip, VoiceRecorder.CODEC)
+            pendingVoice = null
+            voiceStatus = "Voice message sent with your SOS (${clip.size} bytes)"
+        }
+    }
 
     fun accept(sos: SosMessage) = service.accept(sos)
 

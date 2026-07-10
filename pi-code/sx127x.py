@@ -62,6 +62,10 @@ OPMODE_RESET_VALUE = 0x09  # FSK standby, low-frequency mode — the chip's powe
 
 # RegIrqFlags
 IRQ_RX_TIMEOUT = 0x80
+# A transmit that finishes in less than this fraction of its theoretical time on air
+# did not happen. Loose enough for clock jitter, tight enough to catch a dead radio.
+MIN_AIRTIME_FRACTION = 0.5
+
 IRQ_RX_DONE = 0x40
 IRQ_CRC_ERROR = 0x20
 IRQ_TX_DONE = 0x08
@@ -329,6 +333,25 @@ class Radio:
             return rose and bool(flags & IRQ_CAD_DONE)
 
     # --- transmit -----------------------------------------------------------
+    def in_lora_mode(self) -> bool:
+        """False if the chip has fallen back to FSK — i.e. it reset behind our back.
+
+        This matters more than it looks. RegIrqFlags (0x12) addresses a *different*
+        register in FSK mode, and its bits read as set, so `send()` sees TxDone
+        immediately, reports a few tenths of a millisecond of airtime, transmits
+        nothing, and returns success. RegVersion still reads 0x12, so pre-flight passes
+        too. The only tell is this bit.
+        """
+        with self._lock:
+            return bool(self._read(REG_OP_MODE) & LONG_RANGE_MODE)
+
+    def reinit(self) -> None:
+        """Re-run the power-on sequence and resume receiving. For recovering a radio
+        that reset itself mid-run."""
+        with self._lock:
+            self.open()
+            self._resume_rx_locked()
+
     def send(self, payload: bytes, timeout_s: float = 5.0) -> float:
         """Transmit one frame. Returns measured airtime in seconds. Blocks."""
         if not payload:
@@ -337,6 +360,11 @@ class Radio:
             raise LoraError(f"frame {len(payload)}B exceeds max_payload {self.cfg.max_payload}B")
 
         with self._lock:
+            if not self.in_lora_mode():
+                raise LoraError(
+                    f"radio '{self.name}' is no longer in LoRa mode — it reset behind our "
+                    "back. Nothing it 'sends' would leave the antenna."
+                )
             self._tx_active = True
             try:
                 self._set_mode(MODE_STDBY)
@@ -357,6 +385,18 @@ class Radio:
                     raise LoraError(f"radio '{self.name}': TxDone timeout after {timeout_s}s")
                 airtime = time.monotonic() - t0
                 self._write(REG_IRQ_FLAGS, 0xFF)
+
+                # Physics check. A frame's time on air is set by SF, bandwidth and length;
+                # it cannot come in far under that. If it does, TxDone was already set
+                # when we looked, the antenna radiated nothing, and reporting success here
+                # would put a fabricated LORA_TX row in the evidence log.
+                floor = MIN_AIRTIME_FRACTION * self.cfg.airtime_s(len(payload))
+                if airtime < floor:
+                    raise LoraError(
+                        f"radio '{self.name}': TxDone fired after {airtime * 1000:.1f} ms but "
+                        f"{len(payload)} bytes need {self.cfg.airtime_s(len(payload)) * 1000:.0f} ms "
+                        "on air. The frame was never transmitted."
+                    )
                 return airtime
             finally:
                 self._tx_active = False
@@ -405,6 +445,11 @@ class Radio:
     def _drain_rx(self) -> Optional[RxPacket]:
         with self._lock:
             if self._tx_active:
+                return None
+            # In FSK (i.e. after the chip reset itself) 0x12 is a different register and
+            # reads with bits set, so RxDone looks true and we would "receive" a frame of
+            # FIFO garbage. One extra SPI read, only once DIO0 has actually risen.
+            if not self._read(REG_OP_MODE) & LONG_RANGE_MODE:
                 return None
             flags = self._read(REG_IRQ_FLAGS)
             if not flags & IRQ_RX_DONE:

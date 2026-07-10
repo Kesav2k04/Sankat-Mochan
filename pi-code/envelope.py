@@ -50,7 +50,7 @@ VOICE_HEADER = 16
 VOICE_STRUCT = ">BBB4sHHHBBB"
 MAX_VOICE_CHUNK = 200    # keeps a frame at 216 B — inside LoRa's 255 and the BLE MTU
 MAX_VOICE_CHUNKS = 512   # a clip longer than this is not a rescue message
-CODECS = {1: "ogg/opus"}
+CODECS = {1: "ogg/opus", 2: "3gpp/amr-nb"}
 
 
 @dataclass(frozen=True)

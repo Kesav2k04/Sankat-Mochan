@@ -225,9 +225,9 @@ class BleMeshService(context: Context) {
      * Send a recorded clip. Every chunk is marked seen locally first, so the copy that
      * loops back from a relay is dropped rather than re-broadcast.
      */
-    fun sendVoice(clip: ByteArray) {
+    fun sendVoice(clip: ByteArray, codec: Int) {
         val chunks = try {
-            VoiceChunk.split(nodeId, voiceSeq++, clip)
+            VoiceChunk.split(nodeId, voiceSeq++, clip, codec)
         } catch (e: IllegalArgumentException) {
             store.log("Voice message too long to send")
             return
