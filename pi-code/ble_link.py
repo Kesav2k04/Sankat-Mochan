@@ -113,7 +113,12 @@ class BleLink(nodemod.Link):
         self._max_write = 0
         self._subscribed = False
 
-    async def send(self, raw: bytes, msg_id: str) -> bool:
+    async def send(self, raw: bytes, msg_id: str, *,
+                   repeats: int | None = None, post_delay_s: float = 0.0) -> bool:
+        # BLE writes are ACKed at the ATT layer and point-to-point, so the LoRa airtime
+        # knobs (repeats / inter-chunk yield) do not apply — accept and ignore them so
+        # MeshNode can call every link uniformly.
+        del repeats, post_delay_s
         if not self.ready:
             # Not a debug detail: the message is now lost, and nobody is holding it.
             self._log.warning("[%s] LOST %s — the phone is not connected right now, "
@@ -288,7 +293,7 @@ class BleManager:
                                ", ".join(p.describe() for p in group))
         return roster
 
-    def maintain(self, link: BleLink, on_bytes: Callable[[bytes], "asyncio.Future"],
+    def maintain(self, link: BleLink, on_bytes: Callable[[bytes], None],
                  on_state: Callable[[bool], None] | None = None) -> asyncio.Task:
         task = asyncio.create_task(
             self._keep_connected(link, on_bytes, on_state), name=f"ble-{link.address}"
@@ -316,7 +321,10 @@ class BleManager:
                                      state="connected", mtu=mtu)
 
                     def handler(_char, data: bytearray) -> None:
-                        asyncio.create_task(on_bytes(bytes(data)))
+                        # Hand off to the node's bounded intake queue (a fast, non-blocking
+                        # enqueue) rather than spawning a task per notification — an
+                        # unbounded task-per-frame was a DoS vector (mesh-transmission.md D1).
+                        on_bytes(bytes(data))
 
                     await asyncio.wait_for(client.start_notify(link._char, handler),
                                            timeout=GATT_OP_TIMEOUT_S)

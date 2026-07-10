@@ -61,16 +61,27 @@
   },
 
   "uplink": {
-    "_comment": "POST each envelope the gateway node accepts to the AI-PC dashboard. Never put secrets here; use env vars.",
+    "_comment": "POST each envelope the gateway node accepts to the AI-PC dashboard. Never put secrets here; use env vars. outbox_max caps the durable SOS queue: on overflow we REFUSE new low-urgency envelopes and raise an alarm, but NEVER drop an already-accepted one (see mesh-transmission.md D4).",
     "enabled": false,
     "url": null,
-    "timeout_s": 3.0
+    "timeout_s": 3.0,
+    "outbox_max": 5000
   },
 
   "voice": {
-    "_comment": "Pi-side of the voice NACK repair loop. When gateway reassembly stalls, we ask the victim phone to resend the pieces the LoRa hop dropped. node_id is this gateway's 4-char requester id on the mesh (alnum, <=4 chars; keep it distinct from any phone id). nack_quiet_s is how long a clip must be silent before we ask again (a touch longer than the phone's 3s so phone-to-phone repair goes first).",
+    "_comment": "Pi-side of the voice NACK repair loop. When gateway reassembly stalls, we ask the victim phone to resend the pieces the LoRa hop dropped. node_id is this gateway's 4-char requester id on the mesh (alnum, <=4 chars; keep it distinct from any phone id). nack_quiet_s is how long a clip must be silent before we ask again (a touch longer than the phone's 3s so phone-to-phone repair goes first). upload_concurrency is BOTH the voice HTTP thread-pool size AND the per-pass upload semaphore (signed-off cross-owner contract: default pool stays radio-only, voice gets its own bounded pool of this many workers). upload_connect_s/upload_read_s bound each POST so a dead AI-PC can't pin a worker.",
     "node_id": "PiG1",
     "nack_quiet_s": 4.0,
-    "sweep_interval_s": 1.0
+    "sweep_interval_s": 1.0,
+    "upload_concurrency": 2,
+    "upload_connect_s": 5.0,
+    "upload_read_s": 30.0
+  },
+
+  "ingest": {
+    "_comment": "All inbound mesh frames (BLE + LoRa) are untrusted (CLAUDE.md #8). Each MeshNode drains a bounded queue; frames over queue_max are dropped-and-logged rather than spawning unbounded tasks. global_frames_per_s is a spoof-proof ceiling on TOTAL accepted frames/sec (origins are unauthenticated, so a per-origin cap is bypassable — the global cap is the real DoS defence, see mesh-transmission.md D1/M4). seen_max bounds the dedup ring.",
+    "queue_max": 256,
+    "global_frames_per_s": 50.0,
+    "seen_max": 4096
   }
 }

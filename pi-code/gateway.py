@@ -156,6 +156,38 @@ async def radio_watchdog(radios: Dict[str, Radio], logger, chain: clog.ChainLog,
                 chain.emit(clog.DROP, name, radio=name, reason="reinit_failed", op_mode=op3)
 
 
+async def software_watchdog(nodes, edge, logger, stop: asyncio.Event,
+                            period_s: float = 5.0, max_age_s: float = 30.0) -> None:
+    """Liveness for the SOFTWARE pipelines the radio watchdog doesn't cover: the RX
+    drainers and the edge sender/voice-uploader loops. Each stamps a monotonic progress
+    time; if one stops ticking, we LOG AND ALERT (mesh-transmission.md A7/M6).
+
+    Deliberately log-only for the event: a human operator is present, and an auto-restart
+    loop can mask a genuinely wedged radio. Auto-restart is a post-demo item.
+    """
+    now = time.monotonic
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=period_s)
+            return
+        except asyncio.TimeoutError:
+            pass
+        for name, node in nodes.items():
+            age = now() - getattr(node, "rx_progress", now())
+            if age > max_age_s:
+                logger.error("WATCHDOG: RX drainer '%s' has not made progress in %.0fs — "
+                             "it may be wedged. (No auto-restart; please check the gateway.)",
+                             name, age)
+            if getattr(node, "critical_alarm", False):
+                logger.error("WATCHDOG: node '%s' raised a CRITICAL-INTAKE alarm — an SOS "
+                             "could not be queued. The gateway is overwhelmed.", name)
+        if edge is not None:
+            for who, age in edge.stalled_loops(max_age_s):
+                logger.error("WATCHDOG: edge '%s' loop stalled for %.0fs — it may be wedged. "
+                             "(No auto-restart; please check the link to the AI PC.)",
+                             who, age)
+
+
 async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
     """Poll until any valid mesh phone appears (or the operator gives up)."""
     retry = float(cfg["ble"]["peer_retry_s"])
@@ -189,7 +221,7 @@ def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog,
             phone.node_id, phone.role, connected
         )
     manager.maintain(
-        bl, lambda raw, node=node, bl=bl: node.on_ble_bytes(bl, raw), on_state=on_state
+        bl, lambda raw, node=node, bl=bl: node.submit_ble(bl, raw), on_state=on_state
     )
     logger.info("attached phone %s to radio '%s'", phone.describe(), name)
 
@@ -319,10 +351,17 @@ async def run() -> int:
                             msg.id, msg.type)
 
         up = cfg["uplink"]
+        voice_cfg = cfg["voice"]
         if up["enabled"]:
             ws_url = up.get("ws") or _derive_ws_url(up["url"])
-            edge = EdgeUplink(ws_url, up["url"], up.get("outbox", "edge_outbox.sqlite"),
-                              on_dispatch, logger)
+            edge = EdgeUplink(
+                ws_url, up["url"], up.get("outbox", "edge_outbox.sqlite"),
+                on_dispatch, logger,
+                outbox_max=up.get("outbox_max"),
+                voice_concurrency=int(voice_cfg.get("upload_concurrency", 2)),
+                voice_connect_s=float(voice_cfg.get("upload_connect_s", 5.0)),
+                voice_read_s=float(voice_cfg.get("upload_read_s", 30.0)),
+            )
             edge_task = asyncio.create_task(edge.run(stop))
             logger.info("edge link to AI PC: %s (durable outbox, HTTP fallback %s)",
                         ws_url, up["url"])
@@ -340,8 +379,24 @@ async def run() -> int:
             if edge is not None:
                 edge.send_envelope(msg.to_dict())
 
-        nodes["field"] = nodemod.MeshNode("field", logger, chain)
-        nodes["gateway"] = nodemod.MeshNode("gateway", logger, chain, on_accept=on_accept)
+        ing = cfg.get("ingest", {})
+        node_kwargs = dict(
+            seen_max=int(ing.get("seen_max", 4096)),
+            queue_max=int(ing.get("queue_max", 256)),
+            global_frames_per_s=float(ing.get("global_frames_per_s", 50.0)),
+        )
+        nodes["field"] = nodemod.MeshNode("field", logger, chain, **node_kwargs)
+        nodes["gateway"] = nodemod.MeshNode("gateway", logger, chain,
+                                            on_accept=on_accept, **node_kwargs)
+        # Bounded RX intake: two lanes + one drainer per node (preserves loop-freedom).
+        for name in NODE_NAMES:
+            nodes[name].start_intake(loop, stop)
+
+        # Surface a node's critical-intake alarm to the dashboard alongside the outbox alarm.
+        # The gateway node is the one that uplinks SOS traffic, so its lane is what matters.
+        if edge is not None:
+            gw_node = nodes["gateway"]
+            edge.status_extra = lambda n=gw_node: {"critical_intake_alarm": n.critical_alarm}
 
         if edge is not None:
             voice_nack_task = asyncio.create_task(
@@ -356,11 +411,13 @@ async def run() -> int:
             nodes[name].add_link(link)
             lora_links[name] = link
 
-        # Radio RX runs on its own thread; hop back onto the loop to do mesh work.
+        # Radio RX runs on its own thread; enqueue onto the node's bounded intake queue
+        # (thread-safe) rather than scheduling a coroutine per packet — an unbounded
+        # per-packet task/coroutine was a DoS vector (mesh-transmission.md D1).
         for name in NODE_NAMES:
             n, l = nodes[name], lora_links[name]
             radios[name].start_receiving(
-                lambda pkt, n=n, l=l: asyncio.run_coroutine_threadsafe(n.on_lora_frame(l, pkt), loop)
+                lambda pkt, n=n, l=l: n.submit_lora(l, pkt)
             )
 
         if cfg["ble"]["enabled"]:
@@ -394,10 +451,12 @@ async def run() -> int:
                            "alone, with no phones attached")
 
         watchdog = asyncio.create_task(radio_watchdog(radios, logger, chain, stop))
+        sw_watchdog = asyncio.create_task(software_watchdog(nodes, edge, logger, stop))
         try:
             await stop.wait()
         finally:
             watchdog.cancel()
+            sw_watchdog.cancel()
         logger.info("shutting down")
 
     finally:
@@ -419,6 +478,8 @@ async def run() -> int:
                 await edge_task
             except asyncio.CancelledError:
                 pass
+        if edge is not None:
+            edge.close()   # release the voice thread pool + HTTP session
         await manager.close()
         for r in radios.values():
             try:
