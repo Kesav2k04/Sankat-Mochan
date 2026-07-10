@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -56,6 +59,9 @@ import androidx.compose.ui.unit.sp
 import com.sankatmochan.mesh.MeshViewModel
 import com.sankatmochan.mesh.ui.theme.urgencyColors
 import kotlinx.coroutines.delay
+
+/** Kept in step with VoiceRecorder.MAX_MILLIS. */
+private const val MAX_VOICE_SECONDS = 5
 
 private val CATEGORIES = listOf(
     "trapped" to "Trapped",
@@ -141,6 +147,9 @@ fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
                     repeat = sent.isNotEmpty(),
                     onSend = { vm.sendSos(category, urgency, gist, lang, location) }
                 )
+
+                Spacer(Modifier.height(12.dp))
+                VoiceButton(vm)
 
                 Spacer(Modifier.height(10.dp))
                 ReachabilityNote(peers)
@@ -256,6 +265,75 @@ private fun ReachabilityNote(peers: Int) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+/**
+ * Hold to speak, release to send.
+ *
+ * The 5-second cap is not a UI nicety. A 5-second Opus clip is ~3.7 kB, which is 22 LoRa
+ * frames and about 7 seconds of airtime at SF7 — during which nobody else's SOS can get
+ * through. Ten seconds would double that. The countdown shows the budget being spent.
+ */
+@Composable
+private fun VoiceButton(vm: MeshViewModel) {
+    val recording = vm.isRecording
+    var remaining by remember { mutableIntStateOf(MAX_VOICE_SECONDS) }
+
+    // Hard stop at the cap even if the finger never lifts.
+    LaunchedEffect(recording) {
+        if (!recording) { remaining = MAX_VOICE_SECONDS; return@LaunchedEffect }
+        remaining = MAX_VOICE_SECONDS
+        while (remaining > 0) {
+            delay(1000)
+            remaining--
+        }
+        vm.stopRecordingAndSend()
+    }
+
+    Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (recording) urgencyColors.critical else MaterialTheme.colorScheme.surfaceVariant)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            vm.startRecording()
+                            // Suspends until the finger lifts or the gesture is cancelled.
+                            val completed = tryAwaitRelease()
+                            if (completed) vm.stopRecordingAndSend() else vm.cancelRecording()
+                        }
+                    )
+                }
+                .semantics { contentDescription = "Hold to record a voice message" },
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Mic,
+                    contentDescription = null,
+                    tint = if (recording) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.size(10.dp))
+                Text(
+                    text = if (recording) "Recording — release to send ($remaining s)"
+                    else "Hold to record a voice message",
+                    fontWeight = FontWeight.Bold,
+                    color = if (recording) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (vm.voiceStatus.isNotBlank() && !recording) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                vm.voiceStatus,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

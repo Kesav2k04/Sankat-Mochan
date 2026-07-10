@@ -118,7 +118,12 @@ def _make_uplink(cfg: Dict, logger, chain: clog.ChainLog):
 
     url, timeout = up["url"], up["timeout_s"]
 
-    async def hook(msg: env.Envelope) -> None:
+    async def hook(msg) -> None:
+        # Voice chunks are opaque binary carried for the phones; the dashboard takes
+        # JSON envelopes only, and a clip is meaningless one chunk at a time.
+        if isinstance(msg, env.VoiceChunk):
+            return
+
         def post():
             return requests.post(url, json=msg.to_dict(), timeout=timeout)
         try:

@@ -35,9 +35,12 @@ class MainActivity : ComponentActivity() {
         Manifest.permission.BLUETOOTH_CONNECT,
     )
 
-    // Location is requested in the same prompt but is OPTIONAL — if denied, the
-    // mesh still starts and SOS still sends, just without GPS coordinates.
-    private val requestedPermissions = blePermissions + Manifest.permission.ACCESS_FINE_LOCATION
+    // Location and the microphone are requested in the same prompt but are OPTIONAL — if
+    // denied, the mesh still starts and a text SOS still sends, just without coordinates
+    // or the ability to record a voice message.
+    private val requestedPermissions = blePermissions +
+        Manifest.permission.ACCESS_FINE_LOCATION +
+        Manifest.permission.RECORD_AUDIO
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->

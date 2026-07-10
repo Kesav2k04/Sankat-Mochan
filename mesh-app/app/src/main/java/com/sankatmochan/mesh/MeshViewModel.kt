@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import com.sankatmochan.mesh.mesh.BleMeshService
 import com.sankatmochan.mesh.mesh.LocationProvider
 import com.sankatmochan.mesh.mesh.MeshRole
+import com.sankatmochan.mesh.mesh.VoiceRecorder
 import com.sankatmochan.mesh.model.SosMessage
 
 /**
@@ -92,6 +93,48 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     val sent = service.store.sent
     val eventLog = service.store.eventLog
     val acceptedIds = service.store.acceptedIds
+    val voiceClips = service.voiceClips.clips
+
+    private val recorder = VoiceRecorder(app)
+
+    var isRecording by mutableStateOf(false)
+        private set
+    var voiceStatus by mutableStateOf("")
+        private set
+
+    /** Begin recording. The caller must already hold RECORD_AUDIO. */
+    fun startRecording() {
+        if (isRecording) return
+        if (!recorder.start()) {
+            voiceStatus = "Could not open the microphone"
+            return
+        }
+        isRecording = true
+        voiceStatus = "Recording…"
+    }
+
+    /**
+     * Stop and transmit. A 5-second Opus clip is ~22 LoRa frames and about 7 seconds of
+     * airtime at SF7, so the channel is busy for a while after this returns.
+     */
+    fun stopRecordingAndSend() {
+        if (!isRecording) return
+        isRecording = false
+        val clip = recorder.stop()
+        if (clip == null) {
+            voiceStatus = "Nothing recorded — hold the button while you speak"
+            return
+        }
+        service.sendVoice(clip)
+        voiceStatus = "Voice message sent (${clip.size} bytes)"
+    }
+
+    fun cancelRecording() {
+        if (!isRecording) return
+        isRecording = false
+        recorder.cancel()
+        voiceStatus = ""
+    }
 
     /** True when this phone refuses to peer with other phones, forcing traffic
      *  out through the LoRa gateway. See [BleMeshService.loraOnly]. */
@@ -126,6 +169,7 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     fun accept(sos: SosMessage) = service.accept(sos)
 
     override fun onCleared() {
+        recorder.cancel()
         stopLocation()
         service.stop()
     }
