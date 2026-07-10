@@ -18,7 +18,7 @@
     "sync_word": 18,
     "preamble_len": 8,
     "crc": true,
-    "tx_repeats": 1,
+    "tx_repeats": 2,
     "max_payload": 255,
     "startup_probe": true,
     "csma": {
@@ -65,5 +65,12 @@
     "enabled": false,
     "url": null,
     "timeout_s": 3.0
+  },
+
+  "voice": {
+    "_comment": "Pi-side of the voice NACK repair loop. When gateway reassembly stalls, we ask the victim phone to resend the pieces the LoRa hop dropped. node_id is this gateway's 4-char requester id on the mesh (alnum, <=4 chars; keep it distinct from any phone id). nack_quiet_s is how long a clip must be silent before we ask again (a touch longer than the phone's 3s so phone-to-phone repair goes first).",
+    "node_id": "PiG1",
+    "nack_quiet_s": 4.0,
+    "sweep_interval_s": 1.0
   }
 }
