@@ -34,6 +34,16 @@ private val LightColors = lightColorScheme(
     outline = Color(0xFF857269),
     error = Color(0xFFC62828),
     onError = Color.White,
+    // Filled Cards read from the surfaceContainer* ramp. Left unset, they fall back to
+    // M3's cool baseline — which is why cards looked lavender on our warm paper. These
+    // keep the whole card family in the paper/ink key.
+    surfaceBright = Color.White,
+    surfaceDim = Color(0xFFDED8D0),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF8F4EE),
+    surfaceContainer = Color(0xFFF3EEE7),
+    surfaceContainerHigh = Color(0xFFEDE7DF),
+    surfaceContainerHighest = Color(0xFFE7E0D7),
 )
 
 // Previously only four roles were set here, so every colour the app did not name
@@ -54,6 +64,15 @@ private val DarkColors = darkColorScheme(
     outline = Color(0xFFA08D85),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
+    // Warm-neutral card ramp, so dark-mode cards carry the same brown-tinted key as the
+    // rest of the theme instead of M3's baseline cool grey.
+    surfaceBright = Color(0xFF3A3532),
+    surfaceDim = Color(0xFF121212),
+    surfaceContainerLowest = Color(0xFF0D0D0D),
+    surfaceContainerLow = Color(0xFF1A1817),
+    surfaceContainer = Color(0xFF211E1C),
+    surfaceContainerHigh = Color(0xFF2B2725),
+    surfaceContainerHighest = Color(0xFF35302D),
 )
 
 /**

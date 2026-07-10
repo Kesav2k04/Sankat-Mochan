@@ -261,7 +261,7 @@ private fun ReachabilityNote(peers: Int) {
             text = if (connected)
                 "Connected — your SOS goes out immediately"
             else
-                "Nothing in range yet — your SOS is held and sent the moment something is",
+                "Nothing in range yet — your SOS is held and sent the moment a device comes into range",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

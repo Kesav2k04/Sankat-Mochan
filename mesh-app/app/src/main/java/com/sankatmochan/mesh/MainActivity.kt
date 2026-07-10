@@ -6,14 +6,19 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.sankatmochan.mesh.mesh.MeshRole
 import com.sankatmochan.mesh.ui.LoraOnlyBanner
@@ -71,6 +76,10 @@ class MainActivity : ComponentActivity() {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // targetSdk 35 on Android 15+ draws the app edge-to-edge with no automatic
+        // system-bar insets. This opts in explicitly (transparent bars, icon contrast
+        // following the theme) so the layouts below can pad for the bars themselves.
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
             SankatMochanTheme {
@@ -103,14 +112,19 @@ private fun AppRoot(vm: MeshViewModel, onPickRole: (MeshRole) -> Unit) {
         else -> {
             val peers by vm.peerCount.collectAsState()
             val loraOnly by vm.loraOnly.collectAsState()
-            // Rendered once here so all three role screens inherit the switch.
-            Surface(color = MaterialTheme.colorScheme.background) {
-                Column {
+            // Rendered once here so all three role screens inherit the switch. The Surface
+            // fills behind the system bars; safeDrawingPadding keeps the content clear of the
+            // status bar, the navigation bar, and the keyboard, and consumes those insets so
+            // the child top bars don't pad for the status bar a second time.
+            Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                     LoraOnlyBanner(enabled = loraOnly, onChange = vm::setLoraOnly)
-                    when (role) {
-                        MeshRole.VICTIM -> VictimScreen(vm, peers) { vm.leaveRole() }
-                        MeshRole.RESPONDER -> ResponderScreen(vm, peers) { vm.leaveRole() }
-                        MeshRole.RELAY -> RelayScreen(vm, peers) { vm.leaveRole() }
+                    Box(modifier = Modifier.weight(1f)) {
+                        when (role) {
+                            MeshRole.VICTIM -> VictimScreen(vm, peers) { vm.leaveRole() }
+                            MeshRole.RESPONDER -> ResponderScreen(vm, peers) { vm.leaveRole() }
+                            MeshRole.RELAY -> RelayScreen(vm, peers) { vm.leaveRole() }
+                        }
                     }
                 }
             }
