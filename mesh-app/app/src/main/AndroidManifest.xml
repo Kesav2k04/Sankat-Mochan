@@ -25,6 +25,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Notify the victim on their own phone when a responder accepts ("help is on the way").
+         Runtime-requested on Android 13+. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- BLE hardware is required for this app to function at all. -->
     <uses-feature
         android:name="android.hardware.bluetooth_le"

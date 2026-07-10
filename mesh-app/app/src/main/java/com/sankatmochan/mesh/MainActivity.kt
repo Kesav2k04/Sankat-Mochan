@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -61,12 +62,15 @@ class MainActivity : ComponentActivity() {
         Manifest.permission.BLUETOOTH_CONNECT,
     )
 
-    // Location and the microphone are requested in the same prompt but are OPTIONAL — if
-    // denied, the mesh still starts and a text SOS still sends, just without coordinates
-    // or the ability to record a voice message.
+    // Location, the microphone and notifications are requested in the same prompt but are all
+    // OPTIONAL — if denied, the mesh still starts and a text SOS still sends, just without
+    // coordinates, a voice clip, or the "help is on the way" banner. POST_NOTIFICATIONS is a
+    // runtime permission only on Android 13+.
     private val requestedPermissions = blePermissions +
         Manifest.permission.ACCESS_FINE_LOCATION +
-        Manifest.permission.RECORD_AUDIO
+        Manifest.permission.RECORD_AUDIO +
+        (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray())
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
@@ -99,28 +103,25 @@ class MainActivity : ComponentActivity() {
         }
 
     // The mesh is useless with Bluetooth or location switched off, so we chase them the whole
-    // time the app is in front: on launch, on every return to the foreground, and the instant
-    // either radio is toggled off underneath us. `suppressNextRadioCheck` stops the resume that
-    // fires when we come back FROM one of these prompts from immediately firing another — so a
-    // user who declines is nagged again next time they open the app, not trapped in a loop.
+    // time the app is in front. Only BLUETOOTH is enforced — the mesh cannot run without it.
+    // Location is deliberately NOT forced: an SOS sends fine with no coordinates, so nagging
+    // the user to turn GPS on would be wrong. `suppressNextRadioCheck` stops the resume that
+    // fires when we come back FROM the Bluetooth prompt from immediately firing another.
     private var suppressNextRadioCheck = false
 
     private val enableBtLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             suppressNextRadioCheck = true
-            // Bluetooth handled — if it's on now but location is still off, chase that next.
-            if (isBluetoothOn() && !isLocationOn()) promptEnableLocation()
         }
 
-    private val locationSettingsLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            suppressNextRadioCheck = true
-        }
-
-    // Re-check the moment a radio flips off while we're in the foreground.
+    // React the moment a radio changes under us while we're in the foreground: chase
+    // Bluetooth back on, but for location only re-sync our own state (never force it).
     private val radioStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            enforceRadios()
+            when (intent?.action) {
+                BluetoothAdapter.ACTION_STATE_CHANGED -> enforceRadios()
+                LocationManager.MODE_CHANGED_ACTION -> vm.refreshLocation()
+            }
         }
     }
 
@@ -156,6 +157,9 @@ class MainActivity : ComponentActivity() {
         ContextCompat.registerReceiver(
             this, radioStateReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        // Re-sync the location indicator with reality every time we come forward — the user
+        // may have toggled Location off in the shade while the app was in the background.
+        vm.refreshLocation()
         if (suppressNextRadioCheck) {
             suppressNextRadioCheck = false
         } else {
@@ -191,13 +195,11 @@ class MainActivity : ComponentActivity() {
 
     private fun isBluetoothOn(): Boolean = bluetoothAdapter()?.isEnabled == true
 
-    private fun isLocationOn(): Boolean =
-        (getSystemService(Context.LOCATION_SERVICE) as? LocationManager)?.isLocationEnabled == true
-
     /**
-     * Chase Bluetooth first, then location — one system prompt at a time. Android forbids a
-     * normal app from flipping either radio on silently, so the strongest we can do is put the
-     * enable dialog (Bluetooth) or the settings screen (location) in front of the user.
+     * Chase Bluetooth back on — and only Bluetooth. Android forbids a normal app from
+     * flipping a radio on silently, so the strongest we can do is put the system enable
+     * dialog in front of the user. Location is intentionally left alone: an SOS goes out with
+     * or without a fix, so forcing GPS on would be the wrong kind of pushy.
      */
     private fun enforceRadios() {
         // ACTION_REQUEST_ENABLE needs BLUETOOTH_CONNECT, and while that permission is still
@@ -210,10 +212,6 @@ class MainActivity : ComponentActivity() {
 
         if (bluetoothAdapter() != null && !isBluetoothOn()) {
             promptEnableBluetooth()
-            return
-        }
-        if (!isLocationOn()) {
-            promptEnableLocation()
         }
     }
 
@@ -223,19 +221,6 @@ class MainActivity : ComponentActivity() {
         } catch (_: SecurityException) {
             // BLUETOOTH_CONNECT was revoked between the check and the launch — the permission
             // flow will pick it up on the next pass.
-        }
-    }
-
-    private fun promptEnableLocation() {
-        Toast.makeText(
-            this,
-            "Turn on Location so your SOS carries your coordinates",
-            Toast.LENGTH_LONG
-        ).show()
-        try {
-            locationSettingsLauncher.launch(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-        } catch (_: Exception) {
-            suppressNextRadioCheck = true // no settings screen to resolve to; don't loop
         }
     }
 

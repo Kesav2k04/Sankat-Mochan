@@ -5,11 +5,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.sankatmochan.mesh.mesh.BleMeshService
 import com.sankatmochan.mesh.mesh.LocationProvider
 import com.sankatmochan.mesh.mesh.MeshRole
+import com.sankatmochan.mesh.mesh.SentSos
 import com.sankatmochan.mesh.mesh.VoiceRecorder
 import com.sankatmochan.mesh.model.SosMessage
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 /**
  * Thin bridge between Compose and the mesh. Holds the single [BleMeshService]
@@ -21,6 +25,27 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     private val locationProvider = LocationProvider(app)
 
     val nodeId: String get() = service.nodeId
+
+    // Which stage we've already raised a banner for, per SOS id, so each step notifies once.
+    private val notifiedStage = HashMap<String, Int>()
+
+    init {
+        // When the mesh bumps one of *our* SOS messages to "reached control room" (1) or
+        // "help on the way" (2), surface it as a real notification — the person may not be
+        // watching the screen. Only the origin phone holds the SOS in `sent`, so this only
+        // ever fires for the victim who sent it.
+        service.store.sent
+            .onEach { list -> list.forEach(::maybeNotify) }
+            .launchIn(viewModelScope)
+    }
+
+    private fun maybeNotify(s: SentSos) {
+        val already = notifiedStage[s.message.id] ?: 0
+        if (s.stage in 1..2 && s.stage > already) {
+            notifiedStage[s.message.id] = s.stage
+            RescueNotifier.notifyStatus(getApplication<Application>(), s)
+        }
+    }
 
     /** Latest GNSS fix, or null if we don't have one yet. Optional — an SOS
      *  sends fine without it, and is never blocked waiting for one. */
@@ -48,10 +73,16 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun startLocation() {
         if (!locationProvider.isLocationEnabled()) {
+            // Location is off: drop any fix we were holding so the indicator can't keep
+            // claiming we're located. An SOS still sends fine without coordinates.
+            clearFix()
+            needsPreciseLocation = false
             locationStatus = "Location is switched off — turn it on in Settings. It works in aeroplane mode."
             return
         }
         if (!locationProvider.hasFineLocation() && !locationProvider.hasCoarseLocation()) {
+            clearFix()
+            needsPreciseLocation = false
             locationStatus = "Location permission was denied — grant it to send coordinates"
             return
         }
@@ -80,6 +111,14 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun stopLocation() {
         locationProvider.stop()
+    }
+
+    /** Forget the last GPS fix so nothing downstream (the location indicator, the SOS
+     *  envelope) can present a stale position as if it were live. */
+    private fun clearFix() {
+        lat = null
+        lng = null
+        fixTime = null
     }
 
     /** Re-check after the operator turns Location on from the system settings. */
