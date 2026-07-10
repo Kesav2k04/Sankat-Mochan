@@ -18,6 +18,7 @@
 # Supervision: if either process dies it is restarted, with backoff, for as long as this
 # script runs. Ctrl-C stops both cleanly. Each child's output is tee'd to logs/.
 set -uo pipefail
+shopt -s extglob
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$ROOT/.venv"
@@ -114,24 +115,80 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-# supervise <name> <logfile> <workdir> <command...>
+# --- live log formatting ---------------------------------------------------
+# Colour only when someone is actually watching; a redirected log full of escape
+# codes is worse than no colour. NO_COLOR=1 disables it outright.
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  C_RESET=$'\033[0m'; C_DIM=$'\033[2m'; C_RED=$'\033[31m'
+  C_YEL=$'\033[33m';  C_GRN=$'\033[32m'; C_CYN=$'\033[36m'; C_BOLD=$'\033[1m'
+else
+  C_RESET=""; C_DIM=""; C_RED=""; C_YEL=""; C_GRN=""; C_CYN=""; C_BOLD=""
+fi
+
+# Read a child's output line by line: tag it, colour it by severity, echo it to the
+# terminal, and append the *uncoloured* line to its log file.
+prefix_stream() {
+  local name="$1" tag_colour="$2" logfile="$3" line colour now shown
+  while IFS= read -r line; do
+    printf '%s\n' "$line" >>"$logfile"          # the file keeps the raw line
+    [[ -z "${line//[[:space:]]/}" ]] && continue  # blank lines help nobody
+
+    shown="$line"
+    # uvicorn pads every line with "INFO:" then a run of spaces. The severity is already
+    # carried by the colour, and the padding wrecks the alignment of everything else.
+    case "$shown" in
+      INFO:*)  shown="${shown#INFO:}"; shown="${shown##+([[:space:]])}" ;;
+    esac
+    # The gateway already stamps HH:MM:SS. Only stamp what does not.
+    if [[ ! "$shown" =~ ^[0-9]{2}:[0-9]{2}:[0-9]{2} ]]; then
+      printf -v now '%(%H:%M:%S)T' -1     # bash builtin: no fork per line
+      shown="$now $shown"
+    fi
+
+    case "$line" in
+      *ERROR*|*FAIL*|*Traceback*|*error:*)   colour="$C_RED" ;;
+      *WARNING*|*WARN*)                      colour="$C_YEL" ;;
+      *PASSED*|*READY*|*connected*|*" OK"*)  colour="$C_GRN" ;;
+      *DEBUG*)                               colour="$C_DIM" ;;
+      *)                                     colour="" ;;
+    esac
+    printf '%s%s%s %s%s%s\n' "$tag_colour" "[$name]" "$C_RESET" "$colour" "$shown" "$C_RESET"
+  done
+}
+
+# supervise <name> <logfile> <workdir> <colour> <command...>
 # Restarts the command whenever it exits non-zero, for as long as this script runs.
 # Backs off, so a process that dies instantly cannot spin the CPU.
 supervise() {
-  local name="$1" logfile="$2" workdir="$3"; shift 3
-  local child="" napper="" delay=1 fast_failures=0
+  local name="$1" logfile="$2" workdir="$3" tag_colour="$4"; shift 4
+  local child="" napper="" delay=1 fast_failures=0 launches=0
   # Propagate a stop to whatever we are currently waiting on, then leave.
   trap 'stop_tree "$child"; kill -TERM "$napper" 2>/dev/null; rm -f "$LOG_DIR/$name.child.pid"; exit 0' TERM INT
   while true; do
+    # Only announce a *re*start; the first launch is implied by the banner above.
+    (( launches++ ))
+    if (( launches > 1 )); then
+      printf '%s%s%s %srestarting…%s\n' "$tag_colour" "[$name]" "$C_RESET" "$C_YEL" "$C_RESET"
+    fi
     echo "[$name] starting: $*" >>"$logfile"
     local began=$SECONDS
     # setsid puts the child in a new process group, so `kill -- -$child` reaches its
     # whole tree. run.sh is a bash wrapper around gateway.py; killing only the wrapper
     # orphans gateway.py, which then keeps the radios busy and blocks the next start.
-    ( cd "$workdir" && exec setsid "$@" ) >>"$logfile" 2>&1 &
+    ( cd "$workdir" && exec setsid "$@" ) \
+        > >(prefix_stream "$name" "$tag_colour" "$logfile") 2>&1 &
     child=$!
     echo "$child" > "$LOG_DIR/$name.child.pid"
+
+    # If server.sh is SIGKILLed it cannot run its trap, and this supervisor would sit in
+    # `wait` forever with a live child holding the radios — which is exactly what makes
+    # the *next* run fail pre-flight with "GPIO busy". Watch the parent from the side.
+    ( while kill -0 "$MAIN_PID" 2>/dev/null; do sleep 2; done
+      kill -TERM -- "-$child" 2>/dev/null || kill -TERM "$child" 2>/dev/null ) &
+    local orphan_watch=$!
+
     wait "$child"; local rc=$?
+    kill -TERM "$orphan_watch" 2>/dev/null
     rm -f "$LOG_DIR/$name.child.pid"
     # If server.sh was SIGKILLed we cannot be told to stop, and restarting forever would
     # leave an orphan holding the port. Check the parent is still there.
@@ -140,7 +197,8 @@ supervise() {
       exit 0
     fi
     if [[ $rc -eq 0 ]]; then
-      echo "[$name] exited cleanly" | tee -a "$logfile"
+      printf '%s%s%s %sexited cleanly%s\n' "$tag_colour" "[$name]" "$C_RESET" "$C_GRN" "$C_RESET"
+      echo "[$name] exited cleanly" >>"$logfile"
       return 0
     fi
 
@@ -153,13 +211,17 @@ supervise() {
       fast_failures=0
     fi
     if (( fast_failures >= MAX_FAST_FAILURES )); then
-      echo "[$name] failed $fast_failures times in a row without staying up." | tee -a "$logfile"
-      echo "[$name] this will not fix itself. Giving up — see $logfile" | tee -a "$logfile"
+      printf '%s[%s]%s %sfailed %d times in a row without staying up. This will not fix itself.%s\n' \
+        "$tag_colour" "$name" "$C_RESET" "$C_RED" "$fast_failures" "$C_RESET"
+      printf '  the last error is above, and in %s\n' "$logfile"
+      echo "[$name] gave up after $fast_failures fast failures" >>"$logfile"
       kill -TERM "$MAIN_PID" 2>/dev/null
       return 1
     fi
 
-    echo "[$name] exited with status $rc — restarting in ${delay}s" | tee -a "$logfile"
+    printf '%s[%s]%s %sexited with status %d — restarting in %ds%s\n' \
+      "$tag_colour" "$name" "$C_RESET" "$C_YEL" "$rc" "$delay" "$C_RESET"
+    echo "[$name] exited with status $rc — restarting in ${delay}s" >>"$logfile"
     # `sleep $delay` would swallow Ctrl-C for up to 30s: bash defers a trap until the
     # foreground command finishes. Backgrounding it makes the wait interruptible.
     sleep "$delay" & napper=$!
@@ -215,7 +277,7 @@ if [[ "$MODE" == "post" || "$MODE" == "all" ]]; then
   or serve elsewhere:  ./server.sh $MODE --port 9100"
   fi
   echo "  http://$HOST:$PORT/   ·   ws://$HOST:$PORT/gateway"
-  supervise post "$LOG_DIR/command-post.log" "$POST_DIR" \
+  supervise post "$LOG_DIR/command-post.log" "$POST_DIR" "$C_CYN" \
     "$VENV/bin/uvicorn" app:app --host "$HOST" --port "$PORT" &
   SUPERVISORS+=($!)
 
@@ -253,10 +315,21 @@ $(pgrep -af "pi-code/gateway\.py" | sed 's/^/    /')
     echo "  no command post given — running the mesh without an uplink"
     echo "  (add --post http://<mac>:9000 to stream envelopes to the dashboard)"
   fi
-  supervise gateway "$LOG_DIR/gateway.log" "$ROOT/pi-code" "$ROOT/pi-code/run.sh" &
+  supervise gateway "$LOG_DIR/gateway.log" "$ROOT/pi-code" "$C_GRN" "$ROOT/pi-code/run.sh" &
   SUPERVISORS+=($!)
 fi
 
 echo
-echo "Running. Ctrl-C stops everything.   logs: $LOG_DIR/"
+printf '%s%s%s\n' "$C_BOLD" "────────────────────────────────────────────────────────────" "$C_RESET"
+printf '%s  Sankat-Mochan is running.  Ctrl-C stops everything.%s\n' "$C_BOLD" "$C_RESET"
+case "$MODE" in
+  post)    printf '  command post   %s\n' "http://$HOST:$PORT/" ;;
+  gateway) printf '  radios         field + gateway on 433 MHz\n'
+           [[ -n "$POST_BASE" ]] && printf '  uplink         %s\n' "$POST_BASE" ;;
+  all)     printf '  command post   %s\n' "http://$HOST:$PORT/"
+           printf '  radios         field + gateway on 433 MHz\n' ;;
+esac
+printf '  logs           %s/\n' "$LOG_DIR"
+printf '  audit the air  %s\n' "$ROOT/pi-code/run.sh proof"
+printf '%s%s%s\n\n' "$C_BOLD" "────────────────────────────────────────────────────────────" "$C_RESET"
 wait
