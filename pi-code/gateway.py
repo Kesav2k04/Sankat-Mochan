@@ -20,6 +20,7 @@ phones (airplane mode is fine — re-enable Bluetooth only).
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import signal
 import sys
@@ -36,10 +37,19 @@ import config as cfgmod
 import envelope as env
 import node as nodemod
 from sx127x import LoraConfig, Radio, gpio_cleanup, gpio_init
+from uplink import EdgeUplink
 
 NODE_NAMES = ("field", "gateway")
 
 PROBE_MAGIC = b"SANKAT-PROBE:"
+
+
+def _derive_ws_url(http_url: str) -> str:
+    """http://host:port/sos  →  ws://host:port/gateway (the EDGE-LINK channel)."""
+    from urllib.parse import urlparse, urlunparse
+    p = urlparse(http_url)
+    scheme = "wss" if p.scheme == "https" else "ws"
+    return urlunparse((scheme, p.netloc, "/gateway", "", "", ""))
 
 
 async def startup_probe(radios: Dict[str, Radio], lora_cfg: LoraConfig,
@@ -108,31 +118,6 @@ async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
     return None
 
 
-def _make_uplink(cfg: Dict, logger, chain: clog.ChainLog):
-    """POST accepted envelopes to the AI-PC dashboard. Optional and best-effort."""
-    up = cfg["uplink"]
-    if not up["enabled"]:
-        return None
-
-    import requests
-
-    url, timeout = up["url"], up["timeout_s"]
-
-    async def hook(msg: env.Envelope) -> None:
-        def post():
-            return requests.post(url, json=msg.to_dict(), timeout=timeout)
-        try:
-            resp = await asyncio.get_running_loop().run_in_executor(None, post)
-            chain.emit(clog.UPLINK, "gateway", msg_id=msg.id, status=resp.status_code)
-            logger.info("uplinked %s -> HTTP %s", msg.id, resp.status_code)
-        except Exception as e:
-            # Rule 10: never surface a stack trace on the live dashboard path.
-            logger.warning("uplink for %s failed: %s", msg.id, type(e).__name__)
-            chain.emit(clog.UPLINK, "gateway", msg_id=msg.id, status="failed")
-
-    return hook
-
-
 async def run() -> int:
     cfg = cfgmod.load()
     logger, chain = clog.setup(cfg)
@@ -154,6 +139,8 @@ async def run() -> int:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
 
+    edge: EdgeUplink | None = None
+    edge_task: asyncio.Task | None = None
     try:
         for name in NODE_NAMES:
             r = cfg["radios"][name]
@@ -170,11 +157,38 @@ async def run() -> int:
         if cfg["lora"]["startup_probe"] and not await startup_probe(radios, lora_cfg, logger, chain):
             return 3
 
-        uplink = _make_uplink(cfg, logger, chain)
-        nodes = {
-            "field": nodemod.MeshNode("field", logger, chain),
-            "gateway": nodemod.MeshNode("gateway", logger, chain, on_accept=uplink),
-        }
+        # Edge link to the AI PC (EDGE-LINK.md): durable, bidirectional, lossless.
+        nodes: Dict[str, nodemod.MeshNode] = {}
+
+        async def on_dispatch(env_dict: dict) -> None:
+            """Return path: an ACCEPTED / instruction from the AI PC, injected into the
+            mesh so it reaches the victim's phone over LoRa/BLE."""
+            msg = env.decode(json.dumps(env_dict).encode())
+            if msg is None:
+                logger.warning("dropping malformed dispatch from the AI PC")
+                return
+            gw = nodes.get("gateway")
+            if gw is not None:
+                await gw.originate(msg)
+                logger.info("return path: sent %s (%s) back toward the victim",
+                            msg.id, msg.type)
+
+        up = cfg["uplink"]
+        if up["enabled"]:
+            ws_url = up.get("ws") or _derive_ws_url(up["url"])
+            edge = EdgeUplink(ws_url, up["url"], up.get("outbox", "edge_outbox.sqlite"),
+                              on_dispatch, logger)
+            edge_task = asyncio.create_task(edge.run(stop))
+            logger.info("edge link to AI PC: %s (durable outbox, HTTP fallback %s)",
+                        ws_url, up["url"])
+
+        async def on_accept(msg: env.Envelope) -> None:
+            # Durable + idempotent: enqueued to the outbox, sent, deleted only on ACK.
+            if edge is not None:
+                edge.send_envelope(msg.to_dict())
+
+        nodes["field"] = nodemod.MeshNode("field", logger, chain)
+        nodes["gateway"] = nodemod.MeshNode("gateway", logger, chain, on_accept=on_accept)
 
         lora_links = {}
         for name in NODE_NAMES:
@@ -221,6 +235,12 @@ async def run() -> int:
         logger.info("shutting down")
 
     finally:
+        if edge_task is not None:
+            edge_task.cancel()
+            try:
+                await edge_task
+            except asyncio.CancelledError:
+                pass
         await manager.close()
         for r in radios.values():
             try:
