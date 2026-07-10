@@ -2,10 +2,15 @@
 #
 # Sankat-Mochan backend, one command.
 #
-#   ./server.sh              command post + LoRa gateway, supervised
+#   ./server.sh              command post + LoRa gateway on this machine
 #   ./server.sh post         command post only (no radios, no Bluetooth)
-#   ./server.sh gateway      LoRa gateway only (talks to an already-running post)
-#   ./server.sh --port 8000  serve on a different port
+#   ./server.sh gateway      LoRa gateway only, uplinking to a post elsewhere
+#   ./server.sh --port 8000  serve the local post on a different port
+#
+#   ./server.sh gateway --post http://Sivas-MacBook-Air.local:9000,http://10.83.166.233:9000
+#       Radios here, command post on the Mac. Candidates are tried in order and the
+#       first one answering /health wins — mDNS names go stale, IPs change, and a
+#       gateway that cannot reach its post should say so, not restart forever.
 #
 # The command post is a FastAPI app (command-post/app.py) served by uvicorn. The gateway
 # is pi-code/run.sh, which does its own pre-flight on the radios.
@@ -26,11 +31,13 @@ HEALTHY_AFTER_S=15   # a child that lives this long counts as "started"
 MAX_FAST_FAILURES=3
 
 MODE="all"
+POST_CANDIDATES="${SANKAT_POST:-}"   # comma-separated base URLs, e.g. http://mac.local:9000
 while [[ $# -gt 0 ]]; do
   case "$1" in
     post|gateway|all) MODE="$1"; shift ;;
     --port) PORT="$2"; shift 2 ;;
-    -h|--help) sed -n '3,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --post) POST_CANDIDATES="$2"; shift 2 ;;
+    -h|--help) sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -173,6 +180,20 @@ radios_busy() {
   pgrep -f "pi-code/gateway\.py" >/dev/null 2>&1
 }
 
+# Echo the first base URL whose /health answers. Nothing on stdout means none did.
+pick_post() {
+  local IFS=,
+  for base in $1; do
+    base="${base%/}"
+    if curl -fsS -o /dev/null --max-time 3 "$base/health" 2>/dev/null; then
+      echo "$base"
+      return 0
+    fi
+    echo "  no answer from $base/health" >&2
+  done
+  return 1
+}
+
 wait_for_health() {
   local url="http://127.0.0.1:$PORT/health"
   for _ in $(seq 1 40); do
@@ -203,16 +224,35 @@ fi
 
 if [[ "$MODE" == "gateway" || "$MODE" == "all" ]]; then
   step "LoRa gateway"
+
+  # Where does this gateway send accepted envelopes?
+  if [[ -n "$POST_CANDIDATES" ]]; then
+    echo "  looking for a command post: $POST_CANDIDATES"
+    POST_BASE="$(pick_post "$POST_CANDIDATES")" || die "none of those command posts answered /health.
+  Is uvicorn running there, and is the port open through its firewall?
+    on the Mac:  cd command-post && uvicorn app:app --host 0.0.0.0 --port 9000
+    from here:   curl http://<mac>:9000/health"
+    echo "  using $POST_BASE"
+  elif [[ "$MODE" == "all" ]]; then
+    POST_BASE="http://127.0.0.1:$PORT"
+  else
+    POST_BASE=""
+  fi
   if radios_busy; then
     die "another gateway already holds the radios:
 $(pgrep -af "pi-code/gateway\.py" | sed 's/^/    /')
   stop it first:  kill $(pgrep -f "pi-code/gateway\.py" | tr '\n' ' ')"
   fi
-  # Point the gateway's durable uplink at the post. Loopback, so nothing crosses a
-  # network and no secret belongs here (rule 2).
-  export SANKAT_UPLINK__ENABLED=true
-  export SANKAT_UPLINK__URL="http://127.0.0.1:$PORT/sos"
-  echo "  uplink -> $SANKAT_UPLINK__URL"
+  # Point the gateway's durable uplink at whichever post we found. No secret belongs
+  # in a URL (rule 2); these are plain LAN addresses.
+  if [[ -n "$POST_BASE" ]]; then
+    export SANKAT_UPLINK__ENABLED=true
+    export SANKAT_UPLINK__URL="$POST_BASE/sos"
+    echo "  uplink -> $SANKAT_UPLINK__URL"
+  else
+    echo "  no command post given — running the mesh without an uplink"
+    echo "  (add --post http://<mac>:9000 to stream envelopes to the dashboard)"
+  fi
   supervise gateway "$LOG_DIR/gateway.log" "$ROOT/pi-code" "$ROOT/pi-code/run.sh" &
   SUPERVISORS+=($!)
 fi
