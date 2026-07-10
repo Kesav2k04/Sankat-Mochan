@@ -120,8 +120,12 @@ class EdgeUplink:
                         with contextlib.suppress(asyncio.CancelledError):
                             await t
             except Exception as e:
-                self.log.warning("edge uplink down (%s); %d queued; retrying in %.0fs",
-                                 type(e).__name__, self.outbox.count(), backoff)
+                # This is a local operator log, not dashboard output (rule 10). Include
+                # the endpoint and OS error so firewall, refused-port and no-route
+                # failures can be distinguished on the Pi without a Python traceback.
+                self.log.warning("edge uplink down: %s (%s: %s); %d queued; retrying in %.0fs",
+                                 self.ws_url, type(e).__name__, e,
+                                 self.outbox.count(), backoff)
                 await self._http_fallback()  # best-effort while the socket is dead
             finally:
                 self._ws = None

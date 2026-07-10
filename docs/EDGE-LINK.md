@@ -68,16 +68,18 @@ The Mac is the SERVER; the Pi connects to it. The Mac command post must bind
 `--host 0.0.0.0 --port 9000`, and **macOS may prompt/Firewall-block the first inbound
 connection → allow it** (System Settings → Network → Firewall → allow Python/uvicorn).
 
-### Don't re-enter the Mac IP — set the URL ONCE with a stable name
-Use the Mac's **mDNS/Bonjour name** instead of a raw IP so it resolves on *either* link
-and survives IP changes — set once, never edit:
+### Automatic address selection
+`./server.sh gateway` starts with the Mac's **mDNS/Bonjour name**, resolves every IPv4
+address it advertises, rejects loopback/link-local results, prefers addresses directly
+connected to the Pi, and probes `/health`. It then pins the working concrete address for
+the WebSocket, avoiding the common macOS failure where the same `.local` name also
+advertises VM/VPN addresses. The default is:
 ```
 SANKAT_UPLINK__URL=http://Sivas-MacBook-Air.local:9000/sos
 ```
-(macOS advertises this by default; the Pi resolves `.local` via avahi — verify with
-`ping Sivas-MacBook-Air.local` on the Pi.) mDNS can be flaky over some Wi-Fi APs, so on
-the Ethernet link the manual static IP `10.55.0.2` is the rock-solid alternative (also
-never changes). Recommended: `.local` name as the URL, static Ethernet IP as the backup.
+(macOS advertises this by default; the Pi resolves `.local` via avahi.) mDNS can be
+flaky over some Wi-Fi APs, so `server.sh` also tries its configured raw-IP fallback. On
+the Ethernet link the manual static IP `10.55.0.2` is the rock-solid option.
 
 ### Link 1 (PRIMARY) — direct Ethernet, static IPs (most reliable, zero RF)
 USB-Ethernet adapter on the Mac, cable to the Pi.

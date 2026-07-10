@@ -109,8 +109,8 @@ case "$MODE" in
     step "Starting gateway"
     echo "The gateway will:"
     echo "  1. probe the RF link (radio A -> radio B) and refuse to start if it fails"
-    echo "  2. wait for two phones running the mesh app (Ctrl-C to stop)"
-    echo "  3. bridge phone <-BLE-> Pi <-433 MHz-> Pi <-BLE-> phone"
+    echo "  2. wait for any phone running the mesh app (Ctrl-C to stop)"
+    echo "  3. accept SOS immediately and keep scanning for later responders"
     echo
     echo "Afterwards, verify with:  ./run.sh proof"
     echo
