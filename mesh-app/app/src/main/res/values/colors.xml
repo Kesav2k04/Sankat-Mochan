@@ -1,0 +1,8 @@
+<resources>
+    <!--
+      Launch-window background for Theme.OffNet. Must match the Compose base page colour
+      (ui/theme/Theme.kt: Bg = Color(0xFF0B0C0E)) so the splash/launch window does not
+      flash a different shade before Compose takes over.
+    -->
+    <color name="offnet_window">#FF0B0C0E</color>
+</resources>

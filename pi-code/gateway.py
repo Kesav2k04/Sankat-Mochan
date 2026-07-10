@@ -233,6 +233,34 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
                                 "back across 433 MHz", phone.node_id)
 
 
+async def voice_nack_sweeper(edge: EdgeUplink, gateway_node, cfg, logger,
+                             stop: asyncio.Event) -> None:
+    """Ask victims to resend voice pieces our gateway-side reassembly never received.
+
+    The receiver half of the mesh's voice NACK loop, Pi-side. We inject the request on
+    the GATEWAY node — the same return path an ACCEPTED dispatch takes (on_dispatch ->
+    gw.originate) — so it travels back across the LoRa bridge toward the victim exactly
+    like every other downlink, whatever the physical topology at the venue.
+    """
+    v = cfg["voice"]
+    interval, quiet, origin = v["sweep_interval_s"], v["nack_quiet_s"], v["node_id"]
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+            return
+        except asyncio.TimeoutError:
+            pass
+        nacks, abandoned = edge.collect_voice_repairs(origin, quiet)
+        for nack in nacks:
+            await gateway_node.originate(nack)
+            logger.info("voice %s stalled — asked phone %s to resend %d missing piece(s) "
+                        "(request %d)", nack.clip_id, nack.clip_origin,
+                        len(nack.missing), nack.attempt + 1)
+        for clip in abandoned:
+            logger.warning("voice %s abandoned — %d piece(s) never arrived after %d "
+                           "resend request(s)", clip.clip_id, clip.missing, clip.requests)
+
+
 async def run() -> int:
     cfg = cfgmod.load()
     logger, chain = clog.setup(cfg)
@@ -256,6 +284,7 @@ async def run() -> int:
 
     edge: EdgeUplink | None = None
     edge_task: asyncio.Task | None = None
+    voice_nack_task: asyncio.Task | None = None
     peer_discovery_task: asyncio.Task | None = None
     try:
         for name in NODE_NAMES:
@@ -314,6 +343,12 @@ async def run() -> int:
         nodes["field"] = nodemod.MeshNode("field", logger, chain)
         nodes["gateway"] = nodemod.MeshNode("gateway", logger, chain, on_accept=on_accept)
 
+        if edge is not None:
+            voice_nack_task = asyncio.create_task(
+                voice_nack_sweeper(edge, nodes["gateway"], cfg, logger, stop),
+                name="voice-nack-sweeper",
+            )
+
         lora_links = {}
         for name in NODE_NAMES:
             link = nodemod.LoRaLink(radios[name], lora_cfg, csma, logger, chain, name)
@@ -370,6 +405,12 @@ async def run() -> int:
             peer_discovery_task.cancel()
             try:
                 await peer_discovery_task
+            except asyncio.CancelledError:
+                pass
+        if voice_nack_task is not None:
+            voice_nack_task.cancel()
+            try:
+                await voice_nack_task
             except asyncio.CancelledError:
                 pass
         if edge_task is not None:

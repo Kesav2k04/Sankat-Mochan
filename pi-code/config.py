@@ -114,6 +114,14 @@ def _validate(cfg: Dict[str, Any]) -> None:
     if cfg["uplink"]["enabled"] and not cfg["uplink"]["url"]:
         raise ConfigError("uplink.enabled is true but uplink.url is unset")
 
+    v = cfg["voice"]
+    node_id = v.get("node_id")
+    if not isinstance(node_id, str) or not (1 <= len(node_id) <= 4) or not node_id.isalnum():
+        raise ConfigError("voice.node_id must be 1-4 alphanumeric characters")
+    for key in ("nack_quiet_s", "sweep_interval_s"):
+        if not isinstance(v.get(key), (int, float)) or v[key] <= 0:
+            raise ConfigError(f"voice.{key} must be a positive number")
+
 
 def lora_config(cfg: Dict[str, Any]):
     from sx127x import LoraConfig

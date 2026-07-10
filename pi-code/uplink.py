@@ -82,8 +82,32 @@ class CompletedVoice:
     audio: bytes
 
 
+@dataclass(frozen=True)
+class AcceptOutcome:
+    """What accepting one chunk did — enough for send_voice_chunk to narrate it."""
+    complete: CompletedVoice | None
+    started_clip: bool      # this chunk opened a brand-new clip
+    filled_gap: bool        # it filled an index that was still missing
+    is_repair: bool         # it was a retransmission (attempt > 0)
+    remaining: int          # missing pieces still outstanding (0 once complete)
+
+
+@dataclass(frozen=True)
+class AbandonedVoice:
+    clip_id: str
+    missing: int
+    requests: int
+
+
 class VoiceAssembler:
-    """Bounded, validated reassembly of out-of-order/retried voice chunks."""
+    """Bounded, validated reassembly of out-of-order/retried voice chunks, with the
+    receiver half of the NACK repair loop the phones already speak.
+
+    Threading: every method mutates ``_clips`` and must run on the gateway's single
+    event-loop thread only. ``accept`` is driven off LoRa/BLE RX (both marshalled onto
+    the loop) and ``due_for_nack`` off the sweeper task — no two touch ``_clips`` at
+    once, so no lock is needed. Do not call these from a bare radio-RX thread.
+    """
 
     MAX_IN_FLIGHT = 8
 
@@ -93,32 +117,71 @@ class VoiceAssembler:
     def count(self) -> int:
         return len(self._clips)
 
-    def accept(self, chunk: envmod.VoiceChunk) -> CompletedVoice | None:
+    def accept(self, chunk: envmod.VoiceChunk) -> AcceptOutcome:
+        started = False
         state = self._clips.get(chunk.clip_id)
         if state is None:
             if len(self._clips) >= self.MAX_IN_FLIGHT:
                 oldest = min(self._clips, key=lambda k: self._clips[k]["started"])
                 del self._clips[oldest]
+            now = time.monotonic()
             state = {
+                "origin": chunk.origin, "seq": chunk.seq,
                 "total": chunk.total, "codec": chunk.codec,
-                "parts": [None] * chunk.total, "started": time.monotonic(),
+                "parts": [None] * chunk.total,
+                "started": now, "last_seen": now, "nack_attempts": 0,
             }
             self._clips[chunk.clip_id] = state
+            started = True
+        # A frame whose shape disagrees with the clip we are holding is corruption or a
+        # stray (untrusted input, CLAUDE.md #8): drop the frame, keep the good clip.
         if state["total"] != chunk.total or state["codec"] != chunk.codec:
-            del self._clips[chunk.clip_id]
-            return None
+            return AcceptOutcome(None, started, False, chunk.attempt > 0,
+                                 sum(1 for p in state["parts"] if p is None))
+        filled_gap = state["parts"][chunk.index] is None
         state["parts"][chunk.index] = chunk.payload
-        if any(part is None for part in state["parts"]):
-            return None
+        state["last_seen"] = time.monotonic()
+        remaining = sum(1 for p in state["parts"] if p is None)
+        if remaining:
+            return AcceptOutcome(None, started, filled_gap, chunk.attempt > 0, remaining)
         audio = b"".join(state["parts"])
         del self._clips[chunk.clip_id]
-        return CompletedVoice(
+        complete = CompletedVoice(
             clip_id=chunk.clip_id,
             ref_id=f"{chunk.origin}-{chunk.seq}",
             origin=chunk.origin,
             codec=chunk.codec,
             audio=audio,
         )
+        return AcceptOutcome(complete, started, filled_gap, chunk.attempt > 0, 0)
+
+    def due_for_nack(self, quiet_s: float, requester_origin: str
+                     ) -> tuple[list[envmod.VoiceNack], list[AbandonedVoice]]:
+        """Clips that have gone quiet with pieces still missing. For each, either emit a
+        resend-request (mirrors the phone's scheduleNack) or, once the attempt budget is
+        spent, abandon it so the dashboard stops showing it stuck forever."""
+        now = time.monotonic()
+        nacks: list[envmod.VoiceNack] = []
+        abandoned: list[AbandonedVoice] = []
+        for clip_id, state in list(self._clips.items()):
+            if now - state["last_seen"] < quiet_s:
+                continue
+            missing = tuple(i for i, p in enumerate(state["parts"]) if p is None)
+            if not missing:
+                continue
+            attempt = state["nack_attempts"]
+            if attempt >= envmod.MAX_ATTEMPTS - 1:
+                del self._clips[clip_id]
+                abandoned.append(AbandonedVoice(clip_id, len(missing), attempt))
+                continue
+            nacks.append(envmod.VoiceNack(
+                origin=requester_origin, clip_origin=state["origin"],
+                seq=state["seq"], total=state["total"], missing=missing,
+                attempt=attempt,
+            ))
+            state["nack_attempts"] = attempt + 1
+            state["last_seen"] = now   # wait another quiet period before asking again
+        return nacks, abandoned
 
 
 class VoiceUploadOutbox:
@@ -209,8 +272,15 @@ class EdgeUplink:
 
     def send_voice_chunk(self, chunk: envmod.VoiceChunk) -> None:
         """Reassemble and durably queue a complete clip for the command post."""
-        complete = self.voice_assembler.accept(chunk)
+        outcome = self.voice_assembler.accept(chunk)
         self._wake.set()  # publish in-flight progress even before the clip completes
+        if outcome.started_clip:
+            self.log.info("voice %s incoming from phone %s (%d pieces)",
+                          chunk.clip_id, chunk.origin, chunk.total)
+        elif outcome.is_repair and outcome.filled_gap:
+            self.log.info("voice %s repaired piece %d (%d still missing)",
+                          chunk.clip_id, chunk.index, outcome.remaining)
+        complete = outcome.complete
         if complete is None:
             return
         # The working mobile protocol sends the text SOS immediately before its voice
@@ -229,6 +299,15 @@ class EdgeUplink:
         self.log.info("voice %s complete (%d bytes) — queued for AI PC",
                       complete.clip_id, len(complete.audio))
         self._wake.set()
+
+    def collect_voice_repairs(self, requester_origin: str, quiet_s: float
+                              ) -> tuple[list[envmod.VoiceNack], list[AbandonedVoice]]:
+        """Drive the assembler's repair timer. The caller injects the returned NACKs into
+        the mesh (gateway node) so the victim phone resends the pieces we never got."""
+        nacks, abandoned = self.voice_assembler.due_for_nack(quiet_s, requester_origin)
+        if abandoned:
+            self._wake.set()  # a dropped clip changes voice_inflight — refresh the dashboard
+        return nacks, abandoned
 
     def connected(self) -> bool:
         return self._ws is not None
