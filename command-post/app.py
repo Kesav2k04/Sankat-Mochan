@@ -39,6 +39,7 @@ WEB_DIST = Path(__file__).parent / "web" / "dist"  # built React app (npm run bu
 _seen_ids: set[str] = set()  # transport-level dedup (CONTRACT 1)
 _test_seq = 0
 _voice_seq = 0
+MAX_MESH_AUDIO_BYTES = 110_000  # VoiceChunk.MAX_CHUNKS * MAX_CHUNK plus small slack
 
 
 class Hub:
@@ -101,9 +102,11 @@ class GatewayHub:
         self._ws = ws
         await self._flush()  # replay anything the Pi missed while disconnected
 
-    async def detach(self, ws: WebSocket) -> None:
+    async def detach(self, ws: WebSocket) -> bool:
         if self._ws is ws:
             self._ws = None
+            return True
+        return False
 
     async def send_dispatch(self, env: dict[str, Any]) -> None:
         """Queue a downlink envelope (ACCEPTED/instruction) and try to send it now."""
@@ -160,6 +163,7 @@ def _snapshot() -> dict[str, Any]:
     snap["kind"] = "snapshot"
     snap["ai_enabled"] = triage.is_configured()
     snap["stt_ready"] = stt.is_ready()
+    snap["gateway"] = gateway.status()
     return snap
 
 
@@ -258,6 +262,61 @@ async def voice_sos(
         env["la"], env["lo"] = lat, lng
     new = await _ingest(parse_envelope(env), audio_url=f"/audio/{vid}.webm")
     return JSONResponse({"status": "ok", "transcript": tr, "ingested": new})
+
+
+@app.post("/mesh_voice")
+async def mesh_voice(
+    audio: UploadFile = File(...),
+    clip_id: str = Form(...),
+    ref_id: str = Form(...),
+    origin: str = Form(...),
+    codec: int = Form(...),
+    lang: str | None = Form(None),
+) -> JSONResponse:
+    """A complete phone recording reassembled by the Pi.
+
+    Security-sensitive network/file handling (rule #6): identifiers, codec and byte
+    size are allowlisted before the payload is stored. The recording enriches an
+    existing validated SOS only; it can never create a standalone AI-generated card.
+    """
+    if (not clip_id.replace("-", "").isalnum()
+            or not ref_id.replace("-", "").isalnum()
+            or not origin.isalnum()
+            or len(clip_id) > 48 or len(ref_id) > 32 or len(origin) > 32
+            or codec not in (1, 2)):
+        return JSONResponse({"status": "rejected"}, status_code=400)
+    if ref_id not in store.reports:
+        # The Pi retains this clip in its durable voice outbox and retries after the
+        # corresponding SOS has been ACKed and ingested.
+        return JSONResponse({"status": "awaiting_sos"}, status_code=409)
+
+    data = await audio.read(MAX_MESH_AUDIO_BYTES + 1)
+    if not data or len(data) > MAX_MESH_AUDIO_BYTES:
+        return JSONResponse({"status": "rejected"}, status_code=400)
+
+    extension = ".3gp" if codec == 2 else ".ogg"
+    audio_name = f"{clip_id}{extension}"
+    audio_path = AUDIO_DIR / audio_name
+    audio_path.write_bytes(data)
+    audio_url = f"/audio/{audio_name}"
+
+    tr = await run_in_threadpool(stt.transcribe, data, lang)
+    transcript = str(tr.get("text", "")).strip()
+    ai = None
+    if transcript:
+        original = store.reports[ref_id]
+        ai = await triage.triage({
+            "gist": transcript,
+            "lang": tr.get("lang") or lang or original.get("lang", "en"),
+            "urgency": original.get("urgency", 3),
+            "category": original.get("category", "other"),
+        })
+    store.attach_voice(ref_id, audio_url, transcript, ai)
+    await _broadcast_snapshot()
+    return JSONResponse({
+        "status": "ok", "clip_id": clip_id, "ref_id": ref_id,
+        "transcribed": bool(transcript),
+    })
 
 
 @app.get("/audio/{name}")
@@ -369,10 +428,22 @@ async def gateway_ws(ws: WebSocket) -> None:
                 gateway.ack(msg.get("id", ""))
             elif kind == "heartbeat":
                 await ws.send_json({"type": "pong"})
+            elif kind == "peer":
+                node_id = str(msg.get("node_id", ""))
+                role = msg.get("role")
+                connected = msg.get("connected")
+                if (role == "responder" and node_id.isalnum() and len(node_id) <= 8
+                        and isinstance(connected, bool)):
+                    store.mesh_responder(node_id, connected)
+                    await _broadcast_snapshot()
     except WebSocketDisconnect:
-        await gateway.detach(ws)
+        pass
     except Exception:
-        await gateway.detach(ws)
+        pass
+    finally:
+        if await gateway.detach(ws):
+            store.mesh_responders_offline()
+            await _broadcast_snapshot()
 
 
 @app.on_event("startup")

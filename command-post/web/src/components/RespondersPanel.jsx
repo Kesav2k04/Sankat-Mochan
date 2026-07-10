@@ -15,6 +15,11 @@ export default function RespondersPanel({ responders }) {
         </span>
       </div>
       <div className="flex flex-col gap-1.5">
+        {responders.length === 0 && (
+          <div className="font-mono text-[9.5px] text-muted-foreground py-1">
+            Waiting for a responder BLE link from the Pi…
+          </div>
+        )}
         {responders.map((r) => {
           const stale = r.status === "offline" && r.last_seen
             ? fmtWait(Date.now() / 1000 - r.last_seen)

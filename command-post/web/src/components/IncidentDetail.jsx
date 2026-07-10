@@ -143,11 +143,22 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
                     via {primary.origin} · {primary.hops} hops · LoRa
                   </span>
                 </div>
-                <div className="font-display text-[17px] leading-snug mt-1.5">“{primary.english}”</div>
-                {primary.gist && primary.gist !== primary.english && (
-                  <div className="text-[13px] text-muted-foreground mt-1">{primary.gist}</div>
+                <div className="font-display text-[17px] leading-snug mt-1.5">
+                  “{primary.gist || primary.english}”
+                </div>
+                {primary.gist && primary.english && primary.gist !== primary.english && (
+                  <div className="text-[13px] text-muted-foreground mt-1">
+                    <span className="font-mono text-[9px] tracking-wide">AI ENGLISH · </span>
+                    {primary.english}
+                  </div>
                 )}
                 {primary.audio && <AudioPlayer src={primary.audio} seed={primary.id} />}
+                {primary.voice_transcript && primary.voice_transcript !== primary.gist && (
+                  <div className="text-[13px] text-muted-foreground mt-2">
+                    <span className="font-mono text-[9px] tracking-wide">VOICE TRANSCRIPT · </span>
+                    {primary.voice_transcript}
+                  </div>
+                )}
                 <div className="font-mono text-[9.5px] tracking-wide text-muted-foreground mt-2">
                   {primary.ai
                     ? `AUTO-TRANSLATED ${primary.lang.toUpperCase()} → ENGLISH · ON-DEVICE · ${primary.latency_ms}ms`

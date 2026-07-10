@@ -25,6 +25,7 @@ venv/
 
 # Node
 node_modules/
+**/.vite/
 
 # logs / temp
 *.log
@@ -32,6 +33,7 @@ node_modules/
 # Transient test data / benchmark artifacts (not source)
 command-post/fleurs/
 command-post/audio/
+command-post/audio_store/
 audio/
 command-post/backends.json
 *.output
