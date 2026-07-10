@@ -1,95 +1,185 @@
 package com.sankatmochan.mesh.mesh
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
+import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 
 /**
- * Thin wrapper over the framework [LocationManager] — NO Google Play Services, so no
- * extra dependency and it works fully offline. GNSS is receive-only, so it keeps
- * working in aeroplane mode; what aeroplane mode costs us is the assistance data
- * (A-GPS) that normally arrives over the network, which is why a cold first fix can
- * take a minute rather than a second.
+ * Location without Google Play Services — the framework [LocationManager] only, so no
+ * extra dependency and nothing that needs a network.
  *
- * Two deliberate choices follow from that:
+ * GNSS is a receive-only radio, so it keeps working in aeroplane mode. What aeroplane
+ * mode costs is A-GPS: the almanac and rough time/position that normally arrive over
+ * the network. Without them the receiver reads that data off the satellites themselves,
+ * so a cold first fix takes 30–90 seconds outdoors, and indoors may never arrive.
  *
- *  - **GPS_PROVIDER only.** NETWORK_PROVIDER needs cell towers or Wi-Fi and produces
- *    nothing offline. Worse, it can return a coarse fix from wherever the phone last
- *    had signal. Sending a rescue team to a stale network fix is worse than sending
- *    them no coordinates at all.
+ * Three lessons are baked in here, each from a way the previous version failed silently:
  *
- *  - **Keep the receiver warm.** We subscribe to updates the moment the victim role
- *    starts, not when the SOS button is pressed, so the fix is already there when it
- *    matters. A one-shot request at send time would usually return nothing.
- *
- * Caller must hold ACCESS_FINE_LOCATION. Coarse-only grants do not drive GPS_PROVIDER.
+ *  - **Permission decides which providers are legal.** Requesting FINE when the manifest
+ *    also declares COARSE lets the user grant "Approximate" only. `GPS_PROVIDER` then
+ *    throws SecurityException. We check first and register what we are actually allowed
+ *    to use, rather than throwing and pretending to search.
+ *  - **Register every usable provider.** GPS alone means no fix indoors, ever. FUSED and
+ *    NETWORK give a real, live, accuracy-tagged fix; we keep the best one we have seen.
+ *  - **Say what is happening.** Satellite counts come from [GnssStatus], so "searching"
+ *    can be distinguished from "dead".
  */
 @SuppressLint("MissingPermission")
 class LocationProvider(context: Context) {
 
     private val appContext = context.applicationContext
     private val lm = appContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-    private var listener: LocationListener? = null
 
-    /** True if the user has location services switched on at the OS level. */
+    private val listeners = mutableListOf<Pair<String, LocationListener>>()
+    private var gnssCallback: GnssStatus.Callback? = null
+    private var best: Location? = null
+
+    fun hasFineLocation(): Boolean = granted(Manifest.permission.ACCESS_FINE_LOCATION)
+    fun hasCoarseLocation(): Boolean = granted(Manifest.permission.ACCESS_COARSE_LOCATION)
     fun isLocationEnabled(): Boolean = lm.isLocationEnabled
-
-    /** True if this device exposes a GNSS receiver at all. */
     fun hasGps(): Boolean = lm.allProviders.contains(LocationManager.GPS_PROVIDER)
 
+    private fun granted(p: String) =
+        ContextCompat.checkSelfPermission(appContext, p) == PackageManager.PERMISSION_GRANTED
+
     /**
-     * Subscribe to GNSS fixes until [stop]. [onFix] is called on the main thread for
-     * every fix, starting with a recent last-known one if we have it. Idempotent.
+     * Subscribe until [stop]. [onFix] fires with the best fix seen so far; [onStatus]
+     * narrates progress so the UI never has to guess. Idempotent.
+     *
+     * @return the providers we successfully registered — empty means no location is coming.
      */
-    fun start(onFix: (Location) -> Unit) {
-        if (listener != null) return
-        if (!hasGps()) {
-            Log.w(TAG, "device has no GPS provider")
-            return
+    fun start(onFix: (Location) -> Unit, onStatus: (String) -> Unit): List<String> {
+        if (listeners.isNotEmpty()) return listeners.map { it.first }
+
+        // GPS_PROVIDER requires FINE. With an "Approximate" grant it throws, so do not ask.
+        val wanted = buildList {
+            if (hasFineLocation()) {
+                add(LocationManager.GPS_PROVIDER)
+                add(LocationManager.FUSED_PROVIDER)
+            }
+            if (hasFineLocation() || hasCoarseLocation()) {
+                add(LocationManager.NETWORK_PROVIDER)
+            }
+        }.filter { lm.allProviders.contains(it) }
+
+        for (provider in wanted) {
+            val l = LocationListener { loc -> accept(loc, onFix, onStatus) }
+            try {
+                lm.requestLocationUpdates(provider, MIN_INTERVAL_MS, MIN_DISTANCE_M, l, appContext.mainLooper)
+                listeners += provider to l
+                Log.i(TAG, "listening on $provider")
+            } catch (e: SecurityException) {
+                Log.w(TAG, "not permitted to use $provider: ${e.message}")
+            } catch (e: Exception) {
+                Log.w(TAG, "could not use $provider: ${e.message}")
+            }
         }
 
-        // Seed immediately from the last GNSS fix, but only if it is recent enough to
-        // still describe where the phone is.
-        freshLastKnownGps()?.let(onFix)
+        if (listeners.isEmpty()) {
+            Log.w(TAG, "no usable location provider (fine=${hasFineLocation()} coarse=${hasCoarseLocation()})")
+            return emptyList()
+        }
 
-        val l = LocationListener { loc -> onFix(loc) }
-        listener = l
+        // Seed from the freshest last-known fix so a warm phone shows a position at once.
+        bestLastKnown()?.let { accept(it, onFix, onStatus) }
+
+        if (hasFineLocation()) startGnssStatus(onStatus)
+        return listeners.map { it.first }
+    }
+
+    /** Satellite counts, so "searching" is visibly different from "nothing is happening". */
+    private fun startGnssStatus(onStatus: (String) -> Unit) {
+        val cb = object : GnssStatus.Callback() {
+            override fun onSatelliteStatusChanged(status: GnssStatus) {
+                var used = 0
+                for (i in 0 until status.satelliteCount) if (status.usedInFix(i)) used++
+                if (best == null) {
+                    onStatus(
+                        if (status.satelliteCount == 0)
+                            "No satellites yet — go outdoors with a clear view of the sky"
+                        else
+                            "${status.satelliteCount} satellites in view, $used locked " +
+                                "(4 are needed for a fix)"
+                    )
+                }
+            }
+        }
         try {
-            lm.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER,
-                MIN_INTERVAL_MS,
-                MIN_DISTANCE_M,
-                l,
-                appContext.mainLooper
-            )
+            lm.registerGnssStatusCallback(appContext.mainExecutor, cb)
+            gnssCallback = cb
         } catch (e: Exception) {
-            Log.w(TAG, "requestLocationUpdates failed: ${e.message}")
-            listener = null
+            Log.w(TAG, "GNSS status unavailable: ${e.message}")
         }
+    }
+
+    private fun accept(loc: Location, onFix: (Location) -> Unit, onStatus: (String) -> Unit) {
+        if (!isBetter(loc, best)) return
+        best = loc
+        Log.i(TAG, "fix from ${loc.provider}: ${loc.latitude},${loc.longitude} ±${loc.accuracy}m")
+        onFix(loc)
+        onStatus("Locked on via ${sourceName(loc.provider)} — accurate to about ${loc.accuracy.toInt()} m")
+    }
+
+    private fun sourceName(provider: String?): String = when (provider) {
+        LocationManager.GPS_PROVIDER -> "GPS"
+        LocationManager.NETWORK_PROVIDER -> "network"
+        LocationManager.FUSED_PROVIDER -> "the fused provider"
+        else -> provider ?: "an unknown source"
     }
 
     fun stop() {
-        val l = listener ?: return
-        listener = null
-        try {
-            lm.removeUpdates(l)
-        } catch (e: Exception) {
-            Log.w(TAG, "removeUpdates failed: ${e.message}")
+        listeners.forEach { (_, l) ->
+            try { lm.removeUpdates(l) } catch (e: Exception) { Log.w(TAG, "removeUpdates: ${e.message}") }
         }
+        listeners.clear()
+        gnssCallback?.let {
+            try { lm.unregisterGnssStatusCallback(it) } catch (e: Exception) { /* already gone */ }
+        }
+        gnssCallback = null
+        best = null
     }
 
-    /** The last GNSS fix, if it is recent enough to be worth acting on. */
-    private fun freshLastKnownGps(): Location? {
-        val loc = try {
-            lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-        } catch (e: Exception) {
-            null
-        } ?: return null
-        val age = System.currentTimeMillis() - loc.time
-        return if (age in 0..MAX_SEED_AGE_MS) loc else null
+    /** Freshest last-known fix across the providers we may read, if recent enough to mean anything. */
+    private fun bestLastKnown(): Location? {
+        var found: Location? = null
+        for ((provider, _) in listeners) {
+            val loc = try { lm.getLastKnownLocation(provider) } catch (e: Exception) { null } ?: continue
+            if (System.currentTimeMillis() - loc.time > MAX_SEED_AGE_MS) continue
+            if (isBetter(loc, found)) found = loc
+        }
+        return found
+    }
+
+    /**
+     * Is [candidate] a better fix than [current]? Adapted from the "Determining location"
+     * sample in the Android developer documentation (Apache-2.0).
+     */
+    private fun isBetter(candidate: Location, current: Location?): Boolean {
+        if (current == null) return true
+
+        val timeDelta = candidate.time - current.time
+        if (timeDelta > SIGNIFICANT_TIME_MS) return true       // much newer: trust it
+        if (timeDelta < -SIGNIFICANT_TIME_MS) return false     // much older: ignore it
+        val isNewer = timeDelta > 0
+
+        val accuracyDelta = candidate.accuracy - current.accuracy
+        val isMoreAccurate = accuracyDelta < 0
+        val isMuchLessAccurate = accuracyDelta > 200f
+        val sameProvider = candidate.provider == current.provider
+
+        return when {
+            isMoreAccurate -> true
+            isNewer && accuracyDelta <= 0f -> true
+            isNewer && !isMuchLessAccurate && sameProvider -> true
+            else -> false
+        }
     }
 
     private companion object {
@@ -98,5 +188,6 @@ class LocationProvider(context: Context) {
         const val MIN_DISTANCE_M = 0f
         /** Beyond this, a last-known fix says where you *were*, not where you are. */
         const val MAX_SEED_AGE_MS = 2 * 60 * 1000L
+        const val SIGNIFICANT_TIME_MS = 2 * 60 * 1000L
     }
 }

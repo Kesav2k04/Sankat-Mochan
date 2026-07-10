@@ -47,6 +47,17 @@ class MainActivity : ComponentActivity() {
             val bleGranted = blePermissions.all { result[it] == true }
             if (bleGranted && role != null) {
                 vm.startAsRole(role)
+                // Android 12+ lets the user answer a FINE request with "Approximate", which
+                // grants COARSE only and shuts GPS off. Nothing else in the app can tell
+                // them, and a silent approximate grant means no coordinates in the SOS.
+                if (result[Manifest.permission.ACCESS_FINE_LOCATION] != true) {
+                    Toast.makeText(
+                        this,
+                        "Approximate location only — GPS coordinates need Precise location. " +
+                            "Turn it on in Settings › Apps › Sankat-Mochan › Permissions › Location.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             } else if (role != null) {
                 Toast.makeText(
                     this,

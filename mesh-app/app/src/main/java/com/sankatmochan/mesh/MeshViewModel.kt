@@ -34,6 +34,11 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     var locationStatus by mutableStateOf("Searching for satellites…")
         private set
 
+    /** True when the user granted "Approximate" rather than "Precise" location, which
+     *  locks us out of GPS entirely. The UI offers a way to fix it. */
+    var needsPreciseLocation by mutableStateOf(false)
+        private set
+
     /**
      * Keep the GNSS receiver warm. Called as soon as the victim role starts, so a fix
      * is already in hand when the SOS button is pressed — a request made at send time
@@ -41,20 +46,34 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
      * Safe to call only after ACCESS_FINE_LOCATION is granted.
      */
     private fun startLocation() {
-        if (!locationProvider.hasGps()) {
-            locationStatus = "This phone has no GPS receiver"
-            return
-        }
         if (!locationProvider.isLocationEnabled()) {
-            locationStatus = "Location is switched off — turn it on. It works in aeroplane mode."
+            locationStatus = "Location is switched off — turn it on in Settings. It works in aeroplane mode."
             return
         }
-        locationStatus = "Searching for satellites — the first fix can take a minute outdoors"
-        locationProvider.start { loc ->
-            lat = loc.latitude
-            lng = loc.longitude
-            fixTime = System.currentTimeMillis()
-            locationStatus = "Locked on — accurate to about ${loc.accuracy.toInt()} m"
+        if (!locationProvider.hasFineLocation() && !locationProvider.hasCoarseLocation()) {
+            locationStatus = "Location permission was denied — grant it to send coordinates"
+            return
+        }
+        // Granting "Approximate" instead of "Precise" leaves GPS_PROVIDER off-limits, which
+        // used to fail silently behind a status line that claimed we were searching.
+        if (!locationProvider.hasFineLocation()) {
+            needsPreciseLocation = true
+            locationStatus = "Only approximate location was allowed — switch to Precise for GPS coordinates"
+        } else {
+            needsPreciseLocation = false
+            locationStatus = "Searching for satellites — the first fix can take a minute outdoors"
+        }
+
+        val started = locationProvider.start(
+            onFix = { loc ->
+                lat = loc.latitude
+                lng = loc.longitude
+                fixTime = System.currentTimeMillis()
+            },
+            onStatus = { locationStatus = it }
+        )
+        if (started.isEmpty()) {
+            locationStatus = "No location source is available on this phone"
         }
     }
 

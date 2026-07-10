@@ -1,5 +1,10 @@
 package com.sankatmochan.mesh.ui
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -259,23 +265,44 @@ private fun ReachabilityNote(peers: Int) {
  */
 @Composable
 private fun GpsNote(vm: MeshViewModel) {
+    val context = LocalContext.current
     val hasFix = vm.lat != null && vm.lng != null
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(if (hasFix) urgencyColors.low else urgencyColors.medium)
-        )
-        Spacer(Modifier.size(8.dp))
-        Text(
-            text = if (hasFix)
-                "GPS locked — your exact coordinates travel with the SOS"
-            else
-                vm.locationStatus,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(if (hasFix) urgencyColors.low else urgencyColors.medium)
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                text = if (hasFix)
+                    "GPS locked — your exact coordinates travel with the SOS"
+                else
+                    vm.locationStatus,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        // The one location problem the user cannot fix from this screen.
+        if (vm.needsPreciseLocation) {
+            TextButton(onClick = { openAppSettings(context) }) {
+                Text("Allow precise location")
+            }
+        }
+    }
+}
+
+private fun openAppSettings(context: Context) {
+    val intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.fromParts("package", context.packageName, null)
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Log.w("VictimScreen", "cannot open app settings: ${e.message}")
     }
 }
 
