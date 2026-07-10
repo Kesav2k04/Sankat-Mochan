@@ -40,6 +40,13 @@ class VoiceClipStore(context: Context) {
     private val _clips = MutableStateFlow<List<VoiceClip>>(emptyList())
     val clips: StateFlow<List<VoiceClip>> = _clips.asStateFlow()
 
+    /** Indices still absent for [clipId], or empty if complete/unknown. */
+    @Synchronized
+    fun missingOf(clipId: String): List<Int> {
+        val slots = parts[clipId] ?: return emptyList()
+        return slots.indices.filter { slots[it] == null }
+    }
+
     /** Feed one chunk in. Safe to call from the BLE binder threads. */
     @Synchronized
     fun accept(chunk: VoiceChunk) {

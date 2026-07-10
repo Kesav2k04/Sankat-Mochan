@@ -98,6 +98,44 @@ async def startup_probe(radios: Dict[str, Radio], lora_cfg: LoraConfig,
     return True
 
 
+async def radio_watchdog(radios: Dict[str, Radio], logger, chain: clog.ChainLog,
+                         stop: asyncio.Event, period_s: float = 5.0) -> None:
+    """Keep both radios in LoRa mode for as long as the gateway is up.
+
+    An SX1278 that resets — brownout, a glitch on the RST line — comes back in FSK. It
+    still answers SPI, RegVersion still reads 0x12, and pre-flight would still pass. But
+    RegIrqFlags then addresses a different register whose bits read as set, so a transmit
+    'completes' in 0.1 ms having radiated nothing. `Radio.send()` now refuses in that
+    state; this brings the radio back rather than waiting for the next message to fail.
+    """
+    loop = asyncio.get_running_loop()
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=period_s)
+            return                                  # stop was set
+        except asyncio.TimeoutError:
+            pass
+        for name, radio in radios.items():
+            try:
+                healthy = await loop.run_in_executor(None, radio.in_lora_mode)
+            except Exception as e:
+                logger.error("radio '%s' stopped answering: %s: %s", name, type(e).__name__, e)
+                continue
+            if healthy:
+                continue
+            logger.error("radio '%s' fell out of LoRa mode — it reset itself. "
+                         "Re-initialising; nothing it 'sent' meanwhile left the antenna.", name)
+            chain.emit(clog.START, name, radio=name, result="fell_out_of_lora")
+            try:
+                await loop.run_in_executor(None, radio.reinit)
+            except Exception as e:
+                logger.error("radio '%s' could not be revived: %s: %s", name, type(e).__name__, e)
+                chain.emit(clog.DROP, name, radio=name, reason="radio_dead")
+                continue
+            logger.warning("radio '%s' is back in LoRa mode", name)
+            chain.emit(clog.START, name, radio=name, result="reinit")
+
+
 async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
     """Poll until at least one responder and one other phone appear (or the operator gives up)."""
     retry = float(cfg["ble"]["peer_retry_s"])
@@ -186,7 +224,7 @@ async def run() -> int:
             # Durable + idempotent: enqueued to the outbox, sent, deleted only on ACK.
             # Voice chunks are opaque binary carried phone-to-phone; the dashboard takes
             # JSON envelopes only, so they are not uplinked (matches the voice-SOS design).
-            if isinstance(msg, env.VoiceChunk):
+            if isinstance(msg, (env.VoiceChunk, env.VoiceNack)):
                 return
             if edge is not None:
                 edge.send_envelope(msg.to_dict())
@@ -235,7 +273,11 @@ async def run() -> int:
             logger.warning("Bluetooth is switched off in the config — running the two radios "
                            "alone, with no phones attached")
 
-        await stop.wait()
+        watchdog = asyncio.create_task(radio_watchdog(radios, logger, chain, stop))
+        try:
+            await stop.wait()
+        finally:
+            watchdog.cancel()
         logger.info("shutting down")
 
     finally:

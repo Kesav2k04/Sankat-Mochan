@@ -33,23 +33,34 @@ TYPES = ("SOS", "DELIVERED", "ACCEPTED")
 # legal UTF-8 lead byte, so the two can never be confused.
 #
 #   0      magic    0xA5
-#   1      version  1
-#   2      type     1 = voice
-#   3..6   origin   4 ASCII chars (the phone's node id)
-#   7..8   seq      uint16, which clip from this phone
-#   9..10  index    uint16, which chunk of that clip
+#   1      version  2
+#   2      type     1 = voice chunk, 2 = NACK (resend these pieces)
+#   3..6   origin   4 ASCII chars
+#   7..8   seq      uint16, which clip
+#   9..10  index    uint16, which chunk of that clip  (NACK: 0)
 #   11..12 total    uint16, how many chunks the clip has
 #   13     hops     uint8
-#   14     codec    uint8
-#   15     length   uint8, payload bytes that follow
-#   16..            payload
+#   14     codec    uint8                             (NACK: 0)
+#   15     attempt  uint8, 0 = first transmission
+#   16     length   uint8, payload bytes that follow
+#   17..            payload
+#
+# `attempt` is load-bearing. A resent chunk must carry a *different* id, or the mesh's
+# dedup — the thing that stops messages looping forever — silently drops the retry as a
+# duplicate and the clip can never be repaired.
+#
+# A NACK's `origin` is the REQUESTER, not the clip's author, so two responders asking
+# for the same clip produce two distinct ids. Its payload is the clip's 4-char origin
+# followed by a bitmap: bit i of byte i//8 set means "chunk i is missing".
 VOICE_MAGIC = 0xA5
-VOICE_VERSION = 1
+VOICE_VERSION = 2
 VOICE_TYPE = 1
-VOICE_HEADER = 16
-VOICE_STRUCT = ">BBB4sHHHBBB"
-MAX_VOICE_CHUNK = 200    # keeps a frame at 216 B — inside LoRa's 255 and the BLE MTU
+NACK_TYPE = 2
+VOICE_HEADER = 17
+VOICE_STRUCT = ">BBB4sHHHBBBB"
+MAX_VOICE_CHUNK = 200    # keeps a frame at 217 B — inside LoRa's 255 and the BLE MTU
 MAX_VOICE_CHUNKS = 512   # a clip longer than this is not a rescue message
+MAX_ATTEMPTS = 7         # first send plus six retries; then the clip is declared lost
 CODECS = {1: "ogg/opus", 2: "3gpp/amr-nb"}
 
 
@@ -115,6 +126,15 @@ class Envelope:
         return raw
 
 
+def _pack(vtype: int, origin: str, seq: int, index: int, total: int,
+          hops: int, codec: int, attempt: int, payload: bytes) -> bytes:
+    if len(payload) > MAX_VOICE_CHUNK:
+        raise ValueError(f"voice payload {len(payload)} > {MAX_VOICE_CHUNK}")
+    o = origin.encode("ascii")[:4].ljust(4, b"\0")
+    return struct.pack(VOICE_STRUCT, VOICE_MAGIC, VOICE_VERSION, vtype, o, seq, index,
+                       total, min(hops, MAX_HOPS), codec, attempt, len(payload)) + payload
+
+
 @dataclass(frozen=True)
 class VoiceChunk:
     """One slice of a recorded voice message, in flight across the mesh.
@@ -130,13 +150,15 @@ class VoiceChunk:
     payload: bytes
     hops: int = 0
     codec: int = 1
+    attempt: int = 0
 
     type: ClassVar[str] = "VOICE"
 
     @property
     def id(self) -> str:
-        """Unique per chunk, so mesh dedup drops a repeat without dropping the clip."""
-        return f"{self.origin}-v{self.seq}-{self.index}"
+        """Unique per chunk *per attempt*. Mesh dedup must drop a looping copy but must
+        never drop a retransmission, or a lost chunk can never be repaired."""
+        return f"{self.origin}-v{self.seq}-{self.index}#{self.attempt}"
 
     @property
     def clip_id(self) -> str:
@@ -146,40 +168,94 @@ class VoiceChunk:
         return replace(self, hops=min(self.hops + 1, MAX_HOPS))
 
     def encode(self) -> bytes:
-        if len(self.payload) > MAX_VOICE_CHUNK:
-            raise ValueError(f"voice chunk payload {len(self.payload)} > {MAX_VOICE_CHUNK}")
-        origin = self.origin.encode("ascii")[:4].ljust(4, b"\0")
-        head = struct.pack(VOICE_STRUCT, VOICE_MAGIC, VOICE_VERSION, VOICE_TYPE,
-                           origin, self.seq, self.index, self.total,
-                           min(self.hops, MAX_HOPS), self.codec, len(self.payload))
-        return head + self.payload
+        return _pack(VOICE_TYPE, self.origin, self.seq, self.index, self.total,
+                     self.hops, self.codec, self.attempt, self.payload)
 
 
-def _decode_voice(raw: bytes) -> Optional[VoiceChunk]:
-    """Parse + validate a binary voice chunk. Untrusted input (CLAUDE.md #8): every
+@dataclass(frozen=True)
+class VoiceNack:
+    """"Clip <clip_origin>-v<seq>: I am missing these pieces." Sent by a receiver whose
+    reassembly has stalled; acted on by the phone that recorded the clip."""
+    origin: str          # the REQUESTER, so two responders produce two distinct ids
+    clip_origin: str     # whose clip this is
+    seq: int
+    total: int
+    missing: tuple
+    hops: int = 0
+    attempt: int = 0
+
+    type: ClassVar[str] = "VOICE_NACK"
+
+    @property
+    def id(self) -> str:
+        return f"{self.origin}-n{self.clip_origin}v{self.seq}#{self.attempt}"
+
+    @property
+    def clip_id(self) -> str:
+        return f"{self.clip_origin}-v{self.seq}"
+
+    def bumped(self) -> "VoiceNack":
+        return replace(self, hops=min(self.hops + 1, MAX_HOPS))
+
+    def encode(self) -> bytes:
+        bitmap = bytearray((self.total + 7) // 8)
+        for i in self.missing:
+            bitmap[i // 8] |= 1 << (i % 8)
+        body = self.clip_origin.encode("ascii")[:4].ljust(4, b"\0") + bytes(bitmap)
+        return _pack(NACK_TYPE, self.origin, self.seq, 0, self.total,
+                     self.hops, 0, self.attempt, body)
+
+
+def _origin_of(raw: bytes) -> Optional[str]:
+    try:
+        o = raw.rstrip(b"\0").decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    return o if o and o.isalnum() else None
+
+
+def _decode_voice(raw: bytes):
+    """Parse + validate a binary voice frame. Untrusted input (CLAUDE.md #8): every
     field is range-checked and the declared length must match the frame exactly."""
     if len(raw) < VOICE_HEADER or len(raw) > VOICE_HEADER + MAX_VOICE_CHUNK:
         return None
-    magic, version, vtype, origin_b, seq, index, total, hops, codec, length = \
+    magic, version, vtype, origin_b, seq, index, total, hops, codec, attempt, length = \
         struct.unpack(VOICE_STRUCT, raw[:VOICE_HEADER])
-    if magic != VOICE_MAGIC or version != VOICE_VERSION or vtype != VOICE_TYPE:
+    if magic != VOICE_MAGIC or version != VOICE_VERSION:
         return None
-    if codec not in CODECS:
+    if vtype not in (VOICE_TYPE, NACK_TYPE):
         return None
-    if not 1 <= total <= MAX_VOICE_CHUNKS or index >= total:
+    if not 1 <= total <= MAX_VOICE_CHUNKS:
         return None
     if length > MAX_VOICE_CHUNK or len(raw) != VOICE_HEADER + length:
         return None
-    try:
-        origin = origin_b.rstrip(b"\0").decode("ascii")
-    except UnicodeDecodeError:
+    if attempt >= MAX_ATTEMPTS:
         return None
-    if not origin or not origin.isalnum():
+    origin = _origin_of(origin_b)
+    if origin is None:
         return None
-    return VoiceChunk(
-        origin=origin, seq=seq, index=index, total=total,
-        payload=raw[VOICE_HEADER:], hops=min(hops, MAX_HOPS), codec=codec,
-    )
+    body = raw[VOICE_HEADER:]
+
+    if vtype == VOICE_TYPE:
+        if codec not in CODECS or index >= total:
+            return None
+        return VoiceChunk(origin=origin, seq=seq, index=index, total=total,
+                          payload=body, hops=min(hops, MAX_HOPS), codec=codec,
+                          attempt=attempt)
+
+    # NACK: 4-byte clip origin, then a bitmap covering exactly `total` chunks.
+    need = 4 + (total + 7) // 8
+    if len(body) != need:
+        return None
+    clip_origin = _origin_of(body[:4])
+    if clip_origin is None:
+        return None
+    bitmap = body[4:]
+    missing = tuple(i for i in range(total) if bitmap[i // 8] >> (i % 8) & 1)
+    if not missing:
+        return None                      # a NACK asking for nothing is malformed
+    return VoiceNack(origin=origin, clip_origin=clip_origin, seq=seq, total=total,
+                     missing=missing, hops=min(hops, MAX_HOPS), attempt=attempt)
 
 
 def _clamp_str(value: Any, limit: int) -> str:
@@ -206,7 +282,7 @@ def _clamp_int(o: Dict[str, Any], key: str, default: int, lo: int, hi: int) -> i
     return max(lo, min(hi, v))
 
 
-def decode(raw: bytes) -> Optional[Union[Envelope, VoiceChunk]]:
+def decode(raw: bytes):
     """Parse + validate. Returns None for anything we should drop on the floor."""
     if not raw:
         return None
@@ -283,12 +359,17 @@ def preview(text: str, limit: int = 60) -> str:
     return clean
 
 
-def describe(msg: Union[Envelope, "VoiceChunk"]) -> str:
+def describe(msg) -> str:
     """`SOS c363-0 from phone c363, urgency 4/5 (high), near Block C stairwell`."""
     if isinstance(msg, VoiceChunk):
+        retry = f", retry {msg.attempt}" if msg.attempt else ""
         return (f"VOICE {msg.clip_id}, from phone {msg.origin}, "
                 f"piece {msg.index + 1} of {msg.total} ({len(msg.payload)} bytes of "
-                f"{CODECS.get(msg.codec, 'audio')})")
+                f"{CODECS.get(msg.codec, 'audio')}{retry})")
+    if isinstance(msg, VoiceNack):
+        n = len(msg.missing)
+        return (f"RESEND-REQUEST for {msg.clip_id} from phone {msg.origin}: "
+                f"{n} piece{'' if n == 1 else 's'} missing of {msg.total}")
     bits = [f"{msg.type} {msg.id}", f"from phone {msg.origin}"]
     if msg.type == "SOS":
         bits.append(f"urgency {msg.urgency}/5 ({URGENCY_WORDS.get(msg.urgency, '?')})")
@@ -301,10 +382,10 @@ def describe(msg: Union[Envelope, "VoiceChunk"]) -> str:
     return ", ".join(bits)
 
 
-def message_text(msg: Union[Envelope, "VoiceChunk"]) -> str:
+def message_text(msg) -> str:
     """The words the victim actually typed, ready to sit on its own log line."""
-    if isinstance(msg, VoiceChunk):
-        return ""          # audio has no text to echo
+    if isinstance(msg, (VoiceChunk, VoiceNack)):
+        return ""          # audio and control frames have no text to echo
     body = preview(msg.gist, MAX_TEXT)
     if not body:
         return ""

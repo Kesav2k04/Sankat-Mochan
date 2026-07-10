@@ -6,7 +6,11 @@ import android.content.Context
 import android.util.Log
 import com.sankatmochan.mesh.model.MsgType
 import com.sankatmochan.mesh.model.SosMessage
+import android.os.Handler
+import android.os.Looper
 import com.sankatmochan.mesh.model.VoiceChunk
+import com.sankatmochan.mesh.model.VoiceFrame
+import com.sankatmochan.mesh.model.VoiceNack
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +43,12 @@ class BleMeshService(context: Context) {
     private var voiceSeq = 0
     private var running = false
 
+    private val handler = Handler(Looper.getMainLooper())
+    /** Clips we originated, kept so we can honour a resend request. seq -> chunks. */
+    private val sentClips = LinkedHashMap<Int, List<VoiceChunk>>()
+    /** How many resend requests we have already sent for a clip we are receiving. */
+    private val nackAttempts = HashMap<String, Int>()
+
     // Messages THIS node originated, kept so we can re-send them to any peer that
     // connects after we first broadcast (fixes the "SOS sent before the responder
     // was subscribed is lost forever" race). Receivers dedup, so re-sends are safe.
@@ -48,6 +58,10 @@ class BleMeshService(context: Context) {
     private companion object {
         const val TAG = "BleMeshService"
         const val OUTBOX_CAP = 20
+        /** How long a clip must be silent before we conclude a piece is really lost.
+         *  Longer than the airtime of a few frames, shorter than a rescuer's patience. */
+        const val NACK_QUIET_MS = 3_000L
+        const val SENT_CLIPS_CAP = 4
     }
 
     /**
@@ -97,6 +111,7 @@ class BleMeshService(context: Context) {
 
     fun stop() {
         if (!running) return
+        handler.removeCallbacksAndMessages(null)
         scanner.stop()
         server.stop()
         running = false
@@ -205,20 +220,79 @@ class BleMeshService(context: Context) {
     }
 
     private fun onVoiceChunk(bytes: ByteArray, fromAddress: String) {
-        val chunk = VoiceChunk.decode(bytes)
-        if (chunk == null) {
+        val frame = VoiceChunk.decode(bytes)
+        if (frame == null) {
             store.log("Dropped malformed voice packet from $fromAddress")
             return
         }
-        // Dedup on the chunk id, not the clip id — otherwise the first chunk to arrive
-        // would suppress all twenty-one of its siblings.
-        if (!store.markSeen(chunk.id)) return
-        voiceClips.accept(chunk)
-        if (chunk.index == 0) {
-            store.log("Voice message ${chunk.clipId} incoming (${chunk.total} pieces, hop ${chunk.hops})")
+        // Dedup on the frame id, not the clip id — otherwise the first chunk to arrive
+        // would suppress all its siblings. The id carries `attempt`, so a retransmission
+        // is a new id and survives dedup; only a looping copy is dropped.
+        if (!store.markSeen(frame.id)) return
+
+        when (frame) {
+            is VoiceChunk -> {
+                voiceClips.accept(frame)
+                if (frame.index == 0 && frame.attempt == 0) {
+                    store.log("Voice message ${frame.clipId} incoming (${frame.total} pieces, hop ${frame.hops})")
+                }
+                scheduleNack(frame.clipId, frame.origin, frame.seq, frame.total)
+                broadcastBytes(frame.bumped().encode(), exceptAddress = fromAddress)
+            }
+            is VoiceNack -> {
+                if (frame.clipOrigin == nodeId) resendMissing(frame)
+                else broadcastBytes(frame.bumped().encode(), exceptAddress = fromAddress)
+            }
         }
-        // Relay it onward exactly like an SOS, one hop further along.
-        broadcastBytes(chunk.bumped().encode(), exceptAddress = fromAddress)
+    }
+
+    /**
+     * Ask for the pieces that never arrived.
+     *
+     * Armed on every chunk and pushed back each time, so it fires only once the clip has
+     * gone quiet — a NACK sent mid-transfer would ask for chunks that are still on air and
+     * waste the channel repeating them.
+     */
+    private fun scheduleNack(clipId: String, clipOrigin: String, seq: Int, total: Int) {
+        if (clipOrigin == nodeId) return          // never NACK our own recording
+        handler.removeCallbacksAndMessages(clipId)
+        handler.postAtTime({
+            val missing = voiceClips.missingOf(clipId)
+            if (missing.isEmpty()) {
+                nackAttempts.remove(clipId)
+                return@postAtTime
+            }
+            val attempt = nackAttempts.getOrDefault(clipId, 0)
+            if (attempt >= VoiceChunk.MAX_ATTEMPTS - 1) {
+                store.log("Voice message $clipId: gave up after $attempt resend requests, " +
+                    "${missing.size} piece(s) never arrived")
+                return@postAtTime
+            }
+            nackAttempts[clipId] = attempt + 1
+            val nack = VoiceNack(nodeId, clipOrigin, seq, total, missing, attempt = attempt)
+            store.markSeen(nack.id)
+            store.log("Voice message $clipId: asking for ${missing.size} missing piece(s)")
+            broadcastBytes(nack.encode(), exceptAddress = null)
+            // Ask again if the repair itself gets lost.
+            scheduleNack(clipId, clipOrigin, seq, total)
+        }, clipId, android.os.SystemClock.uptimeMillis() + NACK_QUIET_MS)
+    }
+
+    /** A receiver is missing pieces of a clip we recorded. Send exactly those, again. */
+    private fun resendMissing(nack: VoiceNack) {
+        val chunks = synchronized(sentClips) { sentClips[nack.seq] }
+        if (chunks == null) {
+            store.log("Cannot honour resend request for ${nack.clipId} — clip no longer held")
+            return
+        }
+        val attempt = minOf(nack.attempt + 1, VoiceChunk.MAX_ATTEMPTS - 1)
+        val wanted = nack.missing.filter { it < chunks.size }
+        store.log("Resending ${wanted.size} piece(s) of ${nack.clipId} (attempt $attempt)")
+        wanted.forEach { i ->
+            val retry = chunks[i].copy(attempt = attempt, hops = 0)
+            store.markSeen(retry.id)
+            broadcastBytes(retry.encode(), exceptAddress = null)
+        }
     }
 
     /**
@@ -233,6 +307,13 @@ class BleMeshService(context: Context) {
             return
         }
         store.log("Sending voice message: ${clip.size} bytes in ${chunks.size} pieces")
+        // Hold on to it: a receiver that loses a frame will ask for it by index.
+        synchronized(sentClips) {
+            sentClips[chunks.first().seq] = chunks
+            while (sentClips.size > SENT_CLIPS_CAP) {
+                sentClips.remove(sentClips.keys.first())
+            }
+        }
         chunks.forEach { chunk ->
             store.markSeen(chunk.id)
             broadcastBytes(chunk.encode(), exceptAddress = null)
