@@ -31,6 +31,10 @@ import node as nodemod
 ATT_HEADER = 3
 MIN_MTU = 23             # the BLE spec floor, and bleak's BlueZ placeholder value
 
+# A subscribe or write that never gets an ATT response hangs until the spec's 30 s
+# ATT transaction timeout, which then drops the link. Fail sooner and say why.
+GATT_OP_TIMEOUT_S = 10.0
+
 
 async def negotiated_mtu(client: BleakClient, logger, name: str) -> int:
     """The real ATT MTU, asking BlueZ for it when bleak hasn't looked it up yet.
@@ -68,10 +72,17 @@ class BleLink(nodemod.Link):
         self._node = node_name
         self._client: Optional[BleakClient] = None
         self._max_write = 0
+        self._subscribed = False
 
     @property
     def connected(self) -> bool:
         return self._client is not None and self._client.is_connected
+
+    @property
+    def ready(self) -> bool:
+        """Connected *and* subscribed. A link that connected but never completed its
+        subscribe is wedged: writing to it stalls until the ATT timeout kills it."""
+        return self.connected and self._subscribed
 
     def attach(self, client: BleakClient, mtu: int) -> None:
         self._client = client
@@ -89,12 +100,16 @@ class BleLink(nodemod.Link):
             self._log.info("[%s] phone connected — Bluetooth will carry up to %d bytes "
                            "per message, enough for a full SOS", self._node, self._max_write)
 
+    def mark_subscribed(self) -> None:
+        self._subscribed = True
+
     def detach(self) -> None:
         self._client = None
         self._max_write = 0
+        self._subscribed = False
 
     async def send(self, raw: bytes, msg_id: str) -> bool:
-        if not self.connected:
+        if not self.ready:
             # Not a debug detail: the message is now lost, and nobody is holding it.
             self._log.warning("[%s] LOST %s — the phone is not connected right now, "
                               "so there is nowhere to deliver it", self._node, msg_id)
@@ -110,10 +125,19 @@ class BleLink(nodemod.Link):
             return False
         try:
             assert self._client is not None
-            await self._client.write_gatt_char(self._char, raw, response=True)
+            await asyncio.wait_for(
+                self._client.write_gatt_char(self._char, raw, response=True),
+                timeout=GATT_OP_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            self._log.warning("[%s] could not hand %s to the phone: it did not answer the "
+                              "write within %.0fs", self._node, msg_id, GATT_OP_TIMEOUT_S)
+            return False
         except Exception as e:
-            self._log.warning("[%s] could not hand %s to the phone: %s",
-                              self._node, msg_id, type(e).__name__)
+            # The exception *message* carries the ATT error code; the class name alone
+            # ("BleakGATTProtocolError") says nothing about why the phone refused.
+            self._log.warning("[%s] could not hand %s to the phone: %s: %s",
+                              self._node, msg_id, type(e).__name__, e)
             return False
 
         import envelope as env
@@ -134,13 +158,29 @@ class BleManager:
         self._tasks: List[asyncio.Task] = []
 
     async def discover(self) -> List[BLEDevice]:
+        """Devices whose *live* advertisement carries the mesh service UUID.
+
+        BlueZ hands back everything it currently knows about a device, merging scan
+        responses and cached properties, so `BleakScanner`'s own service filter is not
+        enough: a phone can surface here on an address that is not the one the mesh
+        app is advertising on. Re-check the UUID against the advertisement we were
+        actually given this scan, and drop anything that does not carry it — picking
+        such an address connects fine, then wedges on the first GATT operation.
+        """
         svc = self._cfg["service_uuid"].lower()
         timeout = float(self._cfg["scan_timeout_s"])
         self._log.info("looking for phones running the mesh app (%.0f second scan)...", timeout)
         found = await BleakScanner.discover(timeout=timeout, service_uuids=[svc], return_adv=True)
-        devices = [d for d, _adv in found.values()]
-        for d in devices:
-            self._log.info("  found a phone: %s (%s)", d.address, d.name or "name not shared")
+
+        devices: List[BLEDevice] = []
+        for device, adv in found.values():
+            advertised = {u.lower() for u in (adv.service_uuids or ())}
+            label = f"{device.address} ({device.name or 'name not shared'}, {adv.rssi} dBm)"
+            if svc in advertised:
+                self._log.info("  found a phone running the mesh app: %s", label)
+                devices.append(device)
+            else:
+                self._log.info("  ignoring %s — it is not advertising the mesh app", label)
         return devices
 
     async def resolve_peers(self) -> Dict[str, str]:
@@ -157,6 +197,13 @@ class BleManager:
             raise RuntimeError(
                 f"I need 2 phones running the mesh app, but I can see {len(addrs)} ({found}). "
                 "Open the app on both phones, pick a role, and keep the screen on."
+            )
+        if len(addrs) > 2:
+            raise RuntimeError(
+                f"I can see {len(addrs)} phones running the mesh app ({', '.join(addrs)}) and "
+                "cannot tell which two you mean. Close the app on the others, or name the two "
+                "you want under \"ble\": {\"peers\": {\"field\": \"...\", \"gateway\": \"...\"}} "
+                "in config.json."
             )
         # Deterministic so a rerun keeps the same phone on the same side of the link.
         auto = {"field": addrs[0], "gateway": addrs[1]}
@@ -177,6 +224,12 @@ class BleManager:
             try:
                 async with BleakClient(link.address, timeout=20.0) as client:
                     attempt = 0
+                    if client.services.get_characteristic(link._char) is None:
+                        raise RuntimeError(
+                            f"{link.address} accepted the connection but does not serve the "
+                            "mesh characteristic — this is not the phone's mesh-app address. "
+                            "Pin the right one under \"ble\".\"peers\" in config.json."
+                        )
                     mtu = await negotiated_mtu(client, self._log, link._node)
                     link.attach(client, mtu)
                     self._chain.emit(clog.PEER, link._node, radio=link.name,
@@ -185,16 +238,23 @@ class BleManager:
                     def handler(_char, data: bytearray) -> None:
                         asyncio.create_task(on_bytes(bytes(data)))
 
-                    await client.start_notify(link._char, handler)
+                    await asyncio.wait_for(client.start_notify(link._char, handler),
+                                           timeout=GATT_OP_TIMEOUT_S)
+                    link.mark_subscribed()
                     self._log.info("[%s] now listening for messages from this phone", link._node)
 
                     while client.is_connected:
                         await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 raise
+            except asyncio.TimeoutError:
+                self._log.warning(
+                    "[%s] %s connected but never answered the subscribe within %.0fs — "
+                    "dropping it rather than waiting for the link to time out",
+                    link._node, link.address, GATT_OP_TIMEOUT_S)
             except Exception as e:
-                self._log.warning("[%s] Bluetooth trouble with %s: %s",
-                                  link._node, link.address, e)
+                self._log.warning("[%s] Bluetooth trouble with %s: %s: %s",
+                                  link._node, link.address, type(e).__name__, e)
             finally:
                 if link.connected:
                     link.detach()

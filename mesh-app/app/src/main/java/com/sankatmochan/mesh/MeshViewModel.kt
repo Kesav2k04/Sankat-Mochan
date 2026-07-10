@@ -53,6 +53,7 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     val receivedSos = service.store.receivedSos
     val sent = service.store.sent
     val eventLog = service.store.eventLog
+    val acceptedIds = service.store.acceptedIds
 
     /** True when this phone refuses to peer with other phones, forcing traffic
      *  out through the LoRa gateway. See [BleMeshService.loraOnly]. */

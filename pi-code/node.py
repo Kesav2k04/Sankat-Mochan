@@ -226,8 +226,8 @@ class MeshNode:
         try:
             ok = await link.send(raw, msg.id)
         except Exception as e:
-            self._log.warning("[%s] could not pass %s to %s: %s",
-                              self.name, msg.id, link.name, type(e).__name__)
+            self._log.warning("[%s] could not pass %s to %s: %s: %s",
+                              self.name, msg.id, link.name, type(e).__name__, e)
             ok = False
         if not ok:
             self._chain.emit(clog.DROP, self.name, radio=link.name, msg_id=msg.id,

@@ -1,6 +1,10 @@
 package com.sankatmochan.mesh.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,15 +12,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,101 +39,229 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sankatmochan.mesh.MeshViewModel
+import com.sankatmochan.mesh.ui.theme.urgencyColors
+import kotlinx.coroutines.delay
 
+private val CATEGORIES = listOf(
+    "trapped" to "Trapped",
+    "medical" to "Medical",
+    "flood" to "Flood",
+    "fire" to "Fire",
+    "supplies" to "Food / Water",
+)
+
+// Native script — the person choosing is choosing their own language.
+private val LANGUAGES = listOf(
+    "ta" to "தமிழ்",
+    "hi" to "हिंदी",
+    "en" to "English",
+)
+
+private val URGENCIES = listOf(
+    "5" to "Critical",
+    "4" to "High",
+    "3" to "Medium",
+    "2" to "Low",
+    "1" to "Info",
+)
+
+/**
+ * One tap must send an SOS. Everything else sits below the button and is optional —
+ * a person in rising water does not fill in a form first, and the old screen made
+ * them type a category, a landmark, and the literal language code "ta".
+ */
 @Composable
 fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
-    // Prefilled default SOS so the demo needs one tap.
-    var gist by remember { mutableStateOf("help") }
+    var gist by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("trapped") }
-    var location by remember { mutableStateOf("Sector 4, near temple") }
+    var location by remember { mutableStateOf("") }
     var lang by remember { mutableStateOf("ta") }
     var urgency by remember { mutableIntStateOf(5) }
+    var detailsOpen by remember { mutableStateOf(false) }
+    var justSent by remember { mutableStateOf(false) }
 
     val sent by vm.sent.collectAsState()
     val latest = sent.lastOrNull()
 
-    // Try for a GPS fix as soon as the victim screen opens (optional — SOS works without it).
+    // Try for a GPS fix as soon as the screen opens (optional — SOS works without it).
     LaunchedEffect(Unit) { vm.refreshLocation() }
+
+    // Acknowledgement, not a send lock: the button stays live, so a second tap always
+    // gets through. This only stops it reading "SEND" while the person is still
+    // looking at the confirmation from the last one.
+    LaunchedEffect(sent.size) {
+        if (sent.isNotEmpty()) {
+            justSent = true
+            delay(2500)
+            justSent = false
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
-            MeshTopBar("Victim", peers, onBack)
+            MeshTopBar("Send for help", peers, onBack)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
-                OutlinedTextField(
-                    value = gist,
-                    onValueChange = { gist = it },
-                    label = { Text("What's happening?") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                Row {
-                    OutlinedTextField(
-                        value = category,
-                        onValueChange = { category = it },
-                        label = { Text("Category") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    OutlinedTextField(
-                        value = lang,
-                        onValueChange = { lang = it },
-                        label = { Text("Lang") },
-                        modifier = Modifier.weight(0.5f)
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = location,
-                    onValueChange = { location = it },
-                    label = { Text("Location hint") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                Text("Urgency: $urgency", fontWeight = FontWeight.SemiBold)
-                Slider(
-                    value = urgency.toFloat(),
-                    onValueChange = { urgency = it.toInt() },
-                    valueRange = 1f..5f,
-                    steps = 3
-                )
-                Spacer(Modifier.height(12.dp))
-                LocationCard(vm)
-
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = { vm.sendSos(category, urgency, gist, lang, location) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(72.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))
-                ) {
-                    Text("🆘  SEND SOS", style = MaterialTheme.typography.headlineSmall, color = Color.White)
-                }
-
-                if (peers == 0) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "No device connected yet — your SOS will be delivered automatically as soon as one is in range.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-
-                Spacer(Modifier.height(24.dp))
+                // The status of an SOS already in flight outranks everything else,
+                // so it goes above the button rather than below the fold.
                 if (latest != null) {
                     StatusLadder(stage = latest.stage, statusText = latest.statusText)
+                    if (sent.size > 1) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "${sent.size} SOS sent from this phone",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.height(20.dp))
+                }
+
+                SosButton(
+                    justSent = justSent,
+                    repeat = sent.isNotEmpty(),
+                    onSend = { vm.sendSos(category, urgency, gist, lang, location) }
+                )
+
+                Spacer(Modifier.height(10.dp))
+                ReachabilityNote(peers)
+
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    text = if (detailsOpen) "Hide details" else "Add details (optional)",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { detailsOpen = !detailsOpen }
+                        .padding(vertical = 10.dp, horizontal = 4.dp)
+                )
+
+                if (detailsOpen) {
+                    Spacer(Modifier.height(8.dp))
+                    Field("What is happening?") {
+                        ChipRow(CATEGORIES, category) { category = it }
+                    }
+                    Field("How urgent?") {
+                        ChipRow(URGENCIES, urgency.toString()) { urgency = it.toInt() }
+                    }
+                    Field("Language") {
+                        ChipRow(LANGUAGES, lang) { lang = it }
+                    }
+                    Field("Anything else?") {
+                        OutlinedTextField(
+                            value = gist,
+                            onValueChange = { gist = it },
+                            placeholder = { Text("e.g. two children with me") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    Field("Landmark near you") {
+                        OutlinedTextField(
+                            value = location,
+                            onValueChange = { location = it },
+                            placeholder = { Text("e.g. Sector 4, near the temple") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    LocationCard(vm)
+                    Spacer(Modifier.height(24.dp))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SosButton(justSent: Boolean, repeat: Boolean, onSend: () -> Unit) {
+    val palette = urgencyColors
+    val bg = if (justSent) palette.low else palette.critical
+    val label = when {
+        justSent -> "SENT"
+        repeat -> "SEND AGAIN"
+        else -> "SEND SOS"
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(bg)
+            .clickable(onClick = onSend)
+            .semantics { contentDescription = "Send an emergency SOS" },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (justSent) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(56.dp)
+                )
+            } else {
+                Text("🆘", fontSize = 52.sp)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+/** Says what will actually happen to the message, which depends on a peer being up. */
+@Composable
+private fun ReachabilityNote(peers: Int) {
+    val connected = peers > 0
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (connected) urgencyColors.low else urgencyColors.high)
+        )
+        Spacer(Modifier.size(8.dp))
+        Text(
+            text = if (connected)
+                "Connected — your SOS goes out immediately"
+            else
+                "Nothing in range yet — your SOS is held and sent the moment something is",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun Field(label: String, content: @Composable () -> Unit) {
+    Column(Modifier.padding(bottom = 18.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(8.dp))
+        content()
     }
 }
 
@@ -135,42 +272,87 @@ private fun LocationCard(vm: MeshViewModel) {
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Icon(
+                Icons.Filled.Place,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.size(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("📍 GPS location", fontWeight = FontWeight.SemiBold)
+                Text("GPS location", fontWeight = FontWeight.SemiBold)
                 val la = vm.lat
                 val lo = vm.lng
                 if (la != null && lo != null) {
                     Text("%.5f, %.5f".format(la, lo), style = MaterialTheme.typography.bodyLarge)
                 }
-                Text(vm.locationStatus, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                Text(
+                    vm.locationStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            TextButton(onClick = { vm.refreshLocation() }) { Text("Refresh") }
+            TextButton(onClick = { vm.refreshLocation() }) {
+                Icon(Icons.Filled.Refresh, contentDescription = null)
+                Spacer(Modifier.size(4.dp))
+                Text("Refresh")
+            }
         }
     }
 }
 
 @Composable
 private fun StatusLadder(stage: Int, statusText: String) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Status", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-            Step("Sending…", stage >= 0)
-            Step("Message reached the control room", stage >= 1)
-            Step("Help is on the way", stage >= 2)
-            Spacer(Modifier.height(4.dp))
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = "Current: $statusText",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
+                statusText,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
             )
+            Spacer(Modifier.height(2.dp))
+            Step("Sent from this phone", stage >= 0)
+            Step("Reached the control room", stage >= 1)
+            Step("Help is on the way", stage >= 2)
         }
     }
 }
 
 @Composable
 private fun Step(label: String, done: Boolean) {
-    Row {
-        Text(if (done) "●  " else "○  ", color = if (done) MaterialTheme.colorScheme.primary else Color.Gray)
-        Text(label, color = if (done) MaterialTheme.colorScheme.onSurface else Color.Gray)
+    val onContainer = MaterialTheme.colorScheme.onPrimaryContainer
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .clip(CircleShape)
+                .background(if (done) urgencyColors.low else Color.Transparent)
+                .border(
+                    width = if (done) 0.dp else 1.5.dp,
+                    color = if (done) Color.Transparent else onContainer.copy(alpha = 0.4f),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (done) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+        Spacer(Modifier.size(10.dp))
+        Text(
+            label,
+            color = if (done) onContainer else onContainer.copy(alpha = 0.5f),
+            fontWeight = if (done) FontWeight.SemiBold else FontWeight.Normal
+        )
     }
 }

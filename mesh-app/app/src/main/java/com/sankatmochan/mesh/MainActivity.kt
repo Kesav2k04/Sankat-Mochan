@@ -9,6 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -88,12 +90,14 @@ private fun AppRoot(vm: MeshViewModel, onPickRole: (MeshRole) -> Unit) {
             val peers by vm.peerCount.collectAsState()
             val loraOnly by vm.loraOnly.collectAsState()
             // Rendered once here so all three role screens inherit the switch.
-            Column {
-                LoraOnlyBanner(enabled = loraOnly, onChange = vm::setLoraOnly)
-                when (role) {
-                    MeshRole.VICTIM -> VictimScreen(vm, peers) { vm.leaveRole() }
-                    MeshRole.RESPONDER -> ResponderScreen(vm, peers) { vm.leaveRole() }
-                    MeshRole.RELAY -> RelayScreen(vm, peers) { vm.leaveRole() }
+            Surface(color = MaterialTheme.colorScheme.background) {
+                Column {
+                    LoraOnlyBanner(enabled = loraOnly, onChange = vm::setLoraOnly)
+                    when (role) {
+                        MeshRole.VICTIM -> VictimScreen(vm, peers) { vm.leaveRole() }
+                        MeshRole.RESPONDER -> ResponderScreen(vm, peers) { vm.leaveRole() }
+                        MeshRole.RELAY -> RelayScreen(vm, peers) { vm.leaveRole() }
+                    }
                 }
             }
         }

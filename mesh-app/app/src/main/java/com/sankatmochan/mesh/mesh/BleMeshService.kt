@@ -165,6 +165,7 @@ class BleMeshService(context: Context) {
 
     /** Responder accepts a SOS → tells the victim help is coming. */
     fun accept(sos: SosMessage) {
+        store.markAccepted(sos.id)
         val ack = SosMessage(
             id = nextId(),
             type = MsgType.ACCEPTED,

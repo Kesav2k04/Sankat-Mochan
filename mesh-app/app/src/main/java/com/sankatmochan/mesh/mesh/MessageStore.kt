@@ -34,14 +34,26 @@ class MessageStore {
     private val _peerCount = MutableStateFlow(0)
     val peerCount: StateFlow<Int> = _peerCount.asStateFlow()
 
+    /** Ids of SOS messages this responder has accepted. Lives here, not in a
+     *  composable's `remember`, so it survives rotation and screen re-entry. */
+    private val _acceptedIds = MutableStateFlow<Set<String>>(emptySet())
+    val acceptedIds: StateFlow<Set<String>> = _acceptedIds.asStateFlow()
+
     /** Returns true the FIRST time an id is seen; false thereafter (dedup). */
     @Synchronized
     fun markSeen(id: String): Boolean = seenIds.add(id)
 
+    fun markAccepted(sosId: String) {
+        _acceptedIds.update { it + sosId }
+    }
+
     // These run on BLE binder threads; update{} is atomic (no lost-update race).
     fun addReceivedSos(msg: SosMessage) {
         _receivedSos.update { current ->
-            (current + msg).distinctBy { it.id }.sortedByDescending { it.urgency }
+            // Most urgent first, then newest — a fresh CRITICAL must never sort
+            // below a stale one the responder has already read past.
+            (current + msg).distinctBy { it.id }
+                .sortedWith(compareByDescending<SosMessage> { it.urgency }.thenByDescending { it.ts })
         }
     }
 
