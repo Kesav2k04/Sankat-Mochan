@@ -37,8 +37,8 @@ import com.sankatmochan.mesh.MeshViewModel
 
 @Composable
 fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
-    // Prefilled with a realistic Tamil SOS so the demo needs one tap.
-    var gist by remember { mutableStateOf("Veedu moodhi irukku, thanni varudhu — kaappaathunga") }
+    // Prefilled default SOS so the demo needs one tap.
+    var gist by remember { mutableStateOf("help") }
     var category by remember { mutableStateOf("trapped") }
     var location by remember { mutableStateOf("Sector 4, near temple") }
     var lang by remember { mutableStateOf("ta") }

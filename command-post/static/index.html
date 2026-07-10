@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sankat-Mochan · Command Post</title>
+  <style>
+    :root {
+      --paper: #f7f4ef; --ink: #1a1a1a; --saffron: #b23a1e; --line: #e2ddd3;
+      --u5: #c62828; --u4: #e64a19; --u3: #f9a825; --u2: #7cb342; --u1: #9e9e9e;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink);
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+    header { display: flex; align-items: baseline; gap: 16px; padding: 16px 24px;
+      border-bottom: 2px solid var(--ink); }
+    header h1 { font-family: Georgia, "Times New Roman", serif; font-size: 24px; margin: 0; color: var(--saffron); }
+    header .sub { font-size: 13px; color: #666; }
+    .status-bar { margin-left: auto; display: flex; gap: 16px; align-items: center; font-size: 13px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .dot.on { background: #2e7d32; } .dot.off { background: #b0651f; }
+    .toolbar { padding: 12px 24px; display: flex; gap: 12px; align-items: center; }
+    button { font: inherit; border: 1px solid var(--ink); background: #fff; padding: 8px 14px;
+      border-radius: 6px; cursor: pointer; }
+    button.primary { background: var(--saffron); color: #fff; border-color: var(--saffron); }
+    button:disabled { opacity: .5; cursor: default; }
+    #queue { padding: 8px 24px 40px; display: grid; gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+    .card { background: #fff; border: 1px solid var(--line); border-left: 6px solid var(--u3);
+      border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+    .card.u5 { border-left-color: var(--u5); } .card.u4 { border-left-color: var(--u4); }
+    .card.u3 { border-left-color: var(--u3); } .card.u2 { border-left-color: var(--u2); }
+    .card.u1 { border-left-color: var(--u1); }
+    .row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .chip { font-size: 12px; font-weight: 700; color: #fff; padding: 3px 8px; border-radius: 5px; }
+    .chip.u5{background:var(--u5)}.chip.u4{background:var(--u4)}.chip.u3{background:var(--u3)}
+    .chip.u2{background:var(--u2)}.chip.u1{background:var(--u1)}
+    .cat { font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+    .meta { margin-left: auto; font-size: 12px; color: #888; }
+    .gist { font-size: 16px; margin: 6px 0; }
+    .orig { font-size: 13px; color: #666; font-style: italic; }
+    .coords { font-size: 13px; font-weight: 600; margin: 4px 0; }
+    .rationale { font-size: 12px; color: #777; margin: 4px 0 8px; }
+    .status { font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .status.new { color: var(--saffron); } .status.en { color: #2e7d32; } .status.delivered { color: #3a5a6b; }
+    .empty { padding: 60px 24px; color: #888; text-align: center; }
+    .ai-tag { font-size: 11px; color: #2e7d32; border: 1px solid #2e7d32; border-radius: 4px; padding: 1px 5px; }
+    .ai-tag.off { color: #b0651f; border-color: #b0651f; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Sankat-Mochan</h1>
+    <span class="sub">Command Post · offline triage</span>
+    <div class="status-bar">
+      <span><span id="wsdot" class="dot off"></span><span id="wstext">connecting…</span></span>
+      <span id="aitag" class="ai-tag off">AI: rule-based</span>
+      <span id="count">0 active</span>
+    </div>
+  </header>
+  <div class="toolbar">
+    <button class="primary" onclick="inject()">Inject test SOS</button>
+    <span class="sub">Real SOS arrive here from the LoRa gateway via POST /sos.</span>
+  </div>
+  <div id="queue"></div>
+  <div id="empty" class="empty">No SOS yet — waiting for the mesh…</div>
+
+<script>
+  const records = new Map();
+
+  function urgencyClass(u){ return "u" + Math.max(1, Math.min(5, u||3)); }
+  function urgencyLabel(u){ return ({5:"CRITICAL",4:"HIGH",3:"MEDIUM",2:"LOW",1:"INFO"})[u] || "MED"; }
+
+  // Plain-text only (project rule #9): build nodes with textContent, never innerHTML.
+  function el(tag, cls, text){
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function render(){
+    const q = document.getElementById("queue");
+    q.innerHTML = "";
+    const list = [...records.values()].sort(
+      (a,b)=> (b.urgency-a.urgency) || (b.ts-a.ts)
+    );
+    document.getElementById("empty").style.display = list.length ? "none" : "block";
+    document.getElementById("count").textContent = list.length + " active";
+    for (const r of list){
+      const t = r.triage || {};
+      const card = el("div", "card " + urgencyClass(r.urgency));
+
+      const row = el("div", "row");
+      row.append(el("span", "chip " + urgencyClass(r.urgency), urgencyLabel(r.urgency) + " · " + r.urgency));
+      row.append(el("span", "cat", r.category || "other"));
+      row.append(el("span", "meta", "hop " + (r.hops??0) + " · " + (r.lang||"")));
+      card.append(row);
+
+      card.append(el("div", "gist", r.english || r.gist || ""));
+      if (t.ai && r.english && r.gist && r.english !== r.gist)
+        card.append(el("div", "orig", "orig (" + (r.lang||"") + "): " + r.gist));
+      if (r.lat != null && r.lng != null)
+        card.append(el("div", "coords", "🛰 " + r.lat.toFixed(5) + ", " + r.lng.toFixed(5)));
+      else if (r.locationHint)
+        card.append(el("div", "coords", "📍 " + r.locationHint));
+      if (t.rationale) card.append(el("div", "rationale", "AI: " + t.rationale +
+        (t.latency_ms ? " (" + t.latency_ms + "ms)" : "")));
+
+      const foot = el("div", "row");
+      const st = el("span", "status " + (r.status==="en route"?"en":r.status), (r.status||"new").toUpperCase());
+      foot.append(st);
+      if (r.status !== "en route"){
+        const btn = el("button", "primary"); btn.textContent = "Accept & dispatch";
+        btn.onclick = ()=> accept(r.id);
+        foot.append(btn);
+      }
+      card.append(foot);
+      q.append(card);
+    }
+  }
+
+  function upsert(rec){ records.set(rec.id, rec); render(); }
+
+  async function inject(){ await fetch("/inject", {method:"POST"}); }
+  async function accept(id){ await fetch("/accept/" + encodeURIComponent(id), {method:"POST"}); }
+
+  function connect(){
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(proto + "://" + location.host + "/ws");
+    ws.onopen = ()=>{ setWs(true); };
+    ws.onclose = ()=>{ setWs(false); setTimeout(connect, 1500); };
+    ws.onmessage = (ev)=>{
+      const m = JSON.parse(ev.data);
+      if (m.kind === "snapshot"){
+        records.clear();
+        (m.records||[]).forEach(r=> records.set(r.id, r));
+        setAi(m.ai_enabled); render();
+      } else if (m.kind === "new" || m.kind === "update"){
+        upsert(m.record);
+      }
+    };
+  }
+  function setWs(on){
+    document.getElementById("wsdot").className = "dot " + (on?"on":"off");
+    document.getElementById("wstext").textContent = on ? "live" : "reconnecting…";
+  }
+  function setAi(on){
+    const t = document.getElementById("aitag");
+    t.textContent = on ? "AI: model" : "AI: rule-based";
+    t.className = "ai-tag" + (on ? "" : " off");
+  }
+  connect();
+</script>
+</body>
+</html>

@@ -8,7 +8,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-MAX_BYTES = 260  # small slack over the 244 the radios enforce
+# 244 B is the LoRa/BLE WIRE cap (enforced when the phone ENCODES). On INGEST we
+# validate more leniently: native-script Indic is ~3 bytes/char, and the command
+# post may also receive richer envelopes over LAN (not just LoRa). Still bounded
+# so untrusted input can't be huge (rule #8).
+WIRE_MAX_BYTES = 244
+PARSE_MAX_BYTES = 4096
 VALID_TYPES = {"SOS", "DELIVERED", "ACCEPTED"}
 
 
@@ -36,7 +41,7 @@ def parse_envelope(raw: bytes | str | dict) -> dict[str, Any]:
     """Parse + validate one envelope. Returns a normalized dict or raises
     InvalidEnvelope. Short-key wire format decoded into readable field names."""
     if isinstance(raw, (bytes, bytearray)):
-        if len(raw) > MAX_BYTES:
+        if len(raw) > PARSE_MAX_BYTES:
             raise InvalidEnvelope("oversized payload")
         raw = raw.decode("utf-8", errors="strict")
     if isinstance(raw, str):
@@ -88,11 +93,13 @@ def parse_envelope(raw: bytes | str | dict) -> dict[str, Any]:
 
 def sample_sos(seq: int = 0) -> dict[str, Any]:
     """A realistic test envelope for the inject button / benchmark."""
+    # Native-script Indic — this is what on-device STT (Sarvam/Whisper) actually
+    # emits. (Romanized Latin Indic is unrealistic AND much harder to translate.)
     samples = [
-        ("ta", "Veedu moodhi irukku, thanni varudhu — kaappaathunga", "trapped", 5, 11.6854, 76.1320),
-        ("hi", "Meri maa ko saans lene mein takleef ho rahi hai, dawai chahiye", "medical", 4, 11.6871, 76.1298),
-        ("ta", "Sagathi adaipattadhu, rendu per ullea maatti irukkaanga", "trapped", 5, 11.6840, 76.1355),
-        ("en", "Water rising fast near the old bridge, need a boat", "flood", 3, 11.6889, 76.1301),
+        ("ta", "வீடு முழுகிக்கிட்டு இருக்கு, தண்ணி ஏறுது, யாராவது காப்பாத்துங்க", "flood", 5, 11.6854, 76.1320),
+        ("hi", "मेरी माँ को साँस लेने में तकलीफ़ हो रही है, दवाई चाहिए", "medical", 4, 11.6871, 76.1298),
+        ("ta", "சுவர் இடிஞ்சு விழுந்துச்சு, ரெண்டு பேர் உள்ளே மாட்டிக்கிட்டாங்க", "trapped", 5, 11.6840, 76.1355),
+        ("en", "Water rising fast near the old bridge, we need a boat", "flood", 3, 11.6889, 76.1301),
     ]
     lang, gist, cat, urg, la, lo = samples[seq % len(samples)]
     return {
