@@ -2,15 +2,11 @@
 #
 # Sankat-Mochan backend, one command.
 #
-#   ./server.sh              command post + LoRa gateway on this machine
+#   ./server.sh              radios here, command post on the Mac (the normal case)
+#   ./server.sh local        command post + LoRa gateway, both on this machine
 #   ./server.sh post         command post only (no radios, no Bluetooth)
-#   ./server.sh gateway      LoRa gateway only, uplinking to a post elsewhere
-#   ./server.sh --port 8000  serve the local post on a different port
-#
-#   ./server.sh gateway --post http://Sivas-MacBook-Air.local:9000,http://10.83.166.233:9000
-#       Radios here, command post on the Mac. Candidates are tried in order and the
-#       first one answering /health wins — mDNS names go stale, IPs change, and a
-#       gateway that cannot reach its post should say so, not restart forever.
+#   ./server.sh --post URL   override where the command post lives
+#   ./server.sh --port 8000  serve the *local* post on a different port
 #
 # The command post is a FastAPI app (command-post/app.py) served by uvicorn. The gateway
 # is pi-code/run.sh, which does its own pre-flight on the radios.
@@ -31,17 +27,32 @@ HOST="${HOST:-0.0.0.0}"
 HEALTHY_AFTER_S=15   # a child that lives this long counts as "started"
 MAX_FAST_FAILURES=3
 
-MODE="all"
-POST_CANDIDATES="${SANKAT_POST:-}"   # comma-separated base URLs, e.g. http://mac.local:9000
+# --- where the command post lives -------------------------------------------
+# Tried in order; the first one answering /health wins. The .local name is first
+# because it survives a DHCP lease change; the raw IP is the fallback for the days
+# when this Wi-Fi drops multicast and mDNS resolves nothing.
+#
+# Override without editing this file:  ./server.sh --post http://host:9000
+#                                      SANKAT_POST=http://host:9000 ./server.sh
+# These are plain LAN addresses — no credentials belong in a URL (rule 2).
+DEFAULT_POST="http://Sivas-MacBook-Air.local:9000,http://10.83.166.233:9000"
+
+MODE="gateway"                       # radios here, post on the Mac
+POST_CANDIDATES="${SANKAT_POST:-$DEFAULT_POST}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    post|gateway|all) MODE="$1"; shift ;;
+    post)     MODE="post";    shift ;;
+    gateway)  MODE="gateway"; shift ;;
+    local|all) MODE="local";  shift ;;   # both halves on this machine
     --port) PORT="$2"; shift 2 ;;
     --post) POST_CANDIDATES="$2"; shift 2 ;;
-    -h|--help) sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '3,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
 done
+
+# "local" means the post is here, so ignore whatever remote address is configured.
+[[ "$MODE" == "local" ]] && POST_CANDIDATES=""
 
 mkdir -p "$LOG_DIR"
 step() { printf '\n==> %s\n' "$*"; }
@@ -269,7 +280,7 @@ wait_for_health() {
 }
 
 # --- 3. Go -----------------------------------------------------------------
-if [[ "$MODE" == "post" || "$MODE" == "all" ]]; then
+if [[ "$MODE" == "post" || "$MODE" == "local" ]]; then
   step "Command post (FastAPI)"
   if port_in_use "$PORT"; then
     die "port $PORT is already in use — an old server is still running.
@@ -284,7 +295,7 @@ if [[ "$MODE" == "post" || "$MODE" == "all" ]]; then
   wait_for_health || die "the command post never became healthy — see $LOG_DIR/command-post.log"
 fi
 
-if [[ "$MODE" == "gateway" || "$MODE" == "all" ]]; then
+if [[ "$MODE" == "gateway" || "$MODE" == "local" ]]; then
   step "LoRa gateway"
 
   # Where does this gateway send accepted envelopes?
@@ -295,8 +306,9 @@ if [[ "$MODE" == "gateway" || "$MODE" == "all" ]]; then
     on the Mac:  cd command-post && uvicorn app:app --host 0.0.0.0 --port 9000
     from here:   curl http://<mac>:9000/health"
     echo "  using $POST_BASE"
-  elif [[ "$MODE" == "all" ]]; then
+  elif [[ "$MODE" == "local" ]]; then
     POST_BASE="http://127.0.0.1:$PORT"
+    echo "  local mode: uplinking to the command post this script just started"
   else
     POST_BASE=""
   fi
@@ -325,8 +337,8 @@ printf '%s  Sankat-Mochan is running.  Ctrl-C stops everything.%s\n' "$C_BOLD" "
 case "$MODE" in
   post)    printf '  command post   %s\n' "http://$HOST:$PORT/" ;;
   gateway) printf '  radios         field + gateway on 433 MHz\n'
-           [[ -n "$POST_BASE" ]] && printf '  uplink         %s\n' "$POST_BASE" ;;
-  all)     printf '  command post   %s\n' "http://$HOST:$PORT/"
+           [[ -n "$POST_BASE" ]] && printf '  command post   %s\n' "$POST_BASE" ;;
+  local)   printf '  command post   %s\n' "http://$HOST:$PORT/"
            printf '  radios         field + gateway on 433 MHz\n' ;;
 esac
 printf '  logs           %s/\n' "$LOG_DIR"
