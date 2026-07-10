@@ -22,6 +22,9 @@ LOG_DIR="$ROOT/logs"
 PORT="${PORT:-9000}"
 HOST="${HOST:-0.0.0.0}"
 
+HEALTHY_AFTER_S=15   # a child that lives this long counts as "started"
+MAX_FAST_FAILURES=3
+
 MODE="all"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -72,6 +75,19 @@ EOF
 # supervisor alone leaves uvicorn running, and killing the child alone makes the
 # supervisor restart it.
 SUPERVISORS=()
+MAIN_PID=$$
+
+# TERM a child and everything it spawned; SIGKILL whatever ignores it.
+stop_tree() {
+  local pid="${1:-}"
+  [[ -n "$pid" ]] || return 0
+  kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 0.3
+  done
+  kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+}
 
 cleanup() {
   trap - INT TERM EXIT
@@ -83,7 +99,7 @@ cleanup() {
   done
   for f in "$LOG_DIR"/*.child.pid; do
     [[ -f "$f" ]] || continue
-    kill -TERM "$(cat "$f")" 2>/dev/null || true
+    stop_tree "$(cat "$f")"
     rm -f "$f"
   done
   wait 2>/dev/null || true
@@ -96,24 +112,65 @@ trap cleanup INT TERM EXIT
 # Backs off, so a process that dies instantly cannot spin the CPU.
 supervise() {
   local name="$1" logfile="$2" workdir="$3"; shift 3
-  local child="" delay=1
-  # Propagate a stop to the child, then leave.
-  trap 'kill -TERM "$child" 2>/dev/null || true; exit 0' TERM INT
+  local child="" napper="" delay=1 fast_failures=0
+  # Propagate a stop to whatever we are currently waiting on, then leave.
+  trap 'stop_tree "$child"; kill -TERM "$napper" 2>/dev/null; rm -f "$LOG_DIR/$name.child.pid"; exit 0' TERM INT
   while true; do
     echo "[$name] starting: $*" >>"$logfile"
-    ( cd "$workdir" && exec "$@" ) >>"$logfile" 2>&1 &
+    local began=$SECONDS
+    # setsid puts the child in a new process group, so `kill -- -$child` reaches its
+    # whole tree. run.sh is a bash wrapper around gateway.py; killing only the wrapper
+    # orphans gateway.py, which then keeps the radios busy and blocks the next start.
+    ( cd "$workdir" && exec setsid "$@" ) >>"$logfile" 2>&1 &
     child=$!
     echo "$child" > "$LOG_DIR/$name.child.pid"
     wait "$child"; local rc=$?
     rm -f "$LOG_DIR/$name.child.pid"
+    # If server.sh was SIGKILLed we cannot be told to stop, and restarting forever would
+    # leave an orphan holding the port. Check the parent is still there.
+    if ! kill -0 "$MAIN_PID" 2>/dev/null; then
+      echo "[$name] parent is gone — exiting" >>"$logfile"
+      exit 0
+    fi
     if [[ $rc -eq 0 ]]; then
       echo "[$name] exited cleanly" | tee -a "$logfile"
       return 0
     fi
+
+    # Restarting is for a process that crashed after doing some work. A process that dies
+    # immediately, over and over, has a permanent problem — bad wiring, a busy radio, a
+    # port in use — and looping just buries the error message under restart noise.
+    if (( SECONDS - began < HEALTHY_AFTER_S )); then
+      (( fast_failures++ ))
+    else
+      fast_failures=0
+    fi
+    if (( fast_failures >= MAX_FAST_FAILURES )); then
+      echo "[$name] failed $fast_failures times in a row without staying up." | tee -a "$logfile"
+      echo "[$name] this will not fix itself. Giving up — see $logfile" | tee -a "$logfile"
+      kill -TERM "$MAIN_PID" 2>/dev/null
+      return 1
+    fi
+
     echo "[$name] exited with status $rc — restarting in ${delay}s" | tee -a "$logfile"
-    sleep "$delay"
+    # `sleep $delay` would swallow Ctrl-C for up to 30s: bash defers a trap until the
+    # foreground command finishes. Backgrounding it makes the wait interruptible.
+    sleep "$delay" & napper=$!
+    wait "$napper" 2>/dev/null
     delay=$(( delay < 30 ? delay * 2 : 30 ))
   done
+}
+
+# A port already in use is the difference between "the server restarted" and "you are
+# talking to a stale process from the last run". Fail loudly instead.
+port_in_use() {
+  ss -lntH "sport = :$1" 2>/dev/null | grep -q .
+}
+
+# Two gateways cannot share one pair of radios: the second one's pre-flight reports
+# "GPIO busy" and exits, forever. Name the culprit instead of restart-looping on it.
+radios_busy() {
+  pgrep -f "pi-code/gateway\.py" >/dev/null 2>&1
 }
 
 wait_for_health() {
@@ -131,6 +188,11 @@ wait_for_health() {
 # --- 3. Go -----------------------------------------------------------------
 if [[ "$MODE" == "post" || "$MODE" == "all" ]]; then
   step "Command post (FastAPI)"
+  if port_in_use "$PORT"; then
+    die "port $PORT is already in use — an old server is still running.
+  find it:  ss -lptn 'sport = :$PORT'
+  or serve elsewhere:  ./server.sh $MODE --port 9100"
+  fi
   echo "  http://$HOST:$PORT/   ·   ws://$HOST:$PORT/gateway"
   supervise post "$LOG_DIR/command-post.log" "$POST_DIR" \
     "$VENV/bin/uvicorn" app:app --host "$HOST" --port "$PORT" &
@@ -141,6 +203,11 @@ fi
 
 if [[ "$MODE" == "gateway" || "$MODE" == "all" ]]; then
   step "LoRa gateway"
+  if radios_busy; then
+    die "another gateway already holds the radios:
+$(pgrep -af "pi-code/gateway\.py" | sed 's/^/    /')
+  stop it first:  kill $(pgrep -f "pi-code/gateway\.py" | tr '\n' ' ')"
+  fi
   # Point the gateway's durable uplink at the post. Loopback, so nothing crosses a
   # network and no secret belongs here (rule 2).
   export SANKAT_UPLINK__ENABLED=true
