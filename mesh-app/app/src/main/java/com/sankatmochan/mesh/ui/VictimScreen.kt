@@ -92,8 +92,8 @@ fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
     val sent by vm.sent.collectAsState()
     val latest = sent.lastOrNull()
 
-    // Try for a GPS fix as soon as the screen opens (optional — SOS works without it).
-    LaunchedEffect(Unit) { vm.refreshLocation() }
+    // The GNSS receiver was already started when this role was picked, so by the time
+    // anyone reaches this screen a fix is on its way. Nothing to kick off here.
 
     // Acknowledgement, not a send lock: the button stays live, so a second tap always
     // gets through. This only stops it reading "SEND" while the person is still
@@ -138,6 +138,8 @@ fun VictimScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
 
                 Spacer(Modifier.height(10.dp))
                 ReachabilityNote(peers)
+                Spacer(Modifier.height(6.dp))
+                GpsNote(vm)
 
                 Spacer(Modifier.height(20.dp))
                 Text(
@@ -251,6 +253,32 @@ private fun ReachabilityNote(peers: Int) {
     }
 }
 
+/**
+ * Whether coordinates will ride along with the SOS. Shown next to the button, because
+ * a fix that only appears once you open "Add details" may as well not exist.
+ */
+@Composable
+private fun GpsNote(vm: MeshViewModel) {
+    val hasFix = vm.lat != null && vm.lng != null
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (hasFix) urgencyColors.low else urgencyColors.medium)
+        )
+        Spacer(Modifier.size(8.dp))
+        Text(
+            text = if (hasFix)
+                "GPS locked — your exact coordinates travel with the SOS"
+            else
+                vm.locationStatus,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
 @Composable
 private fun Field(label: String, content: @Composable () -> Unit) {
     Column(Modifier.padding(bottom = 18.dp)) {
@@ -267,6 +295,9 @@ private fun Field(label: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun LocationCard(vm: MeshViewModel) {
+    val la = vm.lat
+    val lo = vm.lng
+    val hasFix = la != null && lo != null
     Card(Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -275,15 +306,22 @@ private fun LocationCard(vm: MeshViewModel) {
             Icon(
                 Icons.Filled.Place,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
+                tint = if (hasFix) urgencyColors.low else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.size(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("GPS location", fontWeight = FontWeight.SemiBold)
-                val la = vm.lat
-                val lo = vm.lng
-                if (la != null && lo != null) {
-                    Text("%.5f, %.5f".format(la, lo), style = MaterialTheme.typography.bodyLarge)
+                if (hasFix) {
+                    // Six decimals is ~0.1 m — finer than any phone's GNSS accuracy,
+                    // but it costs nothing to read and matches what gets transmitted.
+                    Text("%.6f, %.6f".format(la, lo), style = MaterialTheme.typography.bodyLarge)
+                    vm.fixTime?.let {
+                        Text(
+                            "updated ${relativeTime(it)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 Text(
                     vm.locationStatus,
@@ -291,10 +329,12 @@ private fun LocationCard(vm: MeshViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            TextButton(onClick = { vm.refreshLocation() }) {
-                Icon(Icons.Filled.Refresh, contentDescription = null)
-                Spacer(Modifier.size(4.dp))
-                Text("Refresh")
+            if (!hasFix) {
+                TextButton(onClick = { vm.refreshLocation() }) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null)
+                    Spacer(Modifier.size(4.dp))
+                    Text("Retry")
+                }
             }
         }
     }

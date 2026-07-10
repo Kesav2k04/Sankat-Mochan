@@ -61,10 +61,22 @@ fun ResponderScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
                         .padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Every call that carries coordinates, pinned on one map, so the
+                    // rescuer sees the shape of the incident before reading any card.
+                    if (sosList.any { it.hasLocation }) {
+                        item(key = "map") {
+                            OfflineMapCard(
+                                victims = sosList,
+                                meLat = vm.lat,
+                                meLng = vm.lng
+                            )
+                        }
+                    }
                     items(sosList, key = { it.id }) { sos ->
                         SosCard(
                             sos = sos,
                             accepted = sos.id in accepted,
+                            route = Geo.describeRoute(vm.lat, vm.lng, sos.lat, sos.lng),
                             onAccept = { vm.accept(sos) }
                         )
                     }
@@ -109,7 +121,12 @@ private fun EmptyQueue(peers: Int) {
 }
 
 @Composable
-private fun SosCard(sos: SosMessage, accepted: Boolean, onAccept: () -> Unit) {
+private fun SosCard(
+    sos: SosMessage,
+    accepted: Boolean,
+    route: String?,
+    onAccept: () -> Unit,
+) {
     val palette = urgencyColors
     Card(Modifier.fillMaxWidth()) {
         // IntrinsicSize.Min bounds the Row's height to its tallest child, which is what
@@ -165,10 +182,19 @@ private fun SosCard(sos: SosMessage, accepted: Boolean, onAccept: () -> Unit) {
                 }
 
                 if (sos.hasLocation) {
+                    // The distance is what a rescuer acts on; the raw fix is the audit trail.
+                    if (route != null) {
+                        Text(
+                            "$route from you",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.forLevel(sos.urgency)
+                        )
+                    }
                     Text(
-                        "%.5f, %.5f".format(sos.lat, sos.lng),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
+                        "%.6f, %.6f".format(sos.lat, sos.lng),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 

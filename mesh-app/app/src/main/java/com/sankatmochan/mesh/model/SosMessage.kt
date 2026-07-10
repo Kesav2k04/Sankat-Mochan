@@ -58,13 +58,19 @@ data class SosMessage(
         o.put("g", g)
         o.put("ln", lang)
         if (lat != null && lng != null) {
-            o.put("la", lat)
-            o.put("lo", lng)
+            // A raw Double serialises as "12.959670000000001" — 18 bytes of a 244-byte
+            // envelope, all but six of them below the noise floor of any phone's GNSS.
+            o.put("la", round6(lat))
+            o.put("lo", round6(lng))
         }
         o.put("ts", ts)
         o.put("h", hops)
         return o.toString().toByteArray(StandardCharsets.UTF_8)
     }
+
+    /** Six decimal places ≈ 0.11 m — well inside GNSS accuracy, and it keeps the
+     *  envelope a predictable size so gist trimming behaves the same every time. */
+    private fun round6(v: Double): Double = Math.round(v * 1_000_000.0) / 1_000_000.0
 
     companion object {
         private const val TAG = "SosMessage"

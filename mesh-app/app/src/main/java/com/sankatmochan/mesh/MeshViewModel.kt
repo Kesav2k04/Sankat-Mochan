@@ -21,32 +21,51 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
 
     val nodeId: String get() = service.nodeId
 
-    /** Latest GPS fix, or null if we don't have one yet. Optional — an SOS
-     *  sends fine without it (backward compatible). */
+    /** Latest GNSS fix, or null if we don't have one yet. Optional — an SOS
+     *  sends fine without it, and is never blocked waiting for one. */
     var lat by mutableStateOf<Double?>(null)
         private set
     var lng by mutableStateOf<Double?>(null)
         private set
+    /** Wall-clock time of the current fix, for showing how stale it is. */
+    var fixTime by mutableStateOf<Long?>(null)
+        private set
     /** Human-facing note about the location state, shown on the victim screen. */
-    var locationStatus by mutableStateOf("Locating…")
+    var locationStatus by mutableStateOf("Searching for satellites…")
         private set
 
-    /** Ask for a fresh GPS fix. Safe to call only after ACCESS_FINE_LOCATION is granted. */
-    fun refreshLocation() {
-        if (!locationProvider.isLocationEnabled()) {
-            locationStatus = "Location services are off — SOS will still send without coordinates"
+    /**
+     * Keep the GNSS receiver warm. Called as soon as the victim role starts, so a fix
+     * is already in hand when the SOS button is pressed — a request made at send time
+     * would usually return nothing, because a cold fix without A-GPS takes a minute.
+     * Safe to call only after ACCESS_FINE_LOCATION is granted.
+     */
+    private fun startLocation() {
+        if (!locationProvider.hasGps()) {
+            locationStatus = "This phone has no GPS receiver"
             return
         }
-        locationStatus = "Locating…"
-        locationProvider.fetchCurrent { loc ->
-            if (loc != null) {
-                lat = loc.latitude
-                lng = loc.longitude
-                locationStatus = "GPS fix ±${loc.accuracy.toInt()}m"
-            } else {
-                locationStatus = "No GPS fix yet — move outdoors; SOS still sends without it"
-            }
+        if (!locationProvider.isLocationEnabled()) {
+            locationStatus = "Location is switched off — turn it on. It works in aeroplane mode."
+            return
         }
+        locationStatus = "Searching for satellites — the first fix can take a minute outdoors"
+        locationProvider.start { loc ->
+            lat = loc.latitude
+            lng = loc.longitude
+            fixTime = System.currentTimeMillis()
+            locationStatus = "Locked on — accurate to about ${loc.accuracy.toInt()} m"
+        }
+    }
+
+    private fun stopLocation() {
+        locationProvider.stop()
+    }
+
+    /** Re-check after the operator turns Location on from the system settings. */
+    fun refreshLocation() {
+        stopLocation()
+        startLocation()
     }
 
     val peerCount = service.store.peerCount
@@ -70,9 +89,14 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     fun startAsRole(role: MeshRole) {
         this.role = role
         service.start(role)
+        // The victim's fix travels in the SOS; the responder's fix is what turns a pair
+        // of coordinates into "420 m northeast of you". A relay needs neither, so it
+        // does not pay for a running GNSS receiver.
+        if (role == MeshRole.VICTIM || role == MeshRole.RESPONDER) startLocation()
     }
 
     fun leaveRole() {
+        stopLocation()
         service.stop()
         role = null
     }
@@ -83,6 +107,7 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     fun accept(sos: SosMessage) = service.accept(sos)
 
     override fun onCleared() {
+        stopLocation()
         service.stop()
     }
 }

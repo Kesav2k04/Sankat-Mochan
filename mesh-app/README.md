@@ -56,6 +56,32 @@ app/src/main/java/com/sankatmochan/mesh/
 └── ui/                      # RoleSelection / Victim / Responder / Relay screens
 ```
 
+## Offline map tiles (responder screen)
+
+The responder screen pins every SOS that carries GPS coordinates on a map rendered by
+osmdroid (Apache-2.0) from a **local tile archive**. Nothing is fetched at runtime —
+`setUseDataConnection(false)` plus an `OfflineTileProvider` mean the app has no network
+path to a tile server even if one were reachable.
+
+No archive ships in this repo, because tiles are large and region-specific. Without one
+the screen still shows coordinates, distance and bearing, and says the map is missing.
+
+To add a map for your region:
+
+1. Generate an `.mbtiles` archive (also accepted: `.sqlite`, `.zip`, `.gemf`) for the
+   bounding box and zoom range you need. Zoom 12–17 over a city is usually tens of MB;
+   check the tile provider's usage policy before bulk-downloading.
+2. Install it either way:
+   - **Bundled** — drop it in `app/src/main/assets/tiles/` and rebuild. It is unpacked
+     into app-private storage on first launch, off the main thread.
+   - **Sideloaded** — push it straight to the device, no rebuild:
+     ```
+     adb push region.mbtiles \
+       /sdcard/Android/data/com.sankatmochan.mesh/files/osmdroid/tiles/
+     ```
+3. Restart the app. Both paths land in the same directory and need no storage
+   permission on API 31+.
+
 ## Not built yet (next slices)
 
 - Voice SOS over BLE (DESIGN Case A) + on-device STT.
