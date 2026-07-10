@@ -276,24 +276,16 @@ class BleManager:
         others = sorted((p for p in by_node.values() if p.role != "responder"),
                         key=lambda p: p.node_id)
 
-        if not responders:
-            roles = ", ".join(sorted(p.role for p in by_node.values()))
-            raise RuntimeError(
-                f"I can see {len(by_node)} phone(s) ({roles}) but none picked \"I am responding\". "
-                "Open the app on the rescuer's phone and choose that role."
-            )
-        if not others:
-            raise RuntimeError(
-                "Every phone I can see picked \"I am responding\". At least one phone must "
-                "choose \"I need help\" or \"Relay only\", or there is nothing to carry."
-            )
-
-        # Loudest responder anchors the gateway; any extras join it there.
+        # Do not gate the mesh on both roles being present. In particular, a victim's
+        # SOS must reach the command post while there are zero responders — that is the
+        # moment at which dispatch is needed most. gateway.py keeps scanning after
+        # startup and attaches responders whenever they appear.
         responders.sort(key=lambda p: p.rssi, reverse=True)
         roster = {"field": others, "gateway": responders}
         for name, group in roster.items():
-            self._log.info("radio '%s' will carry %d phone(s): %s", name, len(group),
-                           ", ".join(p.describe() for p in group))
+            if group:
+                self._log.info("radio '%s' will carry %d phone(s): %s", name, len(group),
+                               ", ".join(p.describe() for p in group))
         return roster
 
     def maintain(self, link: BleLink, on_bytes: Callable[[bytes], "asyncio.Future"]) -> asyncio.Task:

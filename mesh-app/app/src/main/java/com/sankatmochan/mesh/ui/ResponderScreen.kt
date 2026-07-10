@@ -1,28 +1,30 @@
 package com.sankatmochan.mesh.ui
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Hearing
+import androidx.compose.material.icons.rounded.NearMe
+import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,8 +36,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sankatmochan.mesh.MeshViewModel
 import com.sankatmochan.mesh.model.SosMessage
 import com.sankatmochan.mesh.ui.theme.urgencyColors
@@ -43,29 +47,30 @@ import com.sankatmochan.mesh.ui.theme.urgencyColors
 @Composable
 fun ResponderScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
     val sosList by vm.receivedSos.collectAsState()
-    // Lives in the store, so it survives rotation and leaving/re-entering the screen.
     val accepted by vm.acceptedIds.collectAsState()
     val voice by vm.voiceClips.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
-            MeshTopBar("Incoming calls", peers, onBack)
+            MeshTopBar("Incoming", "live SOS queue", peers, onBack)
 
-            // A voice message can arrive before any text SOS does, so the empty state
-            // must account for both.
             if (sosList.isEmpty() && voice.isEmpty()) {
                 EmptyQueue(peers)
             } else {
                 val waiting = sosList.count { it.id !in accepted }
-                QueueHeader(total = sosList.size, waiting = waiting)
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Every call that carries coordinates, pinned on one map, so the
-                    // rescuer sees the shape of the incident before reading any card.
+                    item(key = "stats") {
+                        StatStrip(
+                            waiting = waiting,
+                            answered = sosList.size - waiting,
+                            voices = voice.size
+                        )
+                    }
                     if (sosList.any { it.hasLocation }) {
                         item(key = "map") {
                             OfflineMapCard(
@@ -75,7 +80,7 @@ fun ResponderScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
                             )
                         }
                     }
-                    // Voice above text: a recording that is still arriving is the most
+                    // Voice above text: a recording still arriving is the most
                     // time-sensitive thing on this screen.
                     items(voice, key = { it.clipId }) { clip ->
                         VoiceClipCard(clip)
@@ -95,35 +100,86 @@ fun ResponderScreen(vm: MeshViewModel, peers: Int, onBack: () -> Unit) {
     }
 }
 
+/** Three mini-tiles: what's waiting, what's handled, what's on the air. */
 @Composable
-private fun QueueHeader(total: Int, waiting: Int) {
-    Text(
-        text = if (waiting == 0) "All $total answered" else "$waiting waiting · $total total",
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-    )
+private fun StatStrip(waiting: Int, answered: Int, voices: Int) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        MiniStat("waiting", waiting.toString(), if (waiting > 0) urgencyColors.critical else urgencyColors.low, Modifier.weight(1f))
+        MiniStat("answered", answered.toString(), urgencyColors.low, Modifier.weight(1f))
+        MiniStat("voice", voices.toString(), MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MiniStat(label: String, value: String, tint: Color, modifier: Modifier = Modifier) {
+    Tile(modifier = modifier, shape = TileShapeSmall) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(tint)
+                )
+                Spacer(Modifier.size(6.dp))
+                SectionLabel(label)
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
 }
 
 @Composable
 private fun EmptyQueue(peers: Int) {
+    val infinite = rememberInfiniteTransition(label = "listen")
+    val pulse by infinite.animateFloat(
+        initialValue = 0.22f, targetValue = 0.06f,
+        animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Reverse),
+        label = "listenPulse"
+    )
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Listening", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Box(contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .size(130.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.secondary.copy(alpha = pulse))
+            )
+            IconBadge(
+                Icons.Rounded.Hearing,
+                tint = MaterialTheme.colorScheme.secondary,
+                size = 84.dp
+            )
+        }
+        Spacer(Modifier.height(22.dp))
+        Text(
+            "Listening",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground
+        )
         Spacer(Modifier.height(8.dp))
         Text(
             text = if (peers > 0)
-                "Connected to $peers device${if (peers == 1) "" else "s"}. Any SOS that reaches the mesh will appear here."
+                "Connected to $peers device${if (peers == 1) "" else "s"}. Any SOS that reaches the mesh appears here."
             else
                 "Nothing connected yet. Waiting for the gateway or another phone to come into range.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
     }
 }
@@ -136,115 +192,131 @@ private fun SosCard(
     onAccept: () -> Unit,
 ) {
     val palette = urgencyColors
-    Card(Modifier.fillMaxWidth()) {
-        // IntrinsicSize.Min bounds the Row's height to its tallest child, which is what
-        // lets the accent bar's fillMaxHeight() resolve inside an unbounded LazyColumn item.
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min)
+    val accent = palette.forLevel(sos.urgency)
+    Tile(
+        Modifier.fillMaxWidth(),
+        stroke = if (accepted) palette.low.copy(alpha = 0.4f) else accent.copy(alpha = 0.3f)
+    ) {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Urgency reads as a colour before it reads as a word.
-            Box(
-                Modifier
-                    .width(6.dp)
-                    .fillMaxHeight()
-                    .background(palette.forLevel(sos.urgency))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                UrgencyChip(sos.urgency)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    relativeTime(sos.ts),
+                    style = MaterialTheme.typography.labelMedium,
+                    letterSpacing = 0.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Text(
+                sos.category.ifBlank { "unspecified" }.uppercase(),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            Column(
-                Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+
+            // gist is untrusted incoming text — rendered as plain text only (CLAUDE.md #9).
+            if (sos.gist.isNotBlank()) {
+                Text(
+                    sos.gist,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            if (sos.locationHint.isNotBlank()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    UrgencyChip(sos.urgency)
-                    Spacer(Modifier.weight(1f))
+                    Icon(
+                        Icons.Rounded.Place,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.size(5.dp))
                     Text(
-                        relativeTime(sos.ts),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        sos.locationHint,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
+            }
 
-                Text(
-                    sos.category.ifBlank { "unspecified" }.uppercase(),
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium
-                )
-
-                // gist is untrusted incoming text — rendered as plain text only (CLAUDE.md #9).
-                if (sos.gist.isNotBlank()) {
-                    Text(sos.gist, style = MaterialTheme.typography.bodyLarge)
-                }
-
-                if (sos.locationHint.isNotBlank()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+            if (sos.hasLocation) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (route != null) {
                         Icon(
-                            Icons.Filled.Place,
+                            Icons.Rounded.NearMe,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = accent
                         )
-                        Spacer(Modifier.size(4.dp))
-                        Text(sos.locationHint, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-
-                if (sos.hasLocation) {
-                    // The distance is what a rescuer acts on; the raw fix is the audit trail.
-                    if (route != null) {
+                        Spacer(Modifier.size(5.dp))
                         Text(
                             "$route from you",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.forLevel(sos.urgency)
+                            color = accent
                         )
+                        Spacer(Modifier.weight(1f))
                     }
                     Text(
-                        "%.6f, %.6f".format(sos.lat, sos.lng),
-                        style = MaterialTheme.typography.bodySmall,
+                        "%.5f, %.5f".format(sos.lat, sos.lng),
+                        style = MaterialTheme.typography.labelSmall,
+                        letterSpacing = 0.sp,
+                        fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
 
-                Text(
-                    "${routeLabel(sos.hops)} · ${sos.lang} · from ${sos.origin}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Text(
+                "${routeLabel(sos.hops)} · ${sos.lang} · from ${sos.origin}",
+                style = MaterialTheme.typography.labelSmall,
+                letterSpacing = 0.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+            )
 
-                Spacer(Modifier.height(4.dp))
-                if (accepted) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(palette.low)
-                            .padding(vertical = 14.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.size(8.dp))
-                        Text("Accepted — en route", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    Button(
-                        onClick = onAccept,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = palette.forLevel(sos.urgency),
-                            contentColor = palette.onLevel(sos.urgency)
-                        )
-                    ) {
-                        Text("Accept & respond", fontWeight = FontWeight.Bold)
-                    }
+            Spacer(Modifier.height(2.dp))
+            if (accepted) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(palette.low)
+                        .padding(vertical = 15.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Rounded.Check,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Text(
+                        "Accepted — en route",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(accent)
+                        .bounceClick(onClick = onAccept),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Accept & respond",
+                        color = palette.onLevel(sos.urgency),
+                        style = MaterialTheme.typography.titleSmall
+                    )
                 }
             }
         }

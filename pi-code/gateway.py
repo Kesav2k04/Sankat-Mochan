@@ -14,8 +14,9 @@ Run:
     SANKAT_LOG__LEVEL=DEBUG ../.venv/bin/python gateway.py
     ../.venv/bin/python chainlog.py                # did each envelope cross the air?
 
-Prerequisites: SPI enabled, `sudo rfkill unblock bluetooth`, the mesh app open on two
-phones (airplane mode is fine — re-enable Bluetooth only).
+Prerequisites: SPI enabled, `sudo rfkill unblock bluetooth`, and the mesh app open on
+at least one phone (airplane mode is fine — re-enable Bluetooth only). Responders may
+join later without restarting the gateway.
 """
 from __future__ import annotations
 
@@ -156,7 +157,7 @@ async def radio_watchdog(radios: Dict[str, Radio], logger, chain: clog.ChainLog,
 
 
 async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
-    """Poll until at least one responder and one other phone appear (or the operator gives up)."""
+    """Poll until any valid mesh phone appears (or the operator gives up)."""
     retry = float(cfg["ble"]["peer_retry_s"])
     while not stop.is_set():
         try:
@@ -173,6 +174,54 @@ async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
             except asyncio.TimeoutError:
                 pass
     return None
+
+
+def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog) -> None:
+    """Attach one discovered phone to the correct side of the physical radio hop."""
+    name = "gateway" if phone.role == "responder" else "field"
+    bl = ble_link.BleLink(phone.address, cfg["ble"]["char_uuid"], logger, chain, name)
+    nodes[name].add_link(bl)
+    node = nodes[name]
+    manager.maintain(bl, lambda raw, node=node, bl=bl: node.on_ble_bytes(bl, raw))
+    logger.info("attached phone %s to radio '%s'", phone.describe(), name)
+
+
+async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
+                             stop: asyncio.Event,
+                             attached_node_ids: set[str]) -> None:
+    """Keep accepting phones after startup, notably responders arriving later.
+
+    Node ids are stable while Android BLE addresses rotate, so they are the identity
+    key. Existing links own their reconnect loop; this scanner only creates links for
+    phones that have not been attached during this gateway run.
+    """
+    retry = float(cfg["ble"]["peer_retry_s"])
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=retry)
+            return
+        except asyncio.TimeoutError:
+            pass
+
+        try:
+            roster = await manager.resolve_roster()
+        except RuntimeError as e:
+            logger.info("phone scan: %s", e)
+            continue
+        except Exception as e:
+            logger.warning("phone scan failed (%s); trying again in %.0fs",
+                           type(e).__name__, retry)
+            continue
+
+        for name in NODE_NAMES:
+            for phone in roster[name]:
+                if phone.node_id in attached_node_ids:
+                    continue
+                attach_phone(phone, manager, nodes, cfg, logger, chain)
+                attached_node_ids.add(phone.node_id)
+                if phone.role == "responder":
+                    logger.info("responder %s joined — acceptance updates can now travel "
+                                "back across 433 MHz", phone.node_id)
 
 
 async def run() -> int:
@@ -198,6 +247,7 @@ async def run() -> int:
 
     edge: EdgeUplink | None = None
     edge_task: asyncio.Task | None = None
+    peer_discovery_task: asyncio.Task | None = None
     try:
         for name in NODE_NAMES:
             r = cfg["radios"][name]
@@ -277,17 +327,20 @@ async def run() -> int:
             if peers is None:          # operator hit Ctrl-C while we were waiting
                 logger.info("stopped before any phone appeared")
                 return 0
+            attached_node_ids: set[str] = set()
             for name in NODE_NAMES:
                 for phone in peers[name]:
-                    bl = ble_link.BleLink(phone.address, cfg["ble"]["char_uuid"],
-                                          logger, chain, name)
-                    nodes[name].add_link(bl)
-                    n = nodes[name]
-                    manager.maintain(bl, lambda raw, n=n, bl=bl: n.on_ble_bytes(bl, raw))
-            logger.info("READY. An SOS from any phone on the field radio now travels: "
-                        "phone -> Bluetooth -> Pi -> 433 MHz -> Pi -> Bluetooth -> responder. "
-                        "The responder is on the far radio, so nothing reaches it without "
-                        "crossing the air.")
+                    attach_phone(phone, manager, nodes, cfg, logger, chain)
+                    attached_node_ids.add(phone.node_id)
+            peer_discovery_task = asyncio.create_task(
+                discover_new_peers(manager, nodes, cfg, logger, chain, stop,
+                                   attached_node_ids),
+                name="ble-peer-discovery",
+            )
+            logger.info("READY. SOS messages are accepted immediately; no responder phone "
+                        "is required. Victim traffic travels phone -> Bluetooth -> Pi -> "
+                        "433 MHz -> gateway -> AI PC. I will keep scanning for responders "
+                        "and attach them when they appear.")
         else:
             logger.warning("Bluetooth is switched off in the config — running the two radios "
                            "alone, with no phones attached")
@@ -300,6 +353,12 @@ async def run() -> int:
         logger.info("shutting down")
 
     finally:
+        if peer_discovery_task is not None:
+            peer_discovery_task.cancel()
+            try:
+                await peer_discovery_task
+            except asyncio.CancelledError:
+                pass
         if edge_task is not None:
             edge_task.cancel()
             try:

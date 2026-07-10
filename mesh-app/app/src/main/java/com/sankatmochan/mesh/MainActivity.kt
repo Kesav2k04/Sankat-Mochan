@@ -5,10 +5,18 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +34,7 @@ import com.sankatmochan.mesh.ui.RelayScreen
 import com.sankatmochan.mesh.ui.ResponderScreen
 import com.sankatmochan.mesh.ui.RoleSelectionScreen
 import com.sankatmochan.mesh.ui.VictimScreen
-import com.sankatmochan.mesh.ui.theme.SankatMochanTheme
+import com.sankatmochan.mesh.ui.theme.OffNetTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -62,7 +70,7 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(
                         this,
                         "Approximate location only — GPS coordinates need Precise location. " +
-                            "Turn it on in Settings › Apps › Sankat-Mochan › Permissions › Location.",
+                            "Turn it on in Settings › Apps › Off-Net › Permissions › Location.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -77,12 +85,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // targetSdk 35 on Android 15+ draws the app edge-to-edge with no automatic
-        // system-bar insets. This opts in explicitly (transparent bars, icon contrast
-        // following the theme) so the layouts below can pad for the bars themselves.
-        enableEdgeToEdge()
+        // system-bar insets. Off-Net is always dark, so we force the transparent bars to
+        // carry LIGHT icons (SystemBarStyle.dark = light foreground on dark content),
+        // regardless of the phone's own light/dark setting. The layouts below pad for the
+        // bars themselves via safeDrawingPadding.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
         setContent {
-            SankatMochanTheme {
+            OffNetTheme {
                 AppRoot(vm, onPickRole = ::onPickRole)
             }
         }
@@ -103,27 +116,38 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AppRoot(vm: MeshViewModel, onPickRole: (MeshRole) -> Unit) {
-    when (val role = vm.role) {
-        null -> RoleSelectionScreen(
-            nodeId = vm.nodeId,
-            bluetoothReady = vm.bluetoothReady(),
-            onPick = onPickRole
-        )
-        else -> {
-            val peers by vm.peerCount.collectAsState()
-            val loraOnly by vm.loraOnly.collectAsState()
-            // Rendered once here so all three role screens inherit the switch. The Surface
-            // fills behind the system bars; safeDrawingPadding keeps the content clear of the
-            // status bar, the navigation bar, and the keyboard, and consumes those insets so
-            // the child top bars don't pad for the status bar a second time.
-            Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-                    LoraOnlyBanner(enabled = loraOnly, onChange = vm::setLoraOnly)
-                    Box(modifier = Modifier.weight(1f)) {
-                        when (role) {
-                            MeshRole.VICTIM -> VictimScreen(vm, peers) { vm.leaveRole() }
-                            MeshRole.RESPONDER -> ResponderScreen(vm, peers) { vm.leaveRole() }
-                            MeshRole.RELAY -> RelayScreen(vm, peers) { vm.leaveRole() }
+    // One animated container: leaving or entering a role cross-fades and rises the whole
+    // page, so the app moves like one surface instead of screens popping.
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        AnimatedContent(
+            targetState = vm.role,
+            transitionSpec = {
+                (fadeIn(tween(280, delayMillis = 60)) +
+                    slideInVertically(tween(380, delayMillis = 60, easing = FastOutSlowInEasing)) { it / 18 })
+                    .togetherWith(fadeOut(tween(140)))
+            },
+            label = "role"
+        ) { role ->
+            when (role) {
+                null -> RoleSelectionScreen(
+                    nodeId = vm.nodeId,
+                    bluetoothReady = vm.bluetoothReady(),
+                    onPick = onPickRole
+                )
+                else -> {
+                    val peers by vm.peerCount.collectAsState()
+                    val loraOnly by vm.loraOnly.collectAsState()
+                    // safeDrawingPadding keeps the content clear of the status bar, the
+                    // navigation bar, and the keyboard, and consumes those insets so the
+                    // child top bars don't pad for the status bar a second time.
+                    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+                        LoraOnlyBanner(enabled = loraOnly, onChange = vm::setLoraOnly)
+                        Box(modifier = Modifier.weight(1f)) {
+                            when (role) {
+                                MeshRole.VICTIM -> VictimScreen(vm, peers) { vm.leaveRole() }
+                                MeshRole.RESPONDER -> ResponderScreen(vm, peers) { vm.leaveRole() }
+                                MeshRole.RELAY -> RelayScreen(vm, peers) { vm.leaveRole() }
+                            }
                         }
                     }
                 }

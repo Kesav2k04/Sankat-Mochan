@@ -3,8 +3,6 @@ package com.sankatmochan.mesh.ui
 import android.media.MediaPlayer
 import android.util.Log
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,11 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sankatmochan.mesh.mesh.VoiceClip
 import com.sankatmochan.mesh.ui.theme.urgencyColors
@@ -59,23 +56,23 @@ fun VoiceClipCard(clip: VoiceClip, modifier: Modifier = Modifier) {
         }
     }
 
-    Card(modifier.fillMaxWidth()) {
+    Tile(modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                Icons.Filled.Mic,
-                contentDescription = null,
+            IconBadge(
+                Icons.Rounded.Mic,
                 tint = if (clip.complete) urgencyColors.critical
-                else MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                size = 42.dp
             )
             Spacer(Modifier.size(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Voice message from ${clip.origin}",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleSmall
+                    "Voice from ${clip.origin}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
@@ -86,19 +83,20 @@ fun VoiceClipCard(clip: VoiceClip, modifier: Modifier = Modifier) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (!clip.complete) {
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(8.dp))
                     Progress(clip.received.toFloat() / clip.total)
                 }
             }
 
             if (clip.complete) {
                 Spacer(Modifier.size(10.dp))
+                // Reflects the true state: stop glyph while audio is playing.
                 Box(
                     modifier = Modifier
                         .size(52.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(urgencyColors.low)
-                        .clickable {
+                        .clip(CircleShape)
+                        .background(if (playing) urgencyColors.critical else urgencyColors.low)
+                        .bounceClick(pressedScale = 0.88f) {
                             if (playing) {
                                 player?.run { runCatching { stop(); release() } }
                                 player = null
@@ -111,9 +109,10 @@ fun VoiceClipCard(clip: VoiceClip, modifier: Modifier = Modifier) {
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = if (playing) "Stop" else "Play voice message",
-                        tint = Color.White
+                        if (playing) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
+                        contentDescription = if (playing) "Stop playback" else "Play voice message",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
                     )
                 }
             }
@@ -148,15 +147,15 @@ private fun Progress(fraction: Float) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(4.dp)
-            .clip(RoundedCornerShape(2.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .height(5.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
     ) {
         Box(
             Modifier
                 .fillMaxWidth(fraction.coerceIn(0f, 1f))
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
+                .height(5.dp)
+                .clip(CircleShape)
                 .background(urgencyColors.medium)
         )
     }

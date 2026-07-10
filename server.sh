@@ -28,14 +28,15 @@ HEALTHY_AFTER_S=15   # a child that lives this long counts as "started"
 MAX_FAST_FAILURES=3
 
 # --- where the command post lives -------------------------------------------
-# Tried in order; the first one answering /health wins. The .local name is first
-# because it survives a DHCP lease change; the raw IP is the fallback for the days
-# when this Wi-Fi drops multicast and mDNS resolves nothing.
+# Tried in order; the first concrete address answering /health wins. A Mac can publish
+# loopback, VM and VPN addresses under the same .local name, so pick_post resolves the
+# name and probes each IPv4 address instead of handing the ambiguous hostname to the
+# long-lived WebSocket. The raw IP remains a fallback when venue Wi-Fi blocks mDNS.
 #
 # Override without editing this file:  ./server.sh --post http://host:9000
 #                                      SANKAT_POST=http://host:9000 ./server.sh
 # These are plain LAN addresses — no credentials belong in a URL (rule 2).
-DEFAULT_POST="http://Sivas-MacBook-Air.local:9000,http://10.83.166.233:9000"
+DEFAULT_POST="http://Sivas-MacBook-Air.local:9000,http://10.55.0.2:9000"
 
 MODE="gateway"                       # radios here, post on the Mac
 POST_CANDIDATES="${SANKAT_POST:-$DEFAULT_POST}"
@@ -255,14 +256,84 @@ radios_busy() {
 
 # Echo the first base URL whose /health answers. Nothing on stdout means none did.
 pick_post() {
-  local IFS=,
-  for base in $1; do
+  local input="$1" base scheme host port address route
+  local -a bases addresses direct routed
+  IFS=, read -r -a bases <<<"$input"
+
+  for base in "${bases[@]}"; do
     base="${base%/}"
-    if curl -fsS -o /dev/null --max-time 3 "$base/health" 2>/dev/null; then
+    if [[ ! "$base" =~ ^(https?)://([^/:]+)(:([0-9]+))?$ ]]; then
+      echo "  ignoring invalid command-post address: $base" >&2
+      continue
+    fi
+    scheme="${BASH_REMATCH[1]}"
+    host="${BASH_REMATCH[2]}"
+    if [[ -n "${BASH_REMATCH[4]}" ]]; then
+      port="${BASH_REMATCH[4]}"
+    elif [[ "$scheme" == https ]]; then
+      port=443
+    else
+      port=80
+    fi
+
+    # Resolve through the Pi's normal NSS stack (including Avahi for .local). Ignore
+    # loopback/link-local answers: they identify this Pi, never the remote Mac. Python
+    # is already guaranteed above and ipaddress/socket are stdlib.
+    addresses=()
+    while IFS= read -r address; do
+      [[ -n "$address" ]] && addresses+=("$address")
+    done < <("$PY" - "$host" <<'PY'
+import ipaddress
+import socket
+import sys
+
+host = sys.argv[1]
+try:
+    infos = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)
+except OSError:
+    infos = []
+seen = set()
+for info in infos:
+    address = info[4][0]
+    ip = ipaddress.ip_address(address)
+    if address not in seen and not (ip.is_loopback or ip.is_link_local or ip.is_unspecified):
+        seen.add(address)
+        print(address)
+PY
+    )
+
+    # Try same-LAN addresses before anything routed through a gateway. This avoids a
+    # Mac VM/VPN address consuming the timeout ahead of its real Wi-Fi/Ethernet IP.
+    direct=(); routed=()
+    for address in "${addresses[@]}"; do
+      route="$(ip -4 route get "$address" 2>/dev/null || true)"
+      if [[ -n "$route" && "$route" != *" via "* ]]; then
+        direct+=("$address")
+      else
+        routed+=("$address")
+      fi
+    done
+
+    for address in "${direct[@]}" "${routed[@]}"; do
+      [[ -n "$address" ]] || continue
+      if curl -fsS --noproxy '*' -o /dev/null --connect-timeout 2 --max-time 3 \
+          "$scheme://$address:$port/health" 2>/dev/null; then
+        echo "$scheme://$address:$port"
+        return 0
+      fi
+      echo "  no answer from $scheme://$address:$port/health ($host)" >&2
+    done
+
+    # Some minimal images resolve .local inside curl but not Python/NSS. Keep this
+    # compatibility attempt last; successful named endpoints are still better than no
+    # uplink, and the explicit raw-IP fallback is tried next if it fails.
+    if (( ${#addresses[@]} == 0 )) && \
+       curl -fsS --noproxy '*' -o /dev/null --connect-timeout 2 --max-time 3 \
+         "$base/health" 2>/dev/null; then
       echo "$base"
       return 0
     fi
-    echo "  no answer from $base/health" >&2
+    (( ${#addresses[@]} > 0 )) || echo "  could not resolve $host" >&2
   done
   return 1
 }

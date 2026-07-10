@@ -63,7 +63,9 @@ cd ~/project-mesh/gateway
   before any phone is attached. If the link is dead the gateway exits with status 3
   rather than sitting there looking healthy. (Verified by detuning radio B's sync word:
   the probe correctly refuses to start.)
-* **Waits for phones** instead of dying — open the app whenever you're ready.
+* **Waits for the first phone** instead of dying, then keeps scanning. A victim can
+  send an SOS immediately with no responder present; responders attach whenever they
+  arrive, without restarting the gateway.
 
 Run the pieces directly if you prefer: `../.venv/bin/python {preflight,selftest_lora,gateway,chainlog}.py`.
 
