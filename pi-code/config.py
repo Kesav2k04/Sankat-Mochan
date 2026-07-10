@@ -118,9 +118,33 @@ def _validate(cfg: Dict[str, Any]) -> None:
     node_id = v.get("node_id")
     if not isinstance(node_id, str) or not (1 <= len(node_id) <= 4) or not node_id.isalnum():
         raise ConfigError("voice.node_id must be 1-4 alphanumeric characters")
-    for key in ("nack_quiet_s", "sweep_interval_s"):
-        if not isinstance(v.get(key), (int, float)) or v[key] <= 0:
+    for key in ("nack_quiet_s", "sweep_interval_s", "upload_connect_s", "upload_read_s"):
+        if key in v and (not isinstance(v.get(key), (int, float)) or v[key] <= 0):
             raise ConfigError(f"voice.{key} must be a positive number")
+    if "upload_concurrency" in v and (
+        not isinstance(v["upload_concurrency"], int)
+        or isinstance(v["upload_concurrency"], bool)
+        or v["upload_concurrency"] < 1
+    ):
+        raise ConfigError("voice.upload_concurrency must be an int >= 1")
+
+    ing = cfg.get("ingest", {})
+    if "global_frames_per_s" in ing and (
+        not isinstance(ing["global_frames_per_s"], (int, float))
+        or ing["global_frames_per_s"] <= 0
+    ):
+        raise ConfigError("ingest.global_frames_per_s must be a positive number")
+    for key in ("queue_max", "seen_max"):
+        if key in ing and (
+            not isinstance(ing[key], int) or isinstance(ing[key], bool) or ing[key] < 1
+        ):
+            raise ConfigError(f"ingest.{key} must be an int >= 1")
+    if "outbox_max" in cfg.get("uplink", {}) and (
+        not isinstance(cfg["uplink"]["outbox_max"], int)
+        or isinstance(cfg["uplink"]["outbox_max"], bool)
+        or cfg["uplink"]["outbox_max"] < 1
+    ):
+        raise ConfigError("uplink.outbox_max must be an int >= 1")
 
 
 def lora_config(cfg: Dict[str, Any]):

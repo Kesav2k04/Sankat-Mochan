@@ -242,17 +242,20 @@ class Store:
         if clean:
             report["voice_transcript"] = clean
             report["voice_english"] = (ai or {}).get("english") or clean
-            # Preserve typed mobile text byte-for-byte. A voice transcript becomes the
-            # primary text only when the phone sent no typed details.
+            # M5: a report that already carries typed mobile text is authoritative. The
+            # voice clip only ADDS audio + a voice transcript/translation to it — it must
+            # NOT touch urgency/rationale/ai/latency, or a benign voice add-on could inflate
+            # a real typed SOS. Voice text becomes the PRIMARY text (and can set those
+            # fields) only when the phone sent no typed details at all.
             if not report["gist"]:
                 report["gist"] = clean
                 report["english"] = report["voice_english"]
-            report["urgency"] = max(
-                report["urgency"], int((ai or {}).get("urgency", report["urgency"]))
-            )
-            report["rationale"] = (ai or {}).get("rationale", report["rationale"])
-            report["ai"] = bool((ai or {}).get("ai"))
-            report["latency_ms"] = (ai or {}).get("latency_ms", 0)
+                report["urgency"] = max(
+                    report["urgency"], int((ai or {}).get("urgency", report["urgency"]))
+                )
+                report["rationale"] = (ai or {}).get("rationale", report["rationale"])
+                report["ai"] = bool((ai or {}).get("ai"))
+                report["latency_ms"] = (ai or {}).get("latency_ms", 0)
         incident = self._incident_of(report_id)
         if incident is not None:
             self._recompute_incident(incident)

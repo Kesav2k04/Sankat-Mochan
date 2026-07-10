@@ -159,6 +159,14 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
                     {primary.voice_transcript}
                   </div>
                 )}
+                {/* Faithful English of the recording, so the operator reads what the
+                    audio actually says (distinct from typed-text AI ENGLISH above). */}
+                {primary.voice_english && primary.voice_english !== primary.voice_transcript && (
+                  <div className="text-[13px] text-muted-foreground mt-1">
+                    <span className="font-mono text-[9px] tracking-wide">VOICE (EN) · </span>
+                    {primary.voice_english}
+                  </div>
+                )}
                 <div className="font-mono text-[9.5px] tracking-wide text-muted-foreground mt-2">
                   {primary.ai
                     ? `AUTO-TRANSLATED ${primary.lang.toUpperCase()} → ENGLISH · ON-DEVICE · ${primary.latency_ms}ms`

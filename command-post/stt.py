@@ -58,6 +58,40 @@ def _ffmpeg_to_wav16k(path_or_bytes) -> bytes | None:
     return proc.stdout if proc.returncode == 0 and proc.stdout else None
 
 
+_ffmpeg_present: bool | None = None  # cached availability probe (see transcode_for_web)
+
+
+def transcode_for_web(data: bytes) -> tuple[bytes, str] | None:
+    """Transcode raw mesh audio (AMR-NB in 3GP, which browsers cannot decode) into a
+    universally-playable WAV (PCM s16le, mono, 16 kHz). Returns (bytes, content_type) or
+    None if ffmpeg is unavailable / the input can't be decoded — callers then keep the raw
+    clip and surface a quiet "not playable" status (CLAUDE.md #10), never a crash.
+
+    Security (CLAUDE.md #8): the input is attacker-influenced bytes. We invoke ffmpeg with
+    a fixed list-argv (no shell), feed the bytes via pipe:0 / read via pipe:1 (no
+    attacker-controlled paths), quiet stderr, and bound wall-clock time so a malformed clip
+    cannot hang a worker.
+    """
+    global _ffmpeg_present
+    import shutil
+    import subprocess
+    if _ffmpeg_present is None:
+        _ffmpeg_present = shutil.which("ffmpeg") is not None
+    if not _ffmpeg_present or not data:
+        return None
+    cmd = ["ffmpeg", "-v", "error", "-i", "pipe:0",
+           "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-f", "wav", "pipe:1"]
+    try:
+        proc = subprocess.run(cmd, input=bytes(data), stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=15)
+    except Exception as exc:  # noqa: BLE001 — transcode failure must degrade, not crash
+        print(f"[stt] web transcode failed: {type(exc).__name__}")
+        return None
+    if proc.returncode != 0 or not proc.stdout:
+        return None
+    return proc.stdout, "audio/wav"
+
+
 def load_audio(path_or_bytes) -> np.ndarray:
     """Return a mono float32 16 kHz waveform from a file path or raw bytes.
     Transcodes via ffmpeg first (handles browser webm/opus + any phone format);

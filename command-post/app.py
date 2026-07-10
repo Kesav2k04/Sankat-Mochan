@@ -372,23 +372,41 @@ async def _transcribe_mesh_voice(*, clip_id: str, ref_id: str, origin: str,
                                  lang: str | None, audio_url: str) -> None:
     _voice_status["transcribing"] += 1
     try:
+        # 1. Browser-playable transcode (AMR/3GP → WAV). Runs eagerly here, AFTER the Pi
+        #    was already ACKed, so it never blocks the upload. If ffmpeg is missing or the
+        #    clip won't decode, we keep the raw url and the card shows a quiet unplayable
+        #    state — never a crash (CLAUDE.md #10).
+        web = await run_in_threadpool(stt.transcode_for_web, data)
+        web_audio = web[0] if web else None
+        web_content_type = web[1] if web else None
+        playable_url = f"/web_audio/{clip_id}" if web else audio_url
+        # File mode: persist the WAV next to the raw clip so /web_audio can serve it.
+        if web and not database.enabled:
+            (AUDIO_DIR / f"{clip_id}.wav").write_bytes(web_audio)
+
+        # 2. Speech-to-text (native script).
         tr = await run_in_threadpool(stt.transcribe, data, lang)
         transcript = str(tr.get("text", "")).strip()
+
+        # 3. FAITHFUL translation only — never triage. triage() would pattern-complete a
+        #    benign clip ("mic testing one two three") into a false life-threatening SOS
+        #    and escalate its urgency; translate() is forbidden from adding or inferring.
         ai = None
-        if transcript and ref_id in store.reports:
-            original = store.reports[ref_id]
-            ai = await triage.triage({
-                "gist": transcript,
-                "lang": tr.get("lang") or lang or original.get("lang", "en"),
-                "urgency": original.get("urgency", 3),
-                "category": original.get("category", "other"),
-            })
+        if transcript:
+            tlang = tr.get("lang") or lang or "en"
+            tx = await triage.translate(transcript, tlang)
+            ai = {
+                "english": tx.get("english") or transcript,
+                "ai": bool(tx.get("ai")),
+                "latency_ms": tx.get("latency_ms", 0),
+            }
         if ref_id in store.reports:
-            store.attach_voice(ref_id, audio_url, transcript, ai)
+            store.attach_voice(ref_id, playable_url, transcript, ai)
         if database.enabled:
             await database.store_voice(
                 clip_id=clip_id, report_id=ref_id, origin=origin, codec=codec,
                 content_type=content_type, audio=data, transcript=transcript or None,
+                web_audio=web_audio, web_content_type=web_content_type,
             )
         if not transcript:
             _voice_status["failed"] += 1
@@ -402,10 +420,31 @@ async def _transcribe_mesh_voice(*, clip_id: str, ref_id: str, origin: str,
         await _broadcast_snapshot()
 
 
+# Audio ids we generate are alnum with dashes; recordings carry one known extension.
+# Everything else is rejected before it can touch the filesystem or the DB (CLAUDE.md #8).
+_AUDIO_SUFFIXES = {".3gp", ".ogg", ".webm", ".wav"}
+
+
+def _valid_audio_name(name: str) -> bool:
+    if len(name) > 64:
+        return False
+    stem, dot, suffix = name.rpartition(".")
+    if dot:
+        if f".{suffix}" not in _AUDIO_SUFFIXES:
+            return False
+    else:
+        stem = name  # a bare clip_id (no extension) is used by the DB-mode routes
+    return bool(stem) and stem.replace("-", "").isalnum()
+
+
+_MEDIA_BY_SUFFIX = {".3gp": "audio/3gpp", ".ogg": "audio/ogg",
+                    ".webm": "audio/webm", ".wav": "audio/wav"}
+
+
 @app.get("/audio/{name}")
 async def audio_file(name: str) -> Response:
-    """Replay a stored voice SOS. Name is constrained to our generated ids."""
-    if not name.replace("-", "").replace(".", "").replace("webm", "").isalnum():
+    """Replay a stored voice SOS (raw clip). Name is constrained to our generated ids."""
+    if not _valid_audio_name(name):
         return JSONResponse({"status": "rejected"}, status_code=400)
     stored = await database.get_voice(name)
     if stored is not None:
@@ -415,9 +454,24 @@ async def audio_file(name: str) -> Response:
     path = AUDIO_DIR / name
     if not path.exists() or not path.resolve().is_relative_to(AUDIO_DIR.resolve()):
         return JSONResponse({"status": "unknown"}, status_code=404)
-    media_type = ("audio/3gpp" if path.suffix == ".3gp" else
-                  "audio/ogg" if path.suffix == ".ogg" else "audio/webm")
-    return FileResponse(path, media_type=media_type)
+    return FileResponse(path, media_type=_MEDIA_BY_SUFFIX.get(path.suffix, "audio/webm"))
+
+
+@app.get("/web_audio/{clip_id}")
+async def web_audio_file(clip_id: str) -> Response:
+    """Serve the browser-playable (WAV) transcode of a clip. Falls back to 404 if the
+    transcode isn't available (e.g. ffmpeg missing) — the card then keeps the raw url."""
+    if not _valid_audio_name(clip_id):
+        return JSONResponse({"status": "rejected"}, status_code=400)
+    stored = await database.get_web_audio(clip_id)
+    if stored is not None:
+        data, content_type = stored
+        return Response(content=data, media_type=content_type,
+                        headers={"Cache-Control": "private, max-age=3600"})
+    path = AUDIO_DIR / f"{clip_id}.wav"
+    if not path.exists() or not path.resolve().is_relative_to(AUDIO_DIR.resolve()):
+        return JSONResponse({"status": "unknown"}, status_code=404)
+    return FileResponse(path, media_type="audio/wav")
 
 
 # ---- dispatch lifecycle (C5/C6/C9) -----------------------------------------
