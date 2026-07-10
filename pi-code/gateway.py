@@ -36,7 +36,7 @@ import chainlog as clog
 import config as cfgmod
 import envelope as env
 import node as nodemod
-from sx127x import LoraConfig, Radio, gpio_cleanup, gpio_init
+from sx127x import LONG_RANGE_MODE, LoraConfig, Radio, gpio_cleanup, gpio_init
 from uplink import EdgeUplink
 
 NODE_NAMES = ("field", "gateway")
@@ -117,23 +117,42 @@ async def radio_watchdog(radios: Dict[str, Radio], logger, chain: clog.ChainLog,
             pass
         for name, radio in radios.items():
             try:
-                healthy = await loop.run_in_executor(None, radio.in_lora_mode)
+                op = await loop.run_in_executor(None, radio.op_mode)
+                if op & LONG_RANGE_MODE:
+                    continue
+                # Re-initialising means pulsing RST on a radio that may be perfectly fine.
+                # One glitched SPI read is not enough to justify that, so ask again.
+                await asyncio.sleep(0.05)
+                op2 = await loop.run_in_executor(None, radio.op_mode)
+                if op2 & LONG_RANGE_MODE:
+                    logger.warning("radio '%s': RegOpMode read 0x%02X then 0x%02X — ignoring the "
+                                   "first as a glitch, the radio is still in LoRa mode", name, op, op2)
+                    continue
             except Exception as e:
                 logger.error("radio '%s' stopped answering: %s: %s", name, type(e).__name__, e)
                 continue
-            if healthy:
-                continue
-            logger.error("radio '%s' fell out of LoRa mode — it reset itself. "
-                         "Re-initialising; nothing it 'sent' meanwhile left the antenna.", name)
-            chain.emit(clog.START, name, radio=name, result="fell_out_of_lora")
+
+            logger.error("radio '%s' is out of LoRa mode (RegOpMode=0x%02X, twice) — it reset "
+                         "itself. Re-initialising; nothing it 'sent' meanwhile left the antenna.",
+                         name, op2)
+            chain.emit(clog.START, name, radio=name, result="fell_out_of_lora", op_mode=op2)
             try:
                 await loop.run_in_executor(None, radio.reinit)
+                op3 = await loop.run_in_executor(None, radio.op_mode)
             except Exception as e:
                 logger.error("radio '%s' could not be revived: %s: %s", name, type(e).__name__, e)
                 chain.emit(clog.DROP, name, radio=name, reason="radio_dead")
                 continue
-            logger.warning("radio '%s' is back in LoRa mode", name)
-            chain.emit(clog.START, name, radio=name, result="reinit")
+            # Say what actually happened, not what we hoped for. The old message claimed
+            # success without ever looking, which made a repeating fault unreadable.
+            if op3 & LONG_RANGE_MODE:
+                logger.warning("radio '%s' is back in LoRa mode (RegOpMode=0x%02X)", name, op3)
+                chain.emit(clog.START, name, radio=name, result="reinit", op_mode=op3)
+            else:
+                logger.error("radio '%s' STILL not in LoRa mode after re-init (RegOpMode=0x%02X). "
+                             "Check the RST wire on GPIO%d and the module's 3.3 V supply.",
+                             name, op3, radio.rst_gpio)
+                chain.emit(clog.DROP, name, radio=name, reason="reinit_failed", op_mode=op3)
 
 
 async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):

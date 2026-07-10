@@ -333,6 +333,11 @@ class Radio:
             return rose and bool(flags & IRQ_CAD_DONE)
 
     # --- transmit -----------------------------------------------------------
+    def op_mode(self) -> int:
+        """Raw RegOpMode. Bit 7 is LongRangeMode; the low bits are the mode."""
+        with self._lock:
+            return self._read(REG_OP_MODE)
+
     def in_lora_mode(self) -> bool:
         """False if the chip has fallen back to FSK — i.e. it reset behind our back.
 
