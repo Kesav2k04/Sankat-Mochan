@@ -68,6 +68,9 @@ class BridgeRadio:
         # The watchdog prints this on an unrecoverable radio; -1 flags "no GPIO here,
         # it's a bridge modem" so the message can't send anyone chasing a wire.
         self.rst_gpio = -1
+        # Advertised to LoRaLink so the node shrinks a too-big envelope BEFORE the RPC
+        # (send() below still refuses oversized frames as the last line of defence).
+        self.tx_max_bytes = BRIDGE_TX_SAFE_MAX
 
         self._conn = None                       # a bridge_client._ClientServer
         self._on_receive: Optional[Callable[[RxPacket], None]] = None
