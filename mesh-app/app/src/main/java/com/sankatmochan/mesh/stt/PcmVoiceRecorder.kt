@@ -13,7 +13,7 @@ import kotlin.concurrent.thread
  *
  * This is deliberately separate from [com.sankatmochan.mesh.mesh.VoiceRecorder], which produces
  * tiny AMR-NB clips for relaying over the bandwidth-starved mesh. Here we're feeding a neural
- * model on the same phone, so we want clean float PCM at the model's native rate — no lossy codec.
+ * model on the same phone, so we want clean float PCM at the model's native rate - no lossy codec.
  *
  * The model window is 15 s (see [MelFrontend.frames]); we cap capture there and drop anything
  * beyond it (an SOS utterance is far shorter). Caller must hold RECORD_AUDIO (already granted for

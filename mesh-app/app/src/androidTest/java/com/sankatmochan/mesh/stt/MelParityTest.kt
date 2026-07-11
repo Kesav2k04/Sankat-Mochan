@@ -43,7 +43,7 @@ class MelParityTest {
                 maxDiff = maxOf(maxDiff, abs(got - exp).toDouble())
             }
         }
-        assertTrue("mel max-abs-diff $maxDiff exceeds 1e-2 — features drifted from NeMo", maxDiff < 1e-2)
+        assertTrue("mel max-abs-diff $maxDiff exceeds 1e-2 - features drifted from NeMo", maxDiff < 1e-2)
     }
 
     private fun readF32(ctx: android.content.Context, asset: String): FloatArray {

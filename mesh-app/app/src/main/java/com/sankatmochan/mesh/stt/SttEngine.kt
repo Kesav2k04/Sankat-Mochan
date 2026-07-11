@@ -16,7 +16,7 @@ import java.nio.IntBuffer
 /**
  * On-device speech-to-text for the OnePlus 15 (Snapdragon 8 Elite Gen 5), behind one class
  * so the rest of the app never imports `ai.onnxruntime.*` and there's a single place to review
- * the AI runtime (mirrors [com.sankatmochan.mesh.chat.GenieXEngine] — CLAUDE.md #5/#6).
+ * the AI runtime (mirrors [com.sankatmochan.mesh.chat.GenieXEngine] - CLAUDE.md #5/#6).
  *
  * Pipeline (all offline):
  *   PCM 16 kHz ─▶ [MelFrontend] (1,80,1501) ─▶ encoder QNN graph ─▶ (1,1024,188)
@@ -31,7 +31,7 @@ import java.nio.IntBuffer
  * ── INTEGRATION STATUS ─────────────────────────────────────────────────────────────────────
  * Done: mel parity VERIFIED (MelFrontend matches the NeMo preprocessor to ~8e-5; androidTest
  * MelParityTest guards it), language auto-detected from the CTC logits (CtcDecoder.pickLanguage,
- * 100% on FLEURS — no separate SLID model), encoder length-masking wired via encoded_lengths.
+ * 100% on FLEURS - no separate SLID model), encoder length-masking wired via encoded_lengths.
  * Remaining, only verifiable on the phone (see stt/README.md):
  *   (B) libQnnHtp.so must load for ORT. GenieX already ships QAIRT libs; confirm the ORT-QNN AAR's
  *       QAIRT version and GenieX's don't clash in the same APK. Until confirmed, test STT with the
@@ -53,11 +53,11 @@ class SttEngine(context: Context) {
 
     /**
      * Where the (large) QNN model files live. The encoder context binary is ~1.2 GB (float), far
-     * too big to ship in the APK — so it's side-loaded, exactly like the GenieX LLM weights.
+     * too big to ship in the APK - so it's side-loaded, exactly like the GenieX LLM weights.
      *
      * Layout (each AI Hub precompiled_qnn_onnx graph is a folder of model.onnx + model.bin; the
      * EPContext .onnx references its .bin by RELATIVE name, so the two must stay together and keep
-     * their names — hence a subdir per graph):
+     * their names - hence a subdir per graph):
      *   files/stt/encoder/model.onnx      + files/stt/encoder/model.bin
      *   files/stt/ctc_decoder/model.onnx  + files/stt/ctc_decoder/model.bin
      * Pushed with tools/push_stt_model.sh (see stt/README.md). vocab.json + language_masks.json
@@ -75,7 +75,7 @@ class SttEngine(context: Context) {
     init {
         // Create the per-graph dirs as the APP (owner) so files pushed via `adb push` land in an
         // app-readable dir. Dirs created by the adb shell under Android/data/<pkg> are owned by
-        // `shell` with no world-traverse bit, so the app can't read files inside them — the model
+        // `shell` with no world-traverse bit, so the app can't read files inside them - the model
         // must be pushed into app-created dirs (same pattern GenieX uses for its GGUF weights).
         runCatching { File(modelDir, "encoder").mkdirs(); File(modelDir, "ctc_decoder").mkdirs() }
     }
@@ -133,7 +133,7 @@ class SttEngine(context: Context) {
 
     /**
      * Transcribe one clip. If [lang] is null the language is auto-detected from the CTC logits
-     * (the encoder is language-agnostic — see [CtcDecoder.pickLanguage]); pass a code to force it.
+     * (the encoder is language-agnostic - see [CtcDecoder.pickLanguage]); pass a code to force it.
      * Never throws to the caller.
      */
     suspend fun transcribe(pcm16k: FloatArray, lang: String? = null): SttResult =
@@ -177,7 +177,7 @@ class SttEngine(context: Context) {
             }
         }
 
-    /** OrtSession.Result.get(name) returns Optional<OnnxValue> — unwrap to the tensor. */
+    /** OrtSession.Result.get(name) returns Optional<OnnxValue> - unwrap to the tensor. */
     private fun OrtSession.Result.tensor(name: String): OnnxTensor =
         this.get(name).orElseThrow { IllegalStateException("missing output '$name'") } as OnnxTensor
 

@@ -213,7 +213,7 @@ fun PeerBadge(peers: Int) {
                 .background(dot)
         )
         Spacer(Modifier.size(7.dp))
-        // Count only — the pill + coloured dot already read as "mesh peers", and dropping the
+        // Count only - the pill + coloured dot already read as "mesh peers", and dropping the
         // "MESH" word is what buys the title column enough room to show "Send for help" in full
         // instead of clipping to "Se". Meaning is preserved for screen readers below.
         Text(

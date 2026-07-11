@@ -28,7 +28,7 @@ object OfflineTiles {
     private val SUPPORTED = setOf("mbtiles", "sqlite", "zip", "gemf")
 
     /**
-     * The zoom band the bundled archive actually holds — it MUST match
+     * The zoom band the bundled archive actually holds - it MUST match
      * `tools/fetch_bengaluru_tiles.py --minzoom/--maxzoom` and the mbtiles `metadata`.
      * Every MapView that reads the archive is clamped to this range so a pinch, a
      * fit-to-bounds, or a programmatic `setZoom` can never land above the deepest stored

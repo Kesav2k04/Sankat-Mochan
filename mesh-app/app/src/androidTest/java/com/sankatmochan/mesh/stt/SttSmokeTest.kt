@@ -14,7 +14,7 @@ import java.nio.ByteOrder
 
 /**
  * End-to-end on-device STT: run the golden hi_0 PCM through the real NPU pipeline
- * (mel → encoder QNN → ctc QNN → decode). This is the true QAIRT/context-binary check —
+ * (mel → encoder QNN → ctc QNN → decode). This is the true QAIRT/context-binary check -
  * if the QNN libs or the AI-Hub context binaries don't load on this SoC, load()/transcribe()
  * fail here with the reason in logcat.
  *
@@ -30,7 +30,7 @@ class SttSmokeTest {
         val testCtx = InstrumentationRegistry.getInstrumentation().context
         val engine = SttEngine(appCtx)
 
-        assumeTrue("STT model not pushed — skipping", engine.modelsInstalled())
+        assumeTrue("STT model not pushed - skipping", engine.modelsInstalled())
 
         val load = engine.load()
         assertTrue("load failed: $load", load is SttEngine.LoadResult.Ok)

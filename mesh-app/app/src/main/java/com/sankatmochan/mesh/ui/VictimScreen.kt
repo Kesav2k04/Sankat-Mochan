@@ -66,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -213,14 +214,17 @@ fun VictimScreen(
                     },
                 )
 
-                // Swiggy move: the live map grows down from the top, the rest of the screen
-                // stays below it - the major, actionable part remains where the thumb rests.
+                // The live map settles in below the top bar, the rest of the screen stays
+                // below it - the major, actionable part remains where the thumb rests.
+                // We reserve the 300dp slot immediately and only cross-fade the map in;
+                // animating the slot's *height* around an osmdroid MapView (a hardware
+                // AndroidView) let its native surface out-race the clip, so a strip of the
+                // pre-SOS screen briefly showed through at the top. clipToBounds + an opaque
+                // background keep the slot solid regardless of surface timing.
                 AnimatedVisibility(
                     visible = sosActive,
-                    enter = expandVertically(tween(Motion.Mid), expandFrom = Alignment.Top) +
-                        fadeIn(tween(Motion.Mid)),
-                    exit = shrinkVertically(tween(Motion.Fast), shrinkTowards = Alignment.Top) +
-                        fadeOut(tween(Motion.Fast)),
+                    enter = fadeIn(tween(Motion.Mid)),
+                    exit = fadeOut(tween(Motion.Fast)),
                 ) {
                     LiveLocationMap(
                         meLat = vm.lat,
@@ -228,6 +232,8 @@ fun VictimScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(300.dp)
+                            .clipToBounds()
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
                     )
                 }
 

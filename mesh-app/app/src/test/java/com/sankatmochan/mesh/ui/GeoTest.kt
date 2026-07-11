@@ -6,7 +6,7 @@ import org.junit.Test
 /**
  * Pure-math coverage for the rescuer's bearing/distance readout. The framework-backed
  * [Geo.distanceMeters]/[Geo.bearingDegrees] need a device (android.location.Location), but the
- * two functions a person actually reads — the compass point and the distance string — are
+ * two functions a person actually reads - the compass point and the distance string - are
  * pure Kotlin and unit-testable here.
  */
 class GeoTest {

@@ -15,7 +15,7 @@ import kotlin.math.sqrt
  * reconstructs this exact algorithm in Python and matches the scripted preprocessor to
  * max-abs-diff ≈ 8e-5 on fleurs/hi_0.wav. The 512-pt window and 257×80 mel filterbank are
  * the model's real constants, shipped as assets (`mel_window512.f32`, `mel_fb.f32`), so the
- * only thing that can drift is arithmetic — which the androidTest golden check guards.
+ * only thing that can drift is arithmetic - which the androidTest golden check guards.
  *
  * Pipeline (all constants pulled from preprocessor.ts):
  *   1. global pre-emphasis: y[t] = x[t] − 0.97·x[t−1]
@@ -79,7 +79,7 @@ class MelFrontend(
             }
         }
 
-        // 6. per-feature normalization over the VALID frames (mean ÷N, var ÷N−1) — matches NeMo.
+        // 6. per-feature normalization over the VALID frames (mean ÷N, var ÷N−1) - matches NeMo.
         val n = valid.toDouble()
         val denom = if (valid > 1) (valid - 1).toDouble() else 1.0
         for (m in 0 until NMEL) {

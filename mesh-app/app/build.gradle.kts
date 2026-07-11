@@ -1,7 +1,7 @@
 import java.util.Properties
 
 plugins {
-    id("com.android.application") version "8.7.3"
+    id("com.android.application") version "8.13.2"
     id("org.jetbrains.kotlin.android") version "2.0.20"
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.20"
 }
@@ -84,11 +84,6 @@ android {
         // The bundled Bengaluru map archive is already PNG-packed; leave it uncompressed so
         // the APK build doesn't burn time squeezing the ~29 MB voyager tiles for no gain.
         noCompress += "mbtiles"
-    }
-    testOptions {
-        // Pure-logic JVM unit tests (map zoom clamping, geo math) don't touch the framework;
-        // returning defaults for any stray android.* stub keeps them from throwing "not mocked".
-        unitTests.isReturnDefaultValues = true
     }
     packaging {
         // The GenieX SDK loads its QAIRT / llama.cpp native libraries with dlopen() at

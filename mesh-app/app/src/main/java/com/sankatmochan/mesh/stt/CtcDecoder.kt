@@ -13,7 +13,7 @@ import kotlin.math.ln
 
 /**
  * Greedy CTC decode for IndicConformer, ported 1:1 from the model's own
- * `model_onnx.py::_ctc_decode` (AI4Bharat, MIT — CLAUDE.md #3/#4):
+ * `model_onnx.py::_ctc_decode` (AI4Bharat, MIT - CLAUDE.md #3/#4):
  *
  *   logprobs = ctc_decoder(encoder_out)            # (1, T, 5633)
  *   logprobs = logprobs[:, :, language_masks[lang]] # keep only this language's classes
@@ -21,7 +21,7 @@ import kotlin.math.ln
  *   collapsed = unique_consecutive(idx)             # merge repeats
  *   hyp = ''.join(vocab[lang][i] for i in collapsed if i != BLANK_ID).replace('▁',' ').strip()
  *
- * Pure arithmetic — runs on the CPU in microseconds; the heavy matmul already
+ * Pure arithmetic - runs on the CPU in microseconds; the heavy matmul already
  * happened on the NPU (encoder + ctc_decoder graphs).
  *
  * Two assets ship in app/src/main/assets/stt/ (copied verbatim from the HF model):
@@ -74,11 +74,11 @@ class CtcDecoder private constructor(
     }
 
     /**
-     * Pick the language directly from the CTC logits — no separate LID model. The encoder is
+     * Pick the language directly from the CTC logits - no separate LID model. The encoder is
      * language-agnostic; each language is a mask over the 5633 classes. For each candidate we
      * log-softmax over its masked columns and average the greedy path's max log-prob on non-blank
      * frames; the language the model is most confident in wins. Measured 100% on FLEURS (10/10,
-     * open 22-language set) — beats a dedicated VoxLingua107 SLID (90%) at zero extra latency.
+     * open 22-language set) - beats a dedicated VoxLingua107 SLID (90%) at zero extra latency.
      */
     fun pickLanguage(
         logprobs: FloatArray,
@@ -121,7 +121,7 @@ class CtcDecoder private constructor(
         /** Width of the ctc_decoder output (see ctc_decoder.onnx: logprobs (1,T,5633)). */
         const val VOCAB_CLASSES = 5633
 
-        /** IndicASRConfig.BLANK_ID — index of the CTC blank within each language's vocab. */
+        /** IndicASRConfig.BLANK_ID - index of the CTC blank within each language's vocab. */
         const val BLANK_ID = 256
 
         /** How close Hindi's LID score must be to Urdu's to override to Hindi (Hindustani tie). */

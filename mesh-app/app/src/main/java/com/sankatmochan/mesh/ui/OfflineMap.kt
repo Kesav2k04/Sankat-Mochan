@@ -206,7 +206,7 @@ private fun drawPins(
     if (points.isEmpty()) return
 
     if (points.size == 1) {
-        // Closest the archive can draw — 17 would sit two levels above the deepest tile and
+        // Closest the archive can draw - 17 would sit two levels above the deepest tile and
         // render blank grey. clampZoom keeps a lone pin as tight as the tiles allow.
         map.controller.setZoom(OfflineTiles.clampZoom(17.0))
         map.controller.setCenter(points[0])
