@@ -1,46 +1,63 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Offline-bundled fonts (no runtime network). Fraunces for display (shared
-   identity with the pitch deck), IBM Plex Mono for data. */
-@import "@fontsource/fraunces/400.css";
-@import "@fontsource/fraunces/600.css";
-@import "@fontsource/fraunces/700.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
-@import "@fontsource/ibm-plex-mono/600.css";
+/* Typography is loaded OFFLINE from @fontsource in main.jsx (Fraunces serif +
+   IBM Plex Mono). No CDN @import here — this dashboard runs with networks down,
+   so a Google Fonts fetch would silently fail and drop us to system fallbacks. */
 
 @import "maplibre-gl/dist/maplibre-gl.css";
 
 @custom-variant dark (&:is(.dark *));
 
-/* ────────────────────────────────────────────────────────────────────────
-   FIELD DESK — light editorial: warm paper, near-black ink, one saffron
-   accent. Fraunces for the masthead, IBM Plex Mono for everything that is
-   DATA. A beautifully typeset instrument — precise, calm, humane.
-   ──────────────────────────────────────────────────────────────────────── */
-:root {
-  --radius: 0.5rem;
+/* ════════════════════════════════════════════════════════════════════════
+   SANKAT-MOCHAN COMMAND POST — design tokens
+   Palette drawn from Anthropic's brand system: warm paper, ink, and clay.
+   Edit the three BRAND tokens below to re-tune the whole console in seconds.
+   Everything downstream is derived from these, so nothing else needs touching.
 
-  --background: #f4efe6;
-  --foreground: #1a1a1a;
-  --card: #fdfbf7;
-  --card-foreground: #1a1a1a;
-  --popover: #fdfbf7;
-  --popover-foreground: #1a1a1a;
-  --primary: #b23a1e;
-  --primary-foreground: #fbf8f2;
-  --secondary: #eae3d5;
-  --secondary-foreground: #2a2a2a;
-  --muted: #eae3d5;
-  --muted-foreground: #6b6357;
-  --accent: #efe8d9;
-  --accent-foreground: #1a1a1a;
-  --destructive: #c62828;
+   Type: Fraunces (serif display / wordmark) + IBM Plex Mono (data, labels,
+   readouts). Both bundled offline via @fontsource in main.jsx.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  --radius: 0.625rem;
+
+  /* ── ANTHROPIC BRAND TRIAD — primary / secondary / tertiary ───────────── */
+  --brand-primary:   #d97757;  /* Claude clay — actions, live, focal accent  */
+  --brand-secondary: #cc785c;  /* book-cloth  — deeper clay, hover / pressed  */
+  --brand-tertiary:  #d4a27f;  /* kraft tan   — soft warm accent, legends     */
+  --brand-ink:       #141413;  /* near-black  — text & structure              */
+  --brand-paper:     #f0eee6;  /* cloud ivory — Anthropic's signature canvas  */
+
+  /* Base color system (derived from the brand triad) */
+  --bg-primary:     #ece7dc;  /* canvas — a touch deeper than paper for lift  */
+  --bg-surface:     #fbfaf6;  /* cards  — warm white, never pure #fff         */
+  --bg-surface-alt: #f2ede2;
+  --text-primary:   var(--brand-ink);
+  --text-muted:     #5c584e;  /* darkened from #6b6b6b → passes AA on paper    */
+  --accent:         var(--brand-primary);
+  --accent-dim:     var(--brand-secondary);
+  --border:         #dcd5c6;
+  --success:        #4f7a52;  /* muted forest — cleared / responder available */
+  --warning:        #b7861d;  /* amber-gold  — claimed / in-progress          */
+  --critical:       #bd3b2c;  /* warm brick  — open / critical                */
+
+  /* UI Mappings */
+  --background: var(--bg-primary);
+  --foreground: var(--text-primary);
+  --card: var(--bg-surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-surface);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--bg-surface-alt);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-surface-alt);
+  --muted-foreground: var(--text-muted);
+  --destructive: var(--critical);
   --destructive-foreground: #ffffff;
-  --border: #ddd5c4;
-  --input: #ddd5c4;
-  --ring: #b23a1e;
+  --input: var(--border);
+  --ring: var(--accent);
 }
 
 @theme inline {
@@ -57,30 +74,45 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-foreground: #ffffff;
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  /* Status Tokens */
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-critical: var(--critical);
+  --color-surface: var(--bg-surface);
+  --color-surface-alt: var(--bg-surface-alt);
+
+  /* Brand triad, exposed as utilities (bg-brand, text-kraft, …) */
+  --color-brand: var(--brand-primary);
+  --color-brand-2: var(--brand-secondary);
+  --color-kraft: var(--brand-tertiary);
+  --color-ink: var(--brand-ink);
+  --color-paper: var(--brand-paper);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* Project tokens */
-  --color-saffron: #b23a1e;
-  --color-u5: #c62828;
-  --color-u4: #e64a19;
-  --color-u3: #d9a406;
-  --color-u2: #7cb342;
-  --color-u1: #9e9689;
-  --color-ok: #2e7d32;
+  /* Legacy Project tokens to be phased out */
+  --color-saffron: var(--brand-primary);
+  --color-u5: var(--critical);
+  --color-u4: var(--accent);
+  --color-u3: var(--warning);
+  --color-u2: var(--success);
+  --color-u1: var(--text-muted);
+  --color-ok: var(--success);
 
-  --font-display: "Fraunces", Georgia, serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --font-sans: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
 }
 
 @layer base {
@@ -92,27 +124,32 @@
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  ::selection { background: rgba(178, 58, 30, 0.22); }
+  /* Numerals in data/readouts line up in columns — timers, coords, counts. */
+  .font-mono, .tabular { font-variant-numeric: tabular-nums; }
+  /* Serif display: tuned optical axis + no gappy tracking. */
+  .font-display { font-optical-sizing: auto; letter-spacing: -0.01em; }
+  ::selection { background: color-mix(in srgb, var(--brand-primary) 26%, transparent); }
 }
 
-/* Faint paper wash so the background isn't flat. */
+/* Warm paper grain so the dark-on-cream canvas never reads as flat/plastic. */
 .paper-texture {
   background-image:
-    radial-gradient(circle at 18% 12%, rgba(178, 58, 30, 0.045), transparent 45%),
-    radial-gradient(circle at 85% 90%, rgba(26, 26, 26, 0.035), transparent 42%);
+    radial-gradient(circle at 16% 10%, color-mix(in srgb, var(--brand-primary) 6%, transparent), transparent 42%),
+    radial-gradient(circle at 88% 92%, color-mix(in srgb, var(--brand-ink) 4%, transparent), transparent 40%);
 }
 
-/* Map markers */
+/* Map beacons — the pulse ring reads as a live, un-actioned SOS. */
 @keyframes sos-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.5); }
-  70%  { box-shadow: 0 0 0 16px rgba(198, 40, 40, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--critical) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 16px color-mix(in srgb, var(--critical) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--critical) 0%, transparent); }
 }
 .sos-marker {
   width: 15px; height: 15px; border-radius: 50%;
-  border: 2px solid #fff; cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  border: 2px solid var(--bg-surface); cursor: pointer;
+  box-shadow: 0 1px 4px rgba(20, 20, 19, 0.4);
 }
 .sos-marker.live { animation: sos-pulse 1.7s ease-out infinite; }
 
@@ -120,5 +157,32 @@
 @keyframes blink { 0%, 100% { opacity: 1 } 50% { opacity: 0.25 } }
 .blink { animation: blink 1.4s ease-in-out infinite; }
 
+/* Slow "breathing" pulse for empty/waiting states — the mesh is alive, idle. */
+@keyframes breathe { 0%, 100% { opacity: 0.85; } 50% { opacity: 0.35; } }
+.breathe { animation: breathe 3.2s ease-in-out infinite; }
+
 /* MapLibre chrome tuned to paper */
 .maplibregl-ctrl-attrib { font-size: 10px; opacity: 0.7; }
+
+.maplibregl-ctrl-group {
+  border-radius: var(--radius) !important;
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
+  overflow: hidden;
+}
+.maplibregl-ctrl-group > button {
+  width: 32px !important;
+  height: 32px !important;
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.maplibregl-ctrl-group > button:last-child {
+  border-bottom: none !important;
+}
+.maplibregl-ctrl-group > button:hover {
+  background-color: var(--secondary) !important;
+}
+.maplibregl-ctrl-icon {
+  filter: invert(1) brightness(0.8);
+}

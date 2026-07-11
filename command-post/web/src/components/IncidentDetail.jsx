@@ -67,8 +67,16 @@ function ReportRow({ r }) {
 export default function IncidentDetail({ incident, responders, onPropose, onAccept, onResolve }) {
   if (!incident) {
     return (
-      <section className="bg-card rounded-2xl shadow-sm flex items-center justify-center text-muted-foreground text-sm">
-        Select an incident — or inject a test SOS to begin.
+      <section className="bg-card rounded-2xl shadow-sm flex flex-col items-center justify-center text-muted-foreground min-h-0">
+        <div className="relative flex items-center justify-center size-24 mb-6">
+          <div className="absolute inset-0 rounded-full border border-primary/20 animate-[ping_3s_ease-in-out_infinite]" />
+          <div className="absolute inset-2 rounded-full border border-primary/40 animate-[ping_3s_ease-in-out_infinite_0.5s]" />
+          <div className="absolute inset-4 rounded-full border border-primary/60 animate-[ping_3s_ease-in-out_infinite_1s]" />
+          <div className="size-3 rounded-full bg-primary/80 shadow-[0_0_15px_var(--accent)]" />
+        </div>
+        <div className="font-mono text-[11px] tracking-[0.2em] text-muted-foreground/70 uppercase">
+          Waiting for the mesh...
+        </div>
       </section>
     );
   }
@@ -111,8 +119,8 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
           </div>
 
           {inc.sensor_confirmed && (
-            <div className="flex items-start gap-2.5 mt-3 rounded-lg px-3.5 py-2.5 bg-[#2e7d32]/8 border border-[#2e7d32]/20">
-              <span className="size-2 rounded-[2px] bg-[#2e7d32] mt-1.5 shrink-0" />
+            <div className="flex items-start gap-2.5 mt-3 rounded-lg px-3.5 py-2.5 bg-success/10 border border-success/20">
+              <span className="size-2 rounded-[2px] bg-success mt-1.5 shrink-0" />
               <div className="text-[12.5px] leading-snug">
                 <b>Sensor corroborated</b> — {sensors[0] ? `UNO Q sensor (${sensors[0].origin}) agrees with these reports:` : "a fixed sensor agrees with these reports."}
                 {sensors[0] ? ` “${sensors[0].english}”. ` : " "}Highest confidence.
@@ -120,8 +128,8 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
             </div>
           )}
           {inc.sensor_only && (
-            <div className="flex items-start gap-2.5 mt-3 rounded-lg px-3.5 py-2.5 bg-[#d9a406]/10 border border-[#d9a406]/25">
-              <TriangleAlert className="size-4 text-[#946200] mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2.5 mt-3 rounded-lg px-3.5 py-2.5 bg-warning/10 border border-warning/25">
+              <TriangleAlert className="size-4 text-warning mt-0.5 shrink-0" />
               <div className="text-[12.5px] leading-snug">
                 <b>Sensor alert — unconfirmed.</b> No human report yet; treat as
                 “possible, investigate”. A matching SOS will promote this incident.
@@ -184,13 +192,13 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
             <div className="font-mono text-[10px] tracking-[0.15em] text-muted-foreground mb-2">DISPATCH</div>
 
             {inc.status === "resolved" ? (
-              <div className="flex items-center gap-2 rounded-xl px-4 py-3 bg-[#2e7d32]/8 text-[13px]">
-                <CheckCircle2 className="size-4 text-[#2e7d32]" />
+              <div className="flex items-center gap-2 rounded-xl px-4 py-3 bg-success/10 text-[13px]">
+                <CheckCircle2 className="size-4 text-success" />
                 Cleared{assigned ? ` by ${assigned.callsign}` : ""} — sector broadcast sent; new SOS from this area will not be suppressed.
               </div>
             ) : assigned ? (
-              <div className="flex items-center gap-3 rounded-xl px-4 py-3 bg-[#d9a406]/10">
-                <Route className="size-4 text-[#946200]" />
+              <div className="flex items-center gap-3 rounded-xl px-4 py-3 bg-warning/10">
+                <Route className="size-4 text-warning" />
                 <div className="text-[13px]">
                   <b>{assigned.callsign}</b> en route — incident locked (no double dispatch).
                   Victims told “help is on the way” in their language.

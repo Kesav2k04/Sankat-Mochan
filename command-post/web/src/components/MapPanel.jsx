@@ -28,7 +28,7 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
     // Camp HQ — fixed square marker
     const hq = document.createElement("div");
     hq.style.cssText =
-      "width:11px;height:11px;background:#1a1a1a;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)";
+      "width:11px;height:11px;background:#141413;border:2px solid #fbfaf6;box-shadow:0 1px 3px rgba(20,20,19,.4)";
     new maplibregl.Marker({ element: hq }).setLngLat(CAMP_HQ).addTo(map);
 
     mapRef.current = map;
@@ -72,7 +72,7 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
         } else {
           el.style.background = color;
         }
-        el.style.outline = selectedId === inc.id ? "3px solid #1a1a1a" : "none";
+        el.style.outline = selectedId === inc.id ? "3px solid #141413" : "none";
         el.style.outlineOffset = "2px";
         el.onclick = (e) => {
           e.stopPropagation();
@@ -84,10 +84,10 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
     for (const r of responders) {
       if (r.lat == null) continue;
       upsert(`res:${r.id}`, r.lng, r.lat, (el) => {
-        const c = r.status === "available" ? "#2e7d32" : r.status === "on_task" ? "#946200" : "#9e9689";
+        const c = r.status === "available" ? "#4f7a52" : r.status === "on_task" ? "#b7861d" : "#847d6f";
         el.className = "";
         el.style.cssText =
-          `width:9px;height:9px;border-radius:50%;background:${c};border:1.5px solid #fff;` +
+          `width:9px;height:9px;border-radius:50%;background:${c};border:1.5px solid var(--border);` +
           "box-shadow:0 1px 3px rgba(0,0,0,.3)";
         el.title = r.callsign;
       });
@@ -110,9 +110,9 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
   }, [selectedId, incidents]);
 
   return (
-    <div className="relative rounded-2xl overflow-hidden shadow-sm bg-card min-h-0">
-      <div ref={containerRef} className="h-full w-full" />
-      <div className="absolute top-2.5 left-3 z-10 flex items-baseline gap-2">
+    <div className="relative rounded-2xl overflow-hidden shadow-sm bg-surface-alt min-h-0 border">
+      <div ref={containerRef} className="h-full w-full opacity-90" />
+      <div className="absolute top-3 left-3 z-10 flex items-baseline gap-2">
         <span className="font-display italic font-semibold text-[15px] bg-card/85 backdrop-blur px-2 py-0.5 rounded-md shadow-sm">
           Sector Map
         </span>
@@ -120,14 +120,17 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
           OFFLINE TILES
         </span>
       </div>
-      <div className="absolute bottom-2 left-2 z-10 bg-card/90 backdrop-blur rounded-md px-2 py-1.5 font-mono text-[8.5px] leading-[1.7] shadow-sm">
-        <span className="inline-block size-2 rounded-full bg-u5 mr-1" />OPEN
-        <span className="inline-block size-2 rounded-full bg-[#d9a406] ml-2 mr-1" />CLAIMED
-        <span className="inline-block size-2 rounded-full bg-[#2e7d32] ml-2 mr-1" />CLEARED
-        <br />
-        <span className="inline-block size-2 bg-[#946200] mr-1" />SENSOR
-        <span className="inline-block size-2 rounded-full bg-[#2e7d32] ml-2 mr-1" />RESPONDER
-        <span className="inline-block size-2 bg-foreground ml-2 mr-1" />CAMP HQ
+      <div className="absolute bottom-3 left-3 z-10 bg-card border rounded-lg px-3 py-2.5 font-mono text-[9px] leading-tight shadow-md flex flex-col gap-1.5 text-muted-foreground">
+        <div className="flex items-center gap-3">
+          <span className="flex items-center"><span className="inline-block size-2 rounded-full bg-critical mr-1.5" />OPEN</span>
+          <span className="flex items-center"><span className="inline-block size-2 rounded-full bg-warning mr-1.5" />CLAIMED</span>
+          <span className="flex items-center"><span className="inline-block size-2 rounded-full bg-success mr-1.5" />CLEARED</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center"><span className="inline-block size-2 bg-warning mr-1.5" />SENSOR</span>
+          <span className="flex items-center"><span className="inline-block size-2 rounded-full bg-success mr-1.5" />RESPONDER</span>
+          <span className="flex items-center"><span className="inline-block size-2 bg-foreground mr-1.5 outline outline-1 outline-background" />CAMP HQ</span>
+        </div>
       </div>
     </div>
   );

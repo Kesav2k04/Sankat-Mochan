@@ -80,7 +80,7 @@ else
   echo "  requirements already satisfied"
 fi
 "$PY" - <<'EOF' || die "the command post's imports are not satisfied"
-import importlib, sys
+import importlib.util, sys
 missing = [m for m in ("fastapi", "uvicorn", "numpy", "soundfile", "websockets")
            if not importlib.util.find_spec(m)]
 if missing:

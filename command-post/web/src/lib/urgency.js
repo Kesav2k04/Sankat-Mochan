@@ -1,12 +1,14 @@
 // Presentation helpers — single source of truth for the urgency ramp,
 // priority chips, and lifecycle status treatment (matches the v2 design).
 
+// Warm urgency ramp — tuned to sit on the Anthropic paper canvas. Each step is
+// distinct at a glance and dark enough to pass AA as chip text on a tinted fill.
 export const URGENCY_COLOR = {
-  5: "#c62828",
-  4: "#e64a19",
-  3: "#d9a406",
-  2: "#7cb342",
-  1: "#9e9689",
+  5: "#bd3b2c", // critical — warm brick (matches --critical)
+  4: "#c85a30", // high     — burnt clay
+  3: "#a8791a", // moderate — amber-gold
+  2: "#5f7a46", // low      — olive
+  1: "#847d6f", // low      — warm grey
 };
 
 const PRIORITY_LABEL = { 5: "CRITICAL", 4: "HIGH", 3: "MODERATE", 2: "LOW", 1: "LOW" };
@@ -26,14 +28,14 @@ export function priorityLabel(u) {
 
 // Lifecycle arc (C9): open red → claimed amber → cleared green.
 export const STATUS_META = {
-  "new":                { label: "NEW",       fg: "#b23a1e", bg: "rgba(178,58,30,.10)" },
-  "triaged":            { label: "TRIAGED",   fg: "#6b6357", bg: "rgba(107,99,87,.12)" },
-  "awaiting responder": { label: "AWAITING RESPONDER", fg: "#c62828", bg: "rgba(198,40,40,.12)" },
-  "proposed":           { label: "PROPOSED",  fg: "#946200", bg: "rgba(217,164,6,.14)" },
-  "assigned":           { label: "ASSIGNED",  fg: "#946200", bg: "rgba(217,164,6,.14)" },
-  "en route":           { label: "EN ROUTE",  fg: "#946200", bg: "rgba(217,164,6,.16)" },
-  "on-scene":           { label: "ON-SCENE",  fg: "#2e7d32", bg: "rgba(46,125,50,.12)" },
-  "resolved":           { label: "RESOLVED",  fg: "#2e7d32", bg: "rgba(46,125,50,.12)" },
+  "new":                { label: "NEW",       fg: "#bd3b2c", bg: "rgba(189,59,44,.10)" },
+  "triaged":            { label: "TRIAGED",   fg: "#5c584e", bg: "rgba(92,88,78,.12)" },
+  "awaiting responder": { label: "AWAITING RESPONDER", fg: "#bd3b2c", bg: "rgba(189,59,44,.12)" },
+  "proposed":           { label: "PROPOSED",  fg: "#8a6410", bg: "rgba(183,134,29,.16)" },
+  "assigned":           { label: "ASSIGNED",  fg: "#8a6410", bg: "rgba(183,134,29,.16)" },
+  "en route":           { label: "EN ROUTE",  fg: "#8a6410", bg: "rgba(183,134,29,.18)" },
+  "on-scene":           { label: "ON-SCENE",  fg: "#3d6640", bg: "rgba(79,122,82,.14)" },
+  "resolved":           { label: "RESOLVED",  fg: "#3d6640", bg: "rgba(79,122,82,.14)" },
 };
 
 export function statusMeta(status) {
@@ -42,9 +44,9 @@ export function statusMeta(status) {
 
 // Map pin colour follows the lifecycle arc; open pins use the urgency ramp.
 export function pinColor(incident) {
-  if (incident.status === "resolved") return "#2e7d32";
+  if (incident.status === "resolved") return "#4f7a52";
   if (["en route", "assigned", "on-scene", "proposed"].includes(incident.status))
-    return "#d9a406";
+    return "#b7861d";
   return urgencyColor(incident.urgency);
 }
 

@@ -54,7 +54,7 @@ export default function App() {
             selectedId={selectedId}
             onSelect={setSelectedId}
           />
-          <RespondersPanel responders={cp.responders} />
+          <RespondersPanel responders={cp.responders} criticalOpen={cp.metrics?.critical_open ?? 0} />
           <CapacityStrip capacity={cp.capacity} />
         </div>
       </main>

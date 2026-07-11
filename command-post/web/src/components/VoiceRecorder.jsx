@@ -67,7 +67,7 @@ export default function VoiceRecorder() {
           <Square className="size-3.5" /> Stop
         </Button>
       ) : (
-        <Button size="sm" variant="outline" className="gap-1.5" disabled={state === "working"} onClick={start}>
+        <Button size="sm" className="gap-1.5" disabled={state === "working"} onClick={start}>
           {state === "working" ? <Loader2 className="size-3.5 animate-spin" /> : <Mic className="size-3.5" />}
           {state === "working" ? "Transcribing…" : "Voice SOS"}
         </Button>
