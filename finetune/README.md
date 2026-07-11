@@ -77,3 +77,5 @@ runs the validator as a **hard gate**, trains E4B with the best-accuracy setting
 (r=32 / α=32, lr 2e-4, 3 epochs, seq-len 1024), exports merged-fp16 + GGUF, and uploads the
 artifacts to a private HF repo. Set the accelerator to **`GPU T4 x2`** and attach your dataset
 (`train.jsonl` + `val.jsonl`) as an input.
+
+> **Memory Note:** If you see a `RuntimeError: expected mat1 and mat2 to have the same dtype, but got: float != c10::Half` crash on step 0, it is because Unsloth forces `float32` on non-native-bf16 GPUs (like the T4) but occasionally misses a `float16` linear projection. Our `sahayak_finetune.py` script automatically patches this via an internal `_align_model_dtype` pass (which upcasts stray `float16` tensors to match the `float32` embeddings), permanently fixing the crash so it doesn't bite the team again.
