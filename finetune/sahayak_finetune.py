@@ -134,6 +134,7 @@ def run_unsloth(args, env):
     model, tokenizer = FastModel.from_pretrained(
         model_name=args.model,
         max_seq_length=max_seq,
+        dtype="float16",
         load_in_4bit=not args.no_4bit,   # QLoRA by default (spec: prefer E4B QLoRA)
         full_finetuning=False,
         token=os.environ.get("HF_TOKEN"),
