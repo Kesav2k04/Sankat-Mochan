@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
     private val vm: MeshViewModel by viewModels()
     private var pendingRole: MeshRole? = null
 
-    // BLE permissions are MANDATORY — the mesh can't run without them.
+    // BLE permissions are MANDATORY - the mesh can't run without them.
     private val blePermissions = arrayOf(
         Manifest.permission.BLUETOOTH_SCAN,
         Manifest.permission.BLUETOOTH_ADVERTISE,
@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
     )
 
     // Location, the microphone and notifications are requested in the same prompt but are all
-    // OPTIONAL — if denied, the mesh still starts and a text SOS still sends, just without
+    // OPTIONAL - if denied, the mesh still starts and a text SOS still sends, just without
     // coordinates, a voice clip, or the "help is on the way" banner. POST_NOTIFICATIONS is a
     // runtime permission only on Android 13+.
     private val requestedPermissions = blePermissions +
@@ -98,12 +98,12 @@ class MainActivity : ComponentActivity() {
                 if (result[Manifest.permission.ACCESS_FINE_LOCATION] != true) {
                     Toast.makeText(
                         this,
-                        "Approximate location only — GPS coordinates need Precise location. " +
+                        "Approximate location only - GPS coordinates need Precise location. " +
                             "Turn it on in Settings › Apps › Off-Net › Permissions › Location.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
-                // The moment the app is usable, make sure location is actually switched on —
+                // The moment the app is usable, make sure location is actually switched on -
                 // one tap, in place, no trip to Settings.
                 if (role == MeshRole.VICTIM) promptEnableLocationOneTap()
                 updateSosGestureService(role)
@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
         }
 
     // The mesh is useless with Bluetooth or location switched off, so we chase them the whole
-    // time the app is in front. Only BLUETOOTH is enforced — the mesh cannot run without it.
+    // time the app is in front. Only BLUETOOTH is enforced - the mesh cannot run without it.
     // Location is deliberately NOT forced: an SOS sends fine with no coordinates, so nagging
     // the user to turn GPS on would be wrong. `suppressNextRadioCheck` stops the resume that
     // fires when we come back FROM the Bluetooth prompt from immediately firing another.
@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity() {
     private val themePrefs by lazy { getSharedPreferences("offnet_prefs", Context.MODE_PRIVATE) }
     private var darkTheme by mutableStateOf(true)
 
-    // Raised by the flip gesture (SosGestureService) — shows the full-screen 30s SOS countdown.
+    // Raised by the flip gesture (SosGestureService) - shows the full-screen 30s SOS countdown.
     private var showSosCountdown by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -184,7 +184,7 @@ class MainActivity : ComponentActivity() {
                                 sendAutoSos()
                             },
                             onCancel = {
-                                // "No" on the countdown means the user is safe — leave the app.
+                                // "No" on the countdown means the user is safe - leave the app.
                                 showSosCountdown = false
                                 finish()
                             },
@@ -193,7 +193,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        // No role picker anymore — the phone is a victim's SOS console the moment it opens.
+        // No role picker anymore - the phone is a victim's SOS console the moment it opens.
         // A retained ViewModel keeps its role across configuration changes, so only ask on a
         // genuinely cold start.
         if (vm.role == null) onPickRole(MeshRole.VICTIM)
@@ -214,7 +214,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Fire an SOS with safe emergency defaults — used when the countdown elapses or the user taps
+     * Fire an SOS with safe emergency defaults - used when the countdown elapses or the user taps
      * "Send now". A person who triggered the flip gesture may be unable to fill in details, so this
      * sends the highest urgency with the live GPS fix the ViewModel already holds, then nudges
      * Battery saver like any other send.
@@ -223,7 +223,7 @@ class MainActivity : ComponentActivity() {
         vm.sendSos(
             category = "trapped",
             urgency = 5,
-            gist = "Auto-SOS — triggered by flip gesture",
+            gist = "Auto-SOS - triggered by flip gesture",
             lang = "en",
             locationHint = "",
         )
@@ -261,7 +261,7 @@ class MainActivity : ComponentActivity() {
         ContextCompat.registerReceiver(
             this, radioStateReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
         )
-        // Re-sync the location indicator with reality every time we come forward — the user
+        // Re-sync the location indicator with reality every time we come forward - the user
         // may have toggled Location off in the shade while the app was in the background.
         vm.refreshLocation()
         if (suppressNextRadioCheck) {
@@ -276,7 +276,7 @@ class MainActivity : ComponentActivity() {
         try {
             unregisterReceiver(radioStateReceiver)
         } catch (_: IllegalArgumentException) {
-            // Never registered (e.g. paused before the first resume) — nothing to undo.
+            // Never registered (e.g. paused before the first resume) - nothing to undo.
         }
     }
 
@@ -302,7 +302,7 @@ class MainActivity : ComponentActivity() {
 
     /**
      * One-tap location enable. When location is off, Play services can pop a system dialog that
-     * switches it on in place — no trip to Settings (the redirect the app used to rely on). If
+     * switches it on in place - no trip to Settings (the redirect the app used to rely on). If
      * the dialog can't be shown (already on, or no GMS on this device) we do nothing: an SOS
      * still sends without a fix, so this is a nudge, never a gate.
      */
@@ -328,7 +328,7 @@ class MainActivity : ComponentActivity() {
                             IntentSenderRequest.Builder(e.resolution).build()
                         )
                     } catch (_: Exception) {
-                        // The pending intent was already consumed/cancelled — nothing to do.
+                        // The pending intent was already consumed/cancelled - nothing to do.
                     }
                 }
             }
@@ -342,14 +342,14 @@ class MainActivity : ComponentActivity() {
     private fun isBluetoothOn(): Boolean = bluetoothAdapter()?.isEnabled == true
 
     /**
-     * Chase Bluetooth back on — and only Bluetooth. Android forbids a normal app from
+     * Chase Bluetooth back on - and only Bluetooth. Android forbids a normal app from
      * flipping a radio on silently, so the strongest we can do is put the system enable
      * dialog in front of the user. Location is intentionally left alone: an SOS goes out with
      * or without a fix, so forcing GPS on would be the wrong kind of pushy.
      */
     private fun enforceRadios() {
         // ACTION_REQUEST_ENABLE needs BLUETOOTH_CONNECT, and while that permission is still
-        // pending the permission dialog owns the screen — so hold off entirely until it's
+        // pending the permission dialog owns the screen - so hold off entirely until it's
         // granted, rather than stacking a radio prompt on top of it.
         val btPermission = ContextCompat.checkSelfPermission(
             this, Manifest.permission.BLUETOOTH_CONNECT
@@ -365,14 +365,14 @@ class MainActivity : ComponentActivity() {
         try {
             enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
         } catch (_: SecurityException) {
-            // BLUETOOTH_CONNECT was revoked between the check and the launch — the permission
+            // BLUETOOTH_CONNECT was revoked between the check and the launch - the permission
             // flow will pick it up on the next pass.
         }
     }
 
     /**
      * Fired the moment an SOS goes out. Android won't let an app turn Battery saver on itself,
-     * so we drop the user straight onto the Battery-saver screen to flip it — unless it's
+     * so we drop the user straight onto the Battery-saver screen to flip it - unless it's
      * already on, in which case we stay out of the way.
      */
     private fun requestBatterySaver() {
@@ -389,7 +389,7 @@ class MainActivity : ComponentActivity() {
             try {
                 startActivity(Intent(Settings.ACTION_SETTINGS))
             } catch (_: Exception) {
-                // No settings activity to resolve to — nothing more we can do.
+                // No settings activity to resolve to - nothing more we can do.
             }
         }
     }
@@ -414,7 +414,7 @@ private fun AppRoot(
     val openSettings = { settingsOpen = true }
 
     // Task 3: on the responder screen the back gesture returns to the user (home) console
-    // rather than closing the app — "user" is the previous page now that the picker is gone.
+    // rather than closing the app - "user" is the previous page now that the picker is gone.
     BackHandler(enabled = role == MeshRole.RESPONDER && !chatOpen) { onPickRole(MeshRole.VICTIM) }
     // The assistant is a page over the top of whatever role is active; back closes it first.
     BackHandler(enabled = chatOpen) { chatOpen = false }

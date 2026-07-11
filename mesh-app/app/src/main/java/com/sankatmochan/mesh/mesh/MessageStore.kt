@@ -15,7 +15,7 @@ data class SentSos(
 
 /**
  * In-memory state for the UI plus dedup bookkeeping for the mesh. Deliberately
- * simple (no DB) — a phone reboot clears it, which is fine for the demo. The
+ * simple (no DB) - a phone reboot clears it, which is fine for the demo. The
  * seen-id set is what makes store-and-forward loop-free.
  */
 class MessageStore {
@@ -51,10 +51,10 @@ class MessageStore {
     // These run on BLE binder threads; update{} is atomic (no lost-update race).
     fun addReceivedSos(msg: SosMessage) {
         _receivedSos.update { current ->
-            // Most urgent first, then newest — a fresh CRITICAL must never sort
+            // Most urgent first, then newest - a fresh CRITICAL must never sort
             // below a stale one the responder has already read past.
             // Capped so a flood of unique-id SOS packets (untrusted input, CLAUDE.md #8) can't
-            // grow this list — and the O(n log n) re-sort it drives — without bound. The cap
+            // grow this list - and the O(n log n) re-sort it drives - without bound. The cap
             // keeps the highest-urgency, most-recent messages, which is exactly what a
             // responder must not lose; it sits far above any real incident's volume.
             (current + msg).distinctBy { it.id }

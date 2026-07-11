@@ -39,7 +39,7 @@ private const val TAG = "VoiceClips"
  * A voice message from the mesh.
  *
  * Playback is offered only once every chunk has arrived. There is no retransmission on
- * the LoRa link today, so a clip with a hole in it is a corrupt Ogg container — handing
+ * the LoRa link today, so a clip with a hole in it is a corrupt Ogg container - handing
  * that to MediaPlayer would fail in front of a rescuer. Showing "19 of 22 pieces" is the
  * honest state, and it tells the operator the link is lossy rather than the app broken.
  */
@@ -77,7 +77,7 @@ fun VoiceClipCard(clip: VoiceClip, modifier: Modifier = Modifier) {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = if (clip.complete) routeLabel(clip.hops)
-                    else "receiving — ${clip.received} of ${clip.total} pieces " +
+                    else "receiving - ${clip.received} of ${clip.total} pieces " +
                         "(${clip.missing} still missing)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

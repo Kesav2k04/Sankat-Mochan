@@ -1,4 +1,4 @@
-# Sankat-Mochan — BLE mesh app (T0 transport slice)
+# Sankat-Mochan - BLE mesh app (T0 transport slice)
 
 One Android app, three roles (**Victim / Responder / Relay**), talking phone-to-phone
 over **Bluetooth Low Energy** with no cell tower or internet. This is the T0 transport
@@ -7,7 +7,7 @@ victim's phone shows an honest native-language status ladder.
 
 ## What works now
 
-- **Every phone is a full mesh node** — it advertises + runs a GATT server (peripheral)
+- **Every phone is a full mesh node** - it advertises + runs a GATT server (peripheral)
   *and* scans + connects (central) at the same time. That dual role is why we went native
   Kotlin rather than React Native (no maintained RN peripheral/GATT-server library).
 - **Text SOS** encoded as a compact ≤244-byte JSON envelope (fits one BLE write today,
@@ -30,8 +30,8 @@ Prereqs: **Android Studio** (already installed via Homebrew) + **2 Android phone
 (Android 12 / API 31 or newer) with USB debugging on.
 
 1. Open Android Studio → **Open** → select this `mesh-app/` folder.
-2. Let it sync Gradle (first sync generates the Gradle wrapper and downloads SDK 35 —
-   accept any SDK-install prompts). *No `./gradlew` yet — Studio's bundled Gradle handles
+2. Let it sync Gradle (first sync generates the Gradle wrapper and downloads SDK 35 -
+   accept any SDK-install prompts). *No `./gradlew` yet - Studio's bundled Gradle handles
    the first sync, which creates the wrapper.*
 3. Plug in phone #1 → pick it in the device dropdown → **Run**. Repeat for phone #2.
 4. On phone #1 choose **Victim**, on phone #2 choose **Responder** (grant Bluetooth perms).
@@ -44,7 +44,7 @@ demo the extra hop.
 ## Kill-switch demo
 
 Turn on **airplane mode**, then re-enable **Bluetooth only** on both phones. The SOS still
-crosses — nothing uses Wi-Fi or cell.
+crosses - nothing uses Wi-Fi or cell.
 
 ## Layout
 
@@ -68,7 +68,7 @@ app/src/test/java/com/sankatmochan/mesh/   # JVM unit tests (see "Testing" below
 
 ## Testing
 
-Pure-JVM unit tests cover the trust-boundary and mesh logic — envelope parsing/validation,
+Pure-JVM unit tests cover the trust-boundary and mesh logic - envelope parsing/validation,
 voice framing, dedup, the DoS caps and the rate limiter. No device or emulator needed:
 
 ```
@@ -76,14 +76,14 @@ voice framing, dedup, the DoS caps and the rate limiter. No device or emulator n
 ```
 
 The suite is hermetic: `SosMessage` (which uses `org.json`) runs against the Apache-2.0
-AOSP `android-json` — the same parser as on device — rather than Crockford's reference jar,
+AOSP `android-json` - the same parser as on device - rather than Crockford's reference jar,
 whose licence is disallowed by CLAUDE.md #1. See the `LICENSE FLAG` note in
 `app/build.gradle.kts` about JUnit 4 (EPL-1.0, test-only) awaiting human sign-off.
 
 ## Offline map tiles (responder screen)
 
 The responder screen pins every SOS that carries GPS coordinates on a map rendered by
-osmdroid (Apache-2.0) from a **local tile archive**. Nothing is fetched at runtime —
+osmdroid (Apache-2.0) from a **local tile archive**. Nothing is fetched at runtime -
 `setUseDataConnection(false)` plus an `OfflineTileProvider` mean the app has no network
 path to a tile server even if one were reachable.
 
@@ -96,9 +96,9 @@ To add a map for your region:
    bounding box and zoom range you need. Zoom 12–17 over a city is usually tens of MB;
    check the tile provider's usage policy before bulk-downloading.
 2. Install it either way:
-   - **Bundled** — drop it in `app/src/main/assets/tiles/` and rebuild. It is unpacked
+   - **Bundled** - drop it in `app/src/main/assets/tiles/` and rebuild. It is unpacked
      into app-private storage on first launch, off the main thread.
-   - **Sideloaded** — push it straight to the device, no rebuild:
+   - **Sideloaded** - push it straight to the device, no rebuild:
      ```
      adb push region.mbtiles \
        /sdcard/Android/data/com.sankatmochan.mesh/files/osmdroid/tiles/
@@ -109,5 +109,5 @@ To add a map for your region:
 ## Not built yet (next slices)
 
 - Voice SOS over BLE (DESIGN Case A) + on-device STT.
-- The AI command-post dashboard (separate PC app — the AI lane).
+- The AI command-post dashboard (separate PC app - the AI lane).
 - LoRa bridge (hardware not yet available).

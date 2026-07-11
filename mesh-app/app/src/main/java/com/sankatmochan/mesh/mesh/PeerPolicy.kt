@@ -6,7 +6,7 @@ package com.sankatmochan.mesh.mesh
  * Why this exists: every phone both advertises the mesh service *and* scans for it,
  * so two phones sitting on the same table will always find each other and link up
  * directly over BLE. When the point of the demo is that a message crossed the
- * long-range LoRa bridge, that direct hop silently steals the traffic — the SOS
+ * long-range LoRa bridge, that direct hop silently steals the traffic - the SOS
  * arrives, and the radios never carry a byte.
  *
  * [DenyAll] switches the central half off without touching the peripheral half. The
@@ -31,7 +31,7 @@ sealed interface PeerPolicy {
         override fun allows(address: String): Boolean = false
     }
 
-    /** Dial out only to these MACs — e.g. a known relay phone, but not the other endpoint. */
+    /** Dial out only to these MACs - e.g. a known relay phone, but not the other endpoint. */
     data class Allowlist(val addresses: Set<String>) : PeerPolicy {
         private val normalised: Set<String> = addresses.mapTo(HashSet()) { it.uppercase() }
         override fun allows(address: String): Boolean = address.uppercase() in normalised

@@ -25,30 +25,30 @@ import kotlin.math.sqrt
  * deliberate "flip the phone face-down and back up three times", raises the full-screen SOS
  * countdown in [MainActivity].
  *
- * Why a flip and not a shake or a button combo — the trade-offs we actually walked through:
+ * Why a flip and not a shake or a button combo - the trade-offs we actually walked through:
  *
  *  - Shake (the previous gesture) keys on raw acceleration magnitude, so a pothole, a hard brake,
  *    a bag being set down, or a drop all spike past the threshold and fire a *false* SOS. In a
  *    moving vehicle that is a real, repeated misfire. Rejected.
  *  - Power-button multi-press can't be used: on the OnePlus 15 / OxygenOS the power key is owned
- *    by the system — a rapid multi-press is already wired to the OS's own Emergency SOS, and an
+ *    by the system - a rapid multi-press is already wired to the OS's own Emergency SOS, and an
  *    app cannot intercept the key. We would be fighting (and duplicating) the platform. Rejected.
  *  - Volume-key patterns only reach an app while it is foreground or holding an active media
  *    session; screen-off they are unreliable, and mashing volume also blasts/mutes audio.
  *    Rejected as a primary trigger.
  *  - A flip keys on the *gravity vector* (which way is down), not on how hard the phone is jostled.
  *    A bump, a drop (free-fall + one impact), or walking with the phone in a pocket never produce
- *    three full, deliberate 180° inversions in a row — so the false-positive that plagued the
+ *    three full, deliberate 180° inversions in a row - so the false-positive that plagued the
  *    shake gesture is designed out. It collides with no OxygenOS gesture, and it is unambiguously
  *    intentional: you have to pick the phone up and turn it over and back, three times.
  *
  * Screen-off reliability: we request the *wake-up* variant of the accelerometer where the device
  * offers one (Snapdragon sensor hub / low-power island), so orientation events keep arriving while
- * the application processor is asleep — no wake-lock, no battery drain from holding the CPU on.
+ * the application processor is asleep - no wake-lock, no battery drain from holding the CPU on.
  * On a device with no wake-up accelerometer we fall back to the standard one (reliable screen-on
  * and while this service is alive; the OS may batch or pause it in deep sleep).
  *
- * Safety (CLAUDE.md #6 — this is user-safety code a human must review): detecting the gesture only
+ * Safety (CLAUDE.md #6 - this is user-safety code a human must review): detecting the gesture only
  * *raises the confirmation countdown*; it never sends an SOS by itself. The SOS goes out only if
  * the 30s countdown elapses or the user taps "Send now" (see [MainActivity.sendAutoSos] and
  * [com.sankatmochan.mesh.ui.SosCountdownOverlay]). Background Activity launch is restricted on
@@ -94,7 +94,7 @@ class SosGestureService : Service(), SensorEventListener {
         accelerometer?.let {
             // SENSOR_DELAY_UI (~60ms) is plenty to see an orientation change; keeps power low.
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
-        } ?: Log.w(TAG, "no accelerometer on this device — flip-to-SOS inactive")
+        } ?: Log.w(TAG, "no accelerometer on this device - flip-to-SOS inactive")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -114,7 +114,7 @@ class SosGestureService : Service(), SensorEventListener {
 
         // Only read orientation when the phone is roughly at rest under gravity. During free-fall
         // (|a| ≈ 0, i.e. a drop) or a violent jolt (|a| ≫ g) the accelerometer measures motion, not
-        // "which way is down" — sampling then would let a drop or a shake masquerade as a flip.
+        // "which way is down" - sampling then would let a drop or a shake masquerade as a flip.
         val magnitude = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
         if (magnitude < REST_MIN || magnitude > REST_MAX) return
 
@@ -138,7 +138,7 @@ class SosGestureService : Service(), SensorEventListener {
 
         val now = SystemClock.elapsedRealtime()
         // A "flip" is counted when the phone comes to rest FACE-DOWN, but only if it was last
-        // counted face-up — so you must turn it over *and back* between counts. A phone left lying
+        // counted face-up - so you must turn it over *and back* between counts. A phone left lying
         // face-down and nudged can never rack up a count.
         if (orientation == FACE_DOWN && lastCountedOrientation != FACE_DOWN) {
             if (now - lastFlipMs < MIN_GAP_MS) return   // debounce a single wobble
@@ -164,7 +164,7 @@ class SosGestureService : Service(), SensorEventListener {
     private fun trigger(now: Long) {
         if (now - lastTriggerMs < TRIGGER_COOLDOWN_MS) return
         lastTriggerMs = now
-        Log.i(TAG, "flip gesture detected — raising SOS countdown")
+        Log.i(TAG, "flip gesture detected - raising SOS countdown")
 
         val consoleIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -177,7 +177,7 @@ class SosGestureService : Service(), SensorEventListener {
         val alert = NotificationCompat.Builder(this, ALERT_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_rescue)
             .setContentTitle("Emergency SOS")
-            .setContentText("Flip gesture detected — confirm or cancel sending an SOS")
+            .setContentText("Flip gesture detected - confirm or cancel sending an SOS")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
@@ -242,7 +242,7 @@ class SosGestureService : Service(), SensorEventListener {
         private const val FACE_UP_Z = 7.5f
         private const val FACE_DOWN_Z = -7.5f
 
-        /** Accept an orientation sample only when total acceleration is near 1 g — i.e. the phone
+        /** Accept an orientation sample only when total acceleration is near 1 g - i.e. the phone
          *  is resting under gravity, not in free-fall (a drop) or being violently jerked (a shake).
          *  This is what makes bumps and drops physically incapable of registering as a flip. */
         private const val REST_MIN = 6.0f
@@ -252,7 +252,7 @@ class SosGestureService : Service(), SensorEventListener {
         private const val GRAVITY_ALPHA = 0.7f
 
         private const val MIN_GAP_MS = 250L
-        /** Window to complete all the flips — generous, because a frightened or injured person is
+        /** Window to complete all the flips - generous, because a frightened or injured person is
          *  not fast or precise. */
         private const val WINDOW_MS = 6_000L
         private const val FLIPS_TO_TRIGGER = 3

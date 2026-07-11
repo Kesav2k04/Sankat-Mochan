@@ -33,7 +33,7 @@ class BoundedIdSetTest {
         assertThat("1" in set).isFalse()
         assertThat("2" in set).isTrue()
         assertThat("4" in set).isTrue()
-        // A re-seen-but-evicted id counts as new again — acceptable under a flood.
+        // A re-seen-but-evicted id counts as new again - acceptable under a flood.
         assertThat(set.add("1")).isTrue()
     }
 

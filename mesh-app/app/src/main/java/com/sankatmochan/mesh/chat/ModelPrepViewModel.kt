@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
  * log, reusing the exact same GenieX pull path as the assistant screen ([GenieXEngine]) so the
  * weights land in the shared cache and the chat loads them instantly later.
  *
- * This VM never *loads* a model into a native handle — it only downloads — so it can run
+ * This VM never *loads* a model into a native handle - it only downloads - so it can run
  * alongside the assistant without fighting over the single LLM handle.
  */
 class ModelPrepViewModel(app: Application) : AndroidViewModel(app) {
@@ -32,7 +32,7 @@ class ModelPrepViewModel(app: Application) : AndroidViewModel(app) {
         /** Bringing the runtime up / checking what's already on disk. */
         CHECKING,
 
-        /** Runtime up, model not yet on the phone — offer to download. */
+        /** Runtime up, model not yet on the phone - offer to download. */
         READY_TO_DOWNLOAD,
 
         /** Pulling weights; see [percent]. */
@@ -71,14 +71,14 @@ class ModelPrepViewModel(app: Application) : AndroidViewModel(app) {
     private var job: Job? = null
     private var started = false
 
-    /** Called when the sheet opens. Idempotent — a re-open won't restart a running download. */
+    /** Called when the sheet opens. Idempotent - a re-open won't restart a running download. */
     fun open() {
         if (started) return
         started = true
         recommended = pickForDevice()
         viewModelScope.launch {
             phase = Phase.CHECKING
-            addLog("Detected ${"%.1f".format(deviceRamGb)} GB RAM — recommending ${recommended.displayName}")
+            addLog("Detected ${"%.1f".format(deviceRamGb)} GB RAM - recommending ${recommended.displayName}")
             addLog("Bringing up the on-device runtime…")
             when (engine.initialize()) {
                 is GenieXEngine.InitResult.Unsupported -> {
@@ -88,7 +88,7 @@ class ModelPrepViewModel(app: Application) : AndroidViewModel(app) {
 
                 GenieXEngine.InitResult.Ready -> {
                     if (engine.isDownloaded(recommended)) {
-                        addLog("${recommended.displayName} is already on your phone — you're set for offline.")
+                        addLog("${recommended.displayName} is already on your phone - you're set for offline.")
                         phase = Phase.ALREADY_READY
                     } else {
                         addLog("Ready. Tap download to save ${recommended.displayName} (${recommended.approxSize}).")
@@ -106,7 +106,7 @@ class ModelPrepViewModel(app: Application) : AndroidViewModel(app) {
         job = viewModelScope.launch {
             phase = Phase.DOWNLOADING
             percent = 0
-            addLog("Downloading ${model.displayName} — keep this open…")
+            addLog("Downloading ${model.displayName} - keep this open…")
             try {
                 var lastLogged = -1
                 engine.downloadFlow(model).collect { pct ->
@@ -124,7 +124,7 @@ class ModelPrepViewModel(app: Application) : AndroidViewModel(app) {
                 phase = Phase.READY_TO_DOWNLOAD
                 throw e
             } catch (e: Exception) {
-                addLog("Download failed — check your connection and try again.")
+                addLog("Download failed - check your connection and try again.")
                 phase = Phase.FAILED
             }
         }

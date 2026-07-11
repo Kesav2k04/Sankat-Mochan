@@ -36,7 +36,7 @@ import kotlinx.coroutines.delay
 /**
  * The full-screen SOS countdown raised by the flip gesture (see SosGestureService). It gives the user
  * [totalSeconds] to decide: **Send now** fires immediately, **Cancel** backs out (and the caller
- * exits the app), and if they do nothing the SOS sends automatically at zero — the point of a
+ * exits the app), and if they do nothing the SOS sends automatically at zero - the point of a
  * panic trigger is that a person who *can't* act still gets help out.
  *
  * Deliberately loud and single-purpose: one giant ticking number, two unmistakable buttons.

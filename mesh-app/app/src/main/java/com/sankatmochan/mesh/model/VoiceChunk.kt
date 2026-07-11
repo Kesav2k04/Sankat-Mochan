@@ -6,10 +6,10 @@ import java.nio.ByteOrder
 /**
  * Binary voice frames. Audio cannot ride [SosMessage]'s JSON envelope: base64 would cost
  * 33% of a channel that carries about 5 kbps. A voice frame is told apart from a JSON
- * envelope by its first byte — JSON always starts with '{' (0x7B), and 0xA5 is not a legal
+ * envelope by its first byte - JSON always starts with '{' (0x7B), and 0xA5 is not a legal
  * UTF-8 lead byte, so the two can never be confused in either direction.
  *
- * Layout — must stay identical to `VOICE_STRUCT` in pi-code/envelope.py:
+ * Layout - must stay identical to `VOICE_STRUCT` in pi-code/envelope.py:
  *
  *   0      magic    0xA5
  *   1      version  2
@@ -25,7 +25,7 @@ import java.nio.ByteOrder
  *   17..            payload
  *
  * `attempt` is load-bearing. A resent chunk must carry a *different* id, or the mesh's
- * dedup — the thing that stops messages looping forever — silently drops the retry as a
+ * dedup - the thing that stops messages looping forever - silently drops the retry as a
  * duplicate and a clip that lost one frame can never be repaired.
  */
 sealed interface VoiceFrame {
@@ -87,7 +87,7 @@ data class VoiceChunk(
         const val CODEC_3GPP_AMR = 2
         val KNOWN_CODECS = setOf(CODEC_OGG_OPUS, CODEC_3GPP_AMR)
 
-        /** Keeps a frame at 217 B — inside LoRa's 255 and any sane BLE MTU. */
+        /** Keeps a frame at 217 B - inside LoRa's 255 and any sane BLE MTU. */
         const val MAX_CHUNK = 200
         /** A clip longer than this is not a rescue message. */
         const val MAX_CHUNKS = 512

@@ -138,7 +138,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     }
 
                     GenieXEngine.ImportResult.UnsupportedFormat -> {
-                        // .litertlm / .task / .tflite are LiteRT/MediaPipe bundles — a different
+                        // .litertlm / .task / .tflite are LiteRT/MediaPipe bundles - a different
                         // runtime that this build doesn't ship. Only GGUF runs on the wired-up
                         // llama.cpp engine, so say so plainly instead of letting it fail deep in
                         // the native loader (CLAUDE.md #4/#10).
@@ -170,7 +170,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             val wasSelected = model.id == selectedModel.id
             val deleted = engine.deleteLocalModel(model)
             if (!deleted) {
-                statusMessage = "Could not delete that model. It may be in use — try again."
+                statusMessage = "Could not delete that model. It may be in use - try again."
                 return@launch
             }
             localModels.removeAll { it.id == model.id }
@@ -196,7 +196,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     // ── Model selection / download / load ───────────────────────────────────────
 
     /** Leave a loaded chat and go back to the model picker. Without this, [Phase.READY] has no
-     *  path back to [Phase.NEEDS_MODEL] — once a model is loaded, the UI never offers the
+     *  path back to [Phase.NEEDS_MODEL] - once a model is loaded, the UI never offers the
      *  ChooseModelCard again, so the user is stuck on whatever model they first loaded. */
     fun switchModel() {
         if (isGenerating || isImporting || phase != Phase.READY) return
@@ -280,7 +280,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     // ── Chat ────────────────────────────────────────────────────────────────────
 
     fun send(rawText: String) {
-        // Size-cap untrusted input before it reaches the model (CLAUDE.md #8) — a huge paste
+        // Size-cap untrusted input before it reaches the model (CLAUDE.md #8) - a huge paste
         // would otherwise eat the whole context window in one turn.
         val text = rawText.trim().take(MAX_INPUT_CHARS)
         if (text.isEmpty() || isGenerating || phase != Phase.READY) return
@@ -350,7 +350,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private companion object {
-        /** Hard cap on one typed message — plenty for a real question, small enough that a
+        /** Hard cap on one typed message - plenty for a real question, small enough that a
          *  single turn can never dominate the model's context window. */
         const val MAX_INPUT_CHARS = 1000
     }

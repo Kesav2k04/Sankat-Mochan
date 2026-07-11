@@ -50,11 +50,11 @@ import java.io.File
 
 private const val TAG = "LiveMap"
 
-/** City centre — where the map rests until the phone has its own fix. */
+/** City centre - where the map rests until the phone has its own fix. */
 private val BENGALURU = GeoPoint(12.9716, 77.5946)
 
 /**
- * A calm, expanding radar — three rings breathing outward from a steady centre dot. Drawn
+ * A calm, expanding radar - three rings breathing outward from a steady centre dot. Drawn
  * in code (no Lottie asset, no network), it reads as "we're reaching out for you" rather
  * than a spinner that reads as "waiting". Used both as the send animation and as the
  * stand-in when no street tiles are installed yet.
@@ -95,7 +95,7 @@ fun RadarPulse(
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f)
             )
         }
-        // A steady, gently breathing heart at the centre — the person, holding.
+        // A steady, gently breathing heart at the centre - the person, holding.
         drawCircle(color = color.copy(alpha = 0.25f), radius = maxR * 0.14f * corePulse, center = center)
         drawCircle(color = color, radius = maxR * 0.06f, center = center)
     }
@@ -103,7 +103,7 @@ fun RadarPulse(
 
 /**
  * The reassurance map: the phone's own live position resting on an offline Bengaluru
- * street map. Tiles come only from the local archive ([OfflineTiles]) — no network path
+ * street map. Tiles come only from the local archive ([OfflineTiles]) - no network path
  * exists. Until an archive is installed it shows the radar with the live coordinates, so
  * the panel is always calming, never a grey void.
  */
@@ -140,7 +140,7 @@ fun LiveLocationMap(
                         setUseDataConnection(false)
                         setMultiTouchControls(true)
                         setTilesScaledToDpi(true)
-                        // Kill osmdroid's stock grey +/- overlay — we draw our own tasteful
+                        // Kill osmdroid's stock grey +/- overlay - we draw our own tasteful
                         // controls that match the app's chrome.
                         zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                         isHorizontalMapRepetitionEnabled = false
@@ -200,7 +200,7 @@ fun LiveLocationMap(
 }
 
 /**
- * The map's own control cluster — recenter, zoom in, zoom out — styled as the app's circular
+ * The map's own control cluster - recenter, zoom in, zoom out - styled as the app's circular
  * chips instead of osmdroid's stock grey buttons. Bottom-right, thumb-reachable, out of the way
  * of the coordinate readout on the bottom-left.
  */

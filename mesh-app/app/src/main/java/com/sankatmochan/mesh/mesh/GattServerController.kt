@@ -40,10 +40,10 @@ class GattServerController(
     private var advertiser: BluetoothLeAdvertiser? = null
     private lateinit var messageChar: BluetoothGattCharacteristic
 
-    /** Peers that enabled notifications on us — our notify targets. */
+    /** Peers that enabled notifications on us - our notify targets. */
     private val subscribers = ConcurrentHashMap<String, BluetoothDevice>()
 
-    /** Per-subscriber notify queue — notifications must be drained one at a time
+    /** Per-subscriber notify queue - notifications must be drained one at a time
      *  (the next may only be sent after onNotificationSent), or they get dropped. */
     private class NotifyState {
         val queue = ArrayDeque<ByteArray>()
@@ -105,7 +105,7 @@ class GattServerController(
             .build()
 
         // The main PDU has 31 bytes: 3 for flags and 18 for the 128-bit service UUID.
-        // Ten are left, and service data under a 128-bit UUID needs 18 + payload — so
+        // Ten are left, and service data under a 128-bit UUID needs 18 + payload - so
         // the beacon goes in the scan response, which is a second 31-byte PDU.
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
@@ -153,7 +153,7 @@ class GattServerController(
         }
         val ok = sendNotification(server, device, next)
         if (!ok) {
-            // Rejected NOW (usually transient congestion — onNotificationSent won't
+            // Rejected NOW (usually transient congestion - onNotificationSent won't
             // fire). Re-queue at the head and retry after a short delay so we don't
             // permanently drop relayed traffic (which isn't in the sender's outbox).
             val retry = synchronized(st) {

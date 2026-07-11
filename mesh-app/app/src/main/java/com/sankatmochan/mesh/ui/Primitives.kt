@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 /*
- * Off-Net primitives v2 — the bento kit. Every screen is a grid of Tiles with IconBadges
+ * Off-Net primitives v2 - the bento kit. Every screen is a grid of Tiles with IconBadges
  * and tracked micro-labels, so the whole app reads as one instrument panel.
  */
 
@@ -109,7 +109,7 @@ fun IconBadge(
     }
 }
 
-/** Tracked, uppercase micro-label — the tile caption. */
+/** Tracked, uppercase micro-label - the tile caption. */
 @Composable
 fun SectionLabel(
     text: String,
@@ -145,7 +145,7 @@ fun StatusRow(
 }
 
 /**
- * Tap with give. Scales down on press with no ripple — the scale is the feedback, which
+ * Tap with give. Scales down on press with no ripple - the scale is the feedback, which
  * reads as a physical control rather than a wash of colour.
  */
 @Composable
@@ -216,7 +216,7 @@ fun Modifier.entrance(index: Int): Modifier {
 
 /**
  * The app's switch. Material's Switch carries stock M3 shapes; this one matches the
- * tile language — pill track, white thumb on a spring, red only when live.
+ * tile language - pill track, white thumb on a spring, red only when live.
  */
 @Composable
 fun GlassSwitch(
@@ -262,7 +262,7 @@ fun GlassSwitch(
 }
 
 /**
- * The Off-Net mark, drawn in code: a red squircle carrying a broadcast glyph — one node,
+ * The Off-Net mark, drawn in code: a red squircle carrying a broadcast glyph - one node,
  * two arcs leaving it. The same motif as the launcher icon, so the brand is one shape.
  */
 @Composable
@@ -283,7 +283,7 @@ fun LogoMark(size: Dp, modifier: Modifier = Modifier) {
         val stroke = w * 0.075f
         // Node.
         drawCircle(Color.White, radius = w * 0.075f, center = Offset(cx, cy))
-        // Two arcs, opening up-right — the signal leaving the node.
+        // Two arcs, opening up-right - the signal leaving the node.
         for (r in listOf(w * 0.20f, w * 0.34f)) {
             drawArc(
                 color = Color.White,
@@ -300,7 +300,7 @@ fun LogoMark(size: Dp, modifier: Modifier = Modifier) {
 
 /**
  * A hand-sketched mesh: nodes joined by dashed links, one node lit red. Sits behind the
- * home headline at low alpha — the one illustrative touch, drawn in code, no asset.
+ * home headline at low alpha - the one illustrative touch, drawn in code, no asset.
  */
 @Composable
 fun MeshDoodle(modifier: Modifier = Modifier, alpha: Float = 1f) {

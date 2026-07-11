@@ -8,12 +8,12 @@ package com.sankatmochan.mesh.chat
  * pulled at runtime and are chipset-agnostic, so the same build works on any device.
  *
  * Licensing (CLAUDE.md #1): Granite and Phi-4-mini are Apache-2.0 / MIT. **Gemma ships under
- * Google's Gemma Terms of Use — NOT an OSI-approved licence** — and its weights are gated on
+ * Google's Gemma Terms of Use - NOT an OSI-approved licence** - and its weights are gated on
  * Hugging Face, so a token is required to download them (see [gated]). It is included here at
  * the user's explicit request; a human should confirm the Gemma Terms are acceptable for this
  * project before shipping.
  *
- * A [localPath] set (non-null) marks a model the user side-loaded from device storage — those
+ * A [localPath] set (non-null) marks a model the user side-loaded from device storage - those
  * skip the hub entirely and load straight off disk (plug-and-play). See [GenieXEngine].
  */
 data class AssistantModel(
@@ -48,7 +48,7 @@ object AssistantModels {
             modelName = "google/gemma-4-E2B-it-qat-q4_0-gguf",
             quant = "Q4_0",
             approxSize = "~1.5 GB",
-            blurb = "Recommended — Google Gemma 4 E2B. One-time Hugging Face sign-in (token built in).",
+            blurb = "Recommended - Google Gemma 4 E2B. One-time Hugging Face sign-in (token built in).",
             gated = true,
         ),
         AssistantModel(
@@ -57,7 +57,7 @@ object AssistantModels {
             modelName = "google/gemma-4-E4B-it-qat-q4_0-gguf",
             quant = "Q4_0",
             approxSize = "~2.8 GB",
-            blurb = "Larger Gemma 4 E4B — better answers, bigger download.",
+            blurb = "Larger Gemma 4 E4B - better answers, bigger download.",
             gated = true,
         ),
         AssistantModel(
@@ -66,7 +66,7 @@ object AssistantModels {
             modelName = "ibm-granite/granite-4.0-micro-GGUF",
             quant = "Q4_0",
             approxSize = "~2.0 GB",
-            blurb = "IBM Granite (Apache-2.0). No sign-in needed — a safe fallback.",
+            blurb = "IBM Granite (Apache-2.0). No sign-in needed - a safe fallback.",
         ),
         AssistantModel(
             id = "Phi-4-mini-instruct-GGUF",

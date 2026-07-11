@@ -13,7 +13,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 
 /**
- * Location without Google Play Services — the framework [LocationManager] only, so no
+ * Location without Google Play Services - the framework [LocationManager] only, so no
  * extra dependency and nothing that needs a network.
  *
  * GNSS is a receive-only radio, so it keeps working in aeroplane mode. What aeroplane
@@ -55,7 +55,7 @@ class LocationProvider(context: Context) {
      * Subscribe until [stop]. [onFix] fires with the best fix seen so far; [onStatus]
      * narrates progress so the UI never has to guess. Idempotent.
      *
-     * @return the providers we successfully registered — empty means no location is coming.
+     * @return the providers we successfully registered - empty means no location is coming.
      */
     fun start(onFix: (Location) -> Unit, onStatus: (String) -> Unit): List<String> {
         if (listeners.isNotEmpty()) return listeners.map { it.first }
@@ -95,7 +95,7 @@ class LocationProvider(context: Context) {
         if (hasFineLocation()) {
             startGnssStatus(onStatus)
             // Airplane mode strips A-GPS, so a cold receiver has to read the almanac off the
-            // satellites — slow. Two things speed it up as much as an app is allowed to:
+            // satellites - slow. Two things speed it up as much as an app is allowed to:
             //  - nudge the chipset to (re)inject whatever predicted-orbit data it has cached,
             //  - actively power a one-shot fix instead of only listening passively.
             nudgeAssistedData()
@@ -128,7 +128,7 @@ class LocationProvider(context: Context) {
     /**
      * Best-effort: ask the GNSS HAL to inject any cached predicted-orbit (PSDS/XTRA) and time
      * data. Without a network it cannot download fresh data, but injecting what is already
-     * cached can turn a cold start into a warm one. Unsupported on some chipsets — hence the
+     * cached can turn a cold start into a warm one. Unsupported on some chipsets - hence the
      * quiet catch. Command names are the ones documented for the platform GNSS provider.
      */
     private fun nudgeAssistedData() {
@@ -151,11 +151,11 @@ class LocationProvider(context: Context) {
                     onStatus(
                         when {
                             status.satelliteCount == 0 ->
-                                "Searching for satellites — step outside with a clear view of the sky"
+                                "Searching for satellites - step outside with a clear view of the sky"
                             used >= 4 ->
-                                "Locking on — hold still for a moment"
+                                "Locking on - hold still for a moment"
                             else ->
-                                "Acquiring GPS — ${status.satelliteCount} satellites in view. " +
+                                "Acquiring GPS - ${status.satelliteCount} satellites in view. " +
                                     "In airplane mode the first fix can take a minute outdoors; keep " +
                                     "the sky in view."
                         }
@@ -176,7 +176,7 @@ class LocationProvider(context: Context) {
         best = loc
         Log.i(TAG, "fix from ${loc.provider}: ${loc.latitude},${loc.longitude} ±${loc.accuracy}m")
         onFix(loc)
-        onStatus("Locked on via ${sourceName(loc.provider)} — accurate to about ${loc.accuracy.toInt()} m")
+        onStatus("Locked on via ${sourceName(loc.provider)} - accurate to about ${loc.accuracy.toInt()} m")
     }
 
     private fun sourceName(provider: String?): String = when (provider) {

@@ -42,7 +42,7 @@ class MessageStoreTest {
 
     @Test fun `the cap keeps the most urgent messages`() {
         val store = MessageStore()
-        // 400 low-urgency messages, then one critical — the critical must survive the cap.
+        // 400 low-urgency messages, then one critical - the critical must survive the cap.
         repeat(400) { store.addReceivedSos(sos("low-$it", urgency = 1, ts = it.toLong())) }
         store.addReceivedSos(sos("crit-1", urgency = 5, ts = 999))
         assertThat(store.receivedSos.value.first().id).isEqualTo("crit-1")

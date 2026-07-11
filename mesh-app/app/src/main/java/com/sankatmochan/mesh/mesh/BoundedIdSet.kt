@@ -3,14 +3,14 @@ package com.sankatmochan.mesh.mesh
 /**
  * Insertion-ordered set of message ids with a hard capacity, used for mesh dedup.
  *
- * Dedup is what makes store-and-forward loop-free — a node forwards a given id at most once.
+ * Dedup is what makes store-and-forward loop-free - a node forwards a given id at most once.
  * A naive unbounded set is, however, a memory-exhaustion DoS: every incoming mesh packet is
  * untrusted (CLAUDE.md #8), and a buggy or hostile peer that streams packets with ever-changing
  * ids would grow the set without limit until this safety-critical app is killed by the OS.
  *
  * Capacity-bounding trades "remember every id forever" for "remember the most recent
  * [capacity] ids": once the cap is hit, the oldest id is evicted. [capacity] is set far above
- * any real session's traffic, so eviction only ever happens under a flood — and by the time a
+ * any real session's traffic, so eviction only ever happens under a flood - and by the time a
  * flood has pushed millions of ids through, re-processing one long-evicted id is a non-issue
  * next to the flood itself (which the [PeerRateLimiter] is separately throttling).
  *
@@ -47,7 +47,7 @@ class BoundedIdSet(private val capacity: Int = DEFAULT_CAPACITY) {
     fun clear() = map.clear()
 
     private companion object {
-        /** ~8k ids ≈ a few hundred kB of Strings — negligible, and orders of magnitude past any
+        /** ~8k ids ≈ a few hundred kB of Strings - negligible, and orders of magnitude past any
          *  real demo's message count, so honest traffic never triggers an eviction. */
         const val DEFAULT_CAPACITY = 8192
         const val INITIAL_CAPACITY = 512

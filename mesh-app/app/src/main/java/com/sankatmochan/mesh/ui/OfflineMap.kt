@@ -61,7 +61,7 @@ fun OfflineMapCard(
     val context = LocalContext.current
     val pins = victims.filter { it.hasLocation }
 
-    // Unpacking a bundled archive is heavy file IO — a hundred megabytes is normal for
+    // Unpacking a bundled archive is heavy file IO - a hundred megabytes is normal for
     // a city at street zoom. Never on the main thread, or the first launch is an ANR.
     val archives by produceState<List<File>?>(initialValue = null) {
         value = withContext(Dispatchers.IO) { OfflineTiles.archives(context) }

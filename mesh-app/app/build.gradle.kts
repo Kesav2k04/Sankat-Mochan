@@ -22,12 +22,12 @@ android {
 
     defaultConfig {
         applicationId = "com.sankatmochan.mesh"
-        minSdk = 31          // Android 12 — clean BLUETOOTH_SCAN/ADVERTISE/CONNECT permission model.
+        minSdk = 31          // Android 12 - clean BLUETOOTH_SCAN/ADVERTISE/CONNECT permission model.
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
 
-        // Injected from local.properties at build time — never a committed literal.
+        // Injected from local.properties at build time - never a committed literal.
         buildConfigField("String", "HF_TOKEN", "\"$huggingFaceToken\"")
 
         ndk {
@@ -63,7 +63,7 @@ android {
             // Let framework calls the code under test makes for real (org.json) resolve to the
             // Apache-2.0 android-json dependency below, and make the remaining android.jar stubs
             // (android.util.Log) no-op returning defaults instead of throwing "Stub!". This keeps
-            // the unit tests hermetic and fast — no device, no emulator, no Robolectric runtime
+            // the unit tests hermetic and fast - no device, no emulator, no Robolectric runtime
             // download.
             isReturnDefaultValues = true
         }
@@ -95,10 +95,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     // Offline map rendering. Apache-2.0 (CLAUDE.md #1). Renders only from a local tile
-    // archive — we never let it reach the network.
+    // archive - we never let it reach the network.
     implementation("org.osmdroid:osmdroid-android:6.1.20")
 
-    // LICENSE FLAG (CLAUDE.md #1): Google Play services is NOT OSI open-source — it ships under
+    // LICENSE FLAG (CLAUDE.md #1): Google Play services is NOT OSI open-source - it ships under
     // the proprietary Google APIs Terms of Service. It's included ONLY for the one-tap "turn on
     // GPS" system dialog (SettingsClient) so we can enable location without kicking the user out
     // to Settings. No location data leaves the device through it. A human should confirm this
@@ -107,7 +107,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
     // On-device LLM for the offline assistant. Qualcomm GenieX Android binding, published to
-    // Maven Central (BSD-3-Clause per the ai-hub-apps geniex_chat_android sample it mirrors —
+    // Maven Central (BSD-3-Clause per the ai-hub-apps geniex_chat_android sample it mirrors -
     // CLAUDE.md #1/#4). Runs small GGUF chat models on the Snapdragon NPU/GPU/CPU fully
     // offline; the model itself is downloaded once at runtime, not bundled in the APK.
     // Docs: https://github.com/qualcomm/ai-hub-apps/tree/main/geniex_chat_android
@@ -119,18 +119,18 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // ── JVM unit tests (./gradlew testDebugUnitTest) ────────────────────────────────────────
-    // These run the pure mesh/model/security logic on the local JVM — no device, no emulator —
+    // These run the pure mesh/model/security logic on the local JVM - no device, no emulator -
     // so the dedup, envelope-parsing, rate-limiting and voice-framing code that guards untrusted
     // input (CLAUDE.md #8) is exercised on every build.
     //
     // LICENSE FLAG (CLAUDE.md #1/#6, test-only): JUnit 4 is Eclipse Public License 1.0, which is
     // outside the MIT/Apache-2.0/BSD allow-list. It is not GPL/AGPL/proprietary, it ships ONLY in
     // the test classpath (never in the APK), and it is the runner Robolectric and the Android
-    // Gradle plugin require — there is no MIT/BSD/Apache substitute for it. Flagged here for a
+    // Gradle plugin require - there is no MIT/BSD/Apache substitute for it. Flagged here for a
     // human to accept before merge. Robolectric, Truth and coroutines-test below are Apache-2.0.
     testImplementation("junit:junit:4.13.2")
     // The AOSP org.json implementation, repackaged for JVM unit tests (Apache-2.0). This is the
-    // SAME parser the app uses on device — NOT Douglas Crockford's reference jar, whose "shall be
+    // SAME parser the app uses on device - NOT Douglas Crockford's reference jar, whose "shall be
     // used for Good, not Evil" clause is not OSI-approved and is disallowed by rule #1. It lets
     // SosMessage.decode() run for real on the local JVM without Robolectric.
     testImplementation("com.vaadin.external.google:android-json:0.0.20131108.vaadin1")
