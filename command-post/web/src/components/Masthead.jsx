@@ -17,7 +17,7 @@ export default function Masthead({ connected, gatewayConnected, aiEnabled }) {
   });
 
   return (
-    <header className="flex items-center gap-5 px-6 pt-3 pb-2.5 bg-card border-b">
+    <header className="relative z-50 flex items-center gap-5 px-6 pt-3 pb-2.5 bg-card border-b">
       <div>
         <h1 className="font-display font-bold text-[26px] leading-none tracking-tight m-0">
           Sankat-Mochan
