@@ -30,7 +30,7 @@ warn() { printf '%swarning:%s %s\n' "$YELLOW" "$RESET" "$1"; }
 
 # Validate the mode before doing any work, so a typo can't sit through pre-flight.
 case "$MODE" in
-  run|check|test|radios|proof|logs|-h|--help|help) ;;
+  run|check|test|radios|proof|logs|service|-h|--help|help) ;;
   *) die "unknown mode '$MODE' — try: ./run.sh help" ;;
 esac
 
@@ -102,7 +102,7 @@ echo "  $("$PY" -V) at $PY"
 # --- 2. Bluetooth ----------------------------------------------------------
 # The Pi's adapter comes up soft-blocked from cold; rfkill state does not reliably
 # survive a reboot. Unblock it here so `bleak` doesn't fail with a confusing error.
-if [[ "$MODE" != "radios" && "$MODE" != "proof" && "$MODE" != "logs" ]]; then
+if [[ "$MODE" != "radios" && "$MODE" != "proof" && "$MODE" != "logs" && "$MODE" != "service" ]]; then
   step "Bluetooth adapter"
   if rfkill list bluetooth 2>/dev/null | grep -q "Soft blocked: yes"; then
     echo "adapter is soft-blocked, unblocking (needs sudo)"
@@ -135,6 +135,29 @@ case "$MODE" in
   radios)
     step "Gateway, LoRa tier only (no BLE, no phones)"
     "$PY" "$HERE/gateway.py"      # SANKAT_BLE__ENABLED=false exported above
+    ;;
+
+  service)
+    # Non-interactive boot mode for systemd (field-node.service). The Python env and
+    # pre-flight checks have already run above; hand the process straight to the gateway
+    # with exec so systemd sees the gateway's own exit code and SIGTERM reaches it
+    # directly (clean exit 0 on stop). No decorative rc-handling wrapper here.
+    step "Starting gateway (systemd service mode)"
+    # At cold boot BlueZ can register + power the controller a few seconds after this
+    # service starts. Scanning before it is Powered makes bleak abort with "No Bluetooth
+    # adapters found", so wait (bounded) for the D-Bus Powered property. We poll that
+    # property rather than 'hciconfig up' / 'btmgmt power on', both of which can HANG on
+    # this board's UART HCI. If it never comes up we still exec and let systemd retry.
+    if [[ "${SANKAT_BLE__ENABLED:-true}" != "false" ]] && command -v busctl >/dev/null 2>&1; then
+      echo "  waiting for the Bluetooth controller to be powered..."
+      for _ in $(seq 1 30); do
+        if [[ "$(busctl get-property org.bluez /org/bluez/hci0 org.bluez.Adapter1 Powered 2>/dev/null)" == "b true" ]]; then
+          echo "  Bluetooth controller ready"; break
+        fi
+        sleep 1
+      done
+    fi
+    exec "$PY" "$HERE/gateway.py"
     ;;
 
   run)
