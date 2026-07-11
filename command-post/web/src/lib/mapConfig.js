@@ -46,7 +46,21 @@ const SATELLITE_STYLE = {
 // ── VENUE basemap: fully offline vector from static/*.pmtiles (no network) ──
 // To go offline for the demo: regenerate a .pmtiles for your area (pmtiles
 // extract), point /vtiles at it, and set `TILE_STYLE = OFFLINE_STYLE` below.
-const flavor = { ...namedFlavor("light"), background: "#eee7d9" };
+const flavor = {
+  ...namedFlavor("light"),
+  background: "#f4f3f0",
+  earth: "#f4f3f0",
+  park: "#c8dcb3",
+  wood: "#c8dcb3",
+  water: "#a9cbf5",
+  buildings: "#e3e1df",
+  highway: "#fceea7",
+  highwayCasing: "#eab875",
+  major_road: "#ffffff",
+  major_roadCasing: "#dcd9d6",
+  minor_road: "#ffffff",
+  minor_roadCasing: "#dcd9d6",
+};
 const OFFLINE_STYLE = {
   version: 8,
   glyphs: `${location.origin}/basemaps-assets/fonts/{fontstack}/{range}.pbf`,
@@ -65,5 +79,5 @@ const OFFLINE_STYLE = {
 
 // DEV → CARTO Voyager (Bangalore). Alternatives: CARTO.positron, CARTO.darkMatter,
 // SATELLITE_STYLE — or OFFLINE_STYLE for the no-internet venue demo.
-export const TILE_STYLE = CARTO.voyager;
+export const TILE_STYLE = OFFLINE_STYLE;
 export { OFFLINE_STYLE, SATELLITE_STYLE };
