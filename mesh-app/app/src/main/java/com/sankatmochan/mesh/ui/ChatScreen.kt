@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -164,6 +165,12 @@ private fun ChatHeader(vm: ChatViewModel, onBack: () -> Unit) {
             )
         }
         if (vm.phase == Phase.READY) {
+            TopBarChip(
+                icon = Icons.Rounded.SwapHoriz,
+                description = "Switch model",
+                onClick = vm::switchModel,
+            )
+            Spacer(Modifier.size(8.dp))
             TopBarChip(
                 icon = Icons.Rounded.DeleteSweep,
                 description = "Clear conversation",

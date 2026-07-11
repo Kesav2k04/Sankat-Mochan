@@ -165,6 +165,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Model selection / download / load ───────────────────────────────────────
 
+    /** Leave a loaded chat and go back to the model picker. Without this, [Phase.READY] has no
+     *  path back to [Phase.NEEDS_MODEL] — once a model is loaded, the UI never offers the
+     *  ChooseModelCard again, so the user is stuck on whatever model they first loaded. */
+    fun switchModel() {
+        if (isGenerating || isImporting || phase != Phase.READY) return
+        viewModelScope.launch {
+            engine.unload()
+            messages.clear()
+            phase = Phase.NEEDS_MODEL
+        }
+    }
+
     fun selectModel(model: AssistantModel) {
         if (model.id == selectedModel.id || isGenerating || isImporting || phase == Phase.DOWNLOADING) return
         viewModelScope.launch {
