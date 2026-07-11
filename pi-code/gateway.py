@@ -40,8 +40,6 @@ import node as nodemod
 from sx127x import LONG_RANGE_MODE, LoraConfig, Radio, gpio_cleanup, gpio_init
 from uplink import EdgeUplink
 
-NODE_NAMES = ("field", "gateway")
-
 PROBE_MAGIC = b"SANKAT-PROBE:"
 
 
@@ -212,6 +210,13 @@ def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog,
                  edge: EdgeUplink | None = None) -> None:
     """Attach one discovered phone to the correct side of the physical radio hop."""
     name = "gateway" if phone.role == "responder" else "field"
+    # On a split board only one node runs. A phone whose role belongs to the OTHER board
+    # (e.g. a responder that wandered near the field UNO Q) is not ours to carry — it
+    # attaches to its own board. Skipping keeps each SOS crossing exactly one 433 MHz hop.
+    if name not in nodes:
+        logger.info("ignoring phone %s — its role belongs to the '%s' node, which runs on "
+                    "the other board", phone.describe(), name)
+        return
     bl = ble_link.BleLink(phone.address, cfg["ble"]["char_uuid"], logger, chain, name)
     nodes[name].add_link(bl)
     node = nodes[name]
@@ -254,7 +259,7 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
                            type(e).__name__, retry)
             continue
 
-        for name in NODE_NAMES:
+        for name in nodes:
             for phone in roster[name]:
                 if phone.node_id in attached_node_ids:
                     continue
@@ -299,6 +304,13 @@ async def run() -> int:
     lora_cfg = cfgmod.lora_config(cfg)
     csma = cfg["lora"]["csma"]
 
+    # Which radio node(s) THIS board runs (config.run.nodes). Both on the original bench
+    # Pi; just one once radio A has moved to the UNO Q. Everything below iterates this set
+    # instead of a hardcoded pair, so the same file is the field board and the gateway board.
+    node_names = tuple(cfg["run"]["nodes"])
+    both_radios_local = {"field", "gateway"} <= set(node_names)
+    logger.info("this board runs node(s): %s", ", ".join(node_names))
+
     logger.info("radio settings: %.3f MHz, spreading factor %d, bandwidth %d kHz, "
                 "coding rate 4/%d, power %d dBm, sync word 0x%02X (both radios must match)",
                 lora_cfg.frequency_hz / 1e6, lora_cfg.spreading_factor,
@@ -319,7 +331,7 @@ async def run() -> int:
     voice_nack_task: asyncio.Task | None = None
     peer_discovery_task: asyncio.Task | None = None
     try:
-        for name in NODE_NAMES:
+        for name in node_names:
             r = cfg["radios"][name]
             radio = Radio(name, r["cs"], r["rst_gpio"], r["dio0_gpio"], lora_cfg)
             radio.open()
@@ -330,9 +342,17 @@ async def run() -> int:
             chain.emit(clog.START, name, radio=name, freq_hz=lora_cfg.frequency_hz,
                        sf=lora_cfg.spreading_factor, tx_power_dbm=lora_cfg.tx_power_dbm)
 
-        # Prove the RF link before we accept a single byte of real traffic.
-        if cfg["lora"]["startup_probe"] and not await startup_probe(radios, lora_cfg, logger, chain):
-            return 3
+        # Prove the RF link before we accept a single byte of real traffic. The probe sends
+        # A->B and requires B to hear it, so it only makes sense when BOTH radios are on THIS
+        # board. On a split board the peer radio lives on the other box; the link is proven by
+        # real traffic (and each board's own radio_watchdog) instead.
+        if cfg["lora"]["startup_probe"] and both_radios_local:
+            if not await startup_probe(radios, lora_cfg, logger, chain):
+                return 3
+        elif cfg["lora"]["startup_probe"]:
+            logger.info("startup probe skipped — only radio '%s' is on this board; the peer "
+                        "radio is on the other box, so the link is proven by live traffic.",
+                        node_names[0])
 
         # Edge link to the AI PC (EDGE-LINK.md): durable, bidirectional, lossless.
         nodes: Dict[str, nodemod.MeshNode] = {}
@@ -385,27 +405,29 @@ async def run() -> int:
             queue_max=int(ing.get("queue_max", 256)),
             global_frames_per_s=float(ing.get("global_frames_per_s", 50.0)),
         )
-        nodes["field"] = nodemod.MeshNode("field", logger, chain, **node_kwargs)
-        nodes["gateway"] = nodemod.MeshNode("gateway", logger, chain,
-                                            on_accept=on_accept, **node_kwargs)
+        # Only the 'gateway' node uplinks accepted SOS traffic to the AI PC; a 'field'-only
+        # board (the UNO Q) has no edge link and just relays over LoRa.
+        for name in node_names:
+            on_acc = on_accept if name == "gateway" else None
+            nodes[name] = nodemod.MeshNode(name, logger, chain, on_accept=on_acc, **node_kwargs)
         # Bounded RX intake: two lanes + one drainer per node (preserves loop-freedom).
-        for name in NODE_NAMES:
+        for name in node_names:
             nodes[name].start_intake(loop, stop)
 
         # Surface a node's critical-intake alarm to the dashboard alongside the outbox alarm.
         # The gateway node is the one that uplinks SOS traffic, so its lane is what matters.
-        if edge is not None:
+        if edge is not None and "gateway" in nodes:
             gw_node = nodes["gateway"]
             edge.status_extra = lambda n=gw_node: {"critical_intake_alarm": n.critical_alarm}
 
-        if edge is not None:
+        if edge is not None and "gateway" in nodes:
             voice_nack_task = asyncio.create_task(
                 voice_nack_sweeper(edge, nodes["gateway"], cfg, logger, stop),
                 name="voice-nack-sweeper",
             )
 
         lora_links = {}
-        for name in NODE_NAMES:
+        for name in node_names:
             link = nodemod.LoRaLink(radios[name], lora_cfg, csma, logger, chain, name)
             link.set_repeats(cfg["lora"]["tx_repeats"])
             nodes[name].add_link(link)
@@ -414,7 +436,7 @@ async def run() -> int:
         # Radio RX runs on its own thread; enqueue onto the node's bounded intake queue
         # (thread-safe) rather than scheduling a coroutine per packet — an unbounded
         # per-packet task/coroutine was a DoS vector (mesh-transmission.md D1).
-        for name in NODE_NAMES:
+        for name in node_names:
             n, l = nodes[name], lora_links[name]
             radios[name].start_receiving(
                 lambda pkt, n=n, l=l: n.submit_lora(l, pkt)
@@ -433,7 +455,7 @@ async def run() -> int:
                 logger.info("stopped before any phone appeared")
                 return 0
             attached_node_ids: set[str] = set()
-            for name in NODE_NAMES:
+            for name in node_names:
                 for phone in peers[name]:
                     attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
                     attached_node_ids.add(phone.node_id)

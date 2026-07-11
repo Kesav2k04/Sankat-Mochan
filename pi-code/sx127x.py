@@ -22,8 +22,12 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-import RPi.GPIO as GPIO
 import spidev
+
+# GPIO access differs by board: RPi.GPIO on the Raspberry Pi, lgpio/sysfs on the UNO Q's
+# Linux side. gpio_compat exposes ONE RPi.GPIO-shaped surface so this driver is identical
+# on both tiers (CONTRACT 1). On a Pi with RPi.GPIO installed this is exactly RPi.GPIO.
+from gpio_compat import GPIO
 
 # --- LoRa-mode registers (datasheet table 41) --------------------------------
 REG_FIFO = 0x00

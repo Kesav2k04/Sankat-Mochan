@@ -1,11 +1,6 @@
-import { useEffect, useState } from 'react'
-import Lottie from './Lottie.jsx'
-import aiRobot from '../assets/ai-robot.json'
-
 /**
- * The opening act — the night of the disaster in five hand-animated scenes,
- * ending with the offline AI that will be listening. The final button drops
- * onto the live map, where the mesh wakes up and the victim presses SOS.
+ * The hand-animated story scenes — small cinematic vignettes that ride inside
+ * the map captions. Pure SVG + CSS, no assets, fully offline.
  */
 
 const Hills = () => (
@@ -194,88 +189,12 @@ function LoraScene() {
   )
 }
 
-const CHAPTERS = [
-  {
-    hour: '02:00 · WAYANAD, KERALA',
-    title: 'The rain will not stop',
-    text: 'Forty-eight hours of monsoon rain has soaked the hills above the villages.',
-    scene: <RainScene />,
-    dur: 5,
-  },
-  {
-    hour: 'HOUR 1 · 03:10',
-    title: 'The hillside gives way',
-    text: 'A landslide tears through the valley. Roads vanish. Houses are buried where they stood.',
-    scene: <LandslideScene />,
-    dur: 5.5,
-  },
-  {
-    hour: 'HOUR 2 · 03:25',
-    title: 'The power goes out',
-    text: 'Transmission lines snap under the mud. Every village for ten kilometres goes dark.',
-    scene: <PowerCutScene />,
-    dur: 5.5,
-  },
-  {
-    hour: '03:40',
-    title: 'Towers down. No signal.',
-    text: 'The cell tower is damaged and its backup drains. No calls, no internet — no way to ask for help.',
-    scene: <TowerScene />,
-    dur: 5.5,
-  },
-  {
-    hour: '03:41',
-    title: 'The mesh wakes up',
-    text: 'Solar-charged LoRa modules across the zone switch to battery and find each other. They need no tower.',
-    scene: <LoraScene />,
-    dur: 5.5,
-  },
-  {
-    hour: '04:05 · SAFE CAMP, OUTSIDE THE ZONE',
-    title: 'Help is listening',
-    text: 'An offline AI is waiting at the safe camp — it will transcribe, triage, suggest supplies, and task the nearest ranger. Now watch it happen on the ground.',
-    scene: <Lottie data={aiRobot} className="scene-lottie big" />,
-    dur: null, // final chapter waits for the button
-  },
-]
 
-export default function Story({ onDone, onSkip }) {
-  const [i, setI] = useState(0)
-  const ch = CHAPTERS[i]
-  const last = i === CHAPTERS.length - 1
-
-  useEffect(() => {
-    if (!ch.dur) return
-    const t = setTimeout(() => setI((x) => Math.min(x + 1, CHAPTERS.length - 1)), ch.dur * 1000)
-    return () => clearTimeout(t)
-  }, [i, ch.dur])
-
-  return (
-    <div className="story" onClick={() => !last && setI((x) => x + 1)}>
-      <button className="story-skip" onClick={(e) => { e.stopPropagation(); onSkip() }}>
-        Skip story →
-      </button>
-
-      <div className="story-frame" key={i}>
-        <div className="story-hour">{ch.hour}</div>
-        <div className="story-scene">{ch.scene}</div>
-        <h2 className="story-title">{ch.title}</h2>
-        <p className="story-text">{ch.text}</p>
-        {last && (
-          <button className="story-cta" onClick={(e) => { e.stopPropagation(); onDone() }}>
-            To the danger zone →
-          </button>
-        )}
-      </div>
-
-      <div className="story-dots">
-        {CHAPTERS.map((c, k) => (
-          <button key={k} className={k === i ? 'on' : k < i ? 'done' : ''} onClick={(e) => { e.stopPropagation(); setI(k) }}>
-            {k === i && c.dur && <i style={{ animationDuration: `${c.dur}s` }} />}
-          </button>
-        ))}
-      </div>
-      {!last && <div className="story-hint">click to continue</div>}
-    </div>
-  )
+/** beat key -> its vignette */
+export const SCENES = {
+  rain: <RainScene />,
+  slide: <LandslideScene />,
+  dark: <PowerCutScene />,
+  tower: <TowerScene />,
+  mesh: <LoraScene />,
 }

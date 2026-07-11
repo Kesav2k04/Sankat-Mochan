@@ -203,13 +203,20 @@ main { position: relative; min-height: 0; display: flex; }
 
 .cine-caption {
   position: absolute; bottom: 46px; left: 50%; transform: translateX(-50%);
-  z-index: 8; max-width: 560px; width: calc(100% - 48px);
-  background: rgba(6, 14, 20, 0.86); backdrop-filter: blur(6px);
-  border: 1px solid rgba(122, 147, 165, 0.28); border-radius: 14px;
-  padding: 16px 22px 14px; text-align: center; cursor: pointer;
+  z-index: 8; max-width: 680px; width: calc(100% - 48px);
+  display: flex; align-items: center; gap: 18px;
+  background: rgba(6, 14, 20, 0.88); backdrop-filter: blur(6px);
+  border: 1px solid rgba(122, 147, 165, 0.28); border-radius: 16px;
+  padding: 14px 20px; text-align: left; cursor: pointer;
   box-shadow: 0 14px 44px rgba(0, 0, 0, 0.45);
   animation: caption-in 0.5s ease-out;
 }
+.cine-scene {
+  width: 216px; flex: none; border-radius: 10px; overflow: hidden;
+  border: 1px solid rgba(122, 147, 165, 0.3);
+  background: #0a141c;
+}
+.cine-copy { flex: 1; min-width: 0; }
 .cine-caption.left { left: 24px; transform: none; max-width: 440px; text-align: left; cursor: default; }
 @keyframes caption-in { from { opacity: 0; transform: translateX(-50%) translateY(12px); } }
 .cine-caption.left { animation: caption-in-left 0.5s ease-out; }
@@ -307,70 +314,7 @@ main { position: relative; min-height: 0; display: flex; }
 .pop-in { animation: pop-in 0.5s cubic-bezier(0.2, 1.7, 0.45, 1) both; transform-box: fill-box; transform-origin: center; }
 @keyframes pop-in { from { transform: scale(0); } }
 
-/* -------------------------------------------------- full-screen story act */
-.story {
-  position: fixed; inset: 0; z-index: 100;
-  background: radial-gradient(120% 100% at 50% 0%, #10202c 0%, #08121a 55%, #050b10 100%);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  cursor: pointer; user-select: none;
-}
-
-.story-skip {
-  position: absolute; top: 18px; right: 22px;
-  font-size: 12px; color: #7a93a5; letter-spacing: 0.04em;
-  border: 1px solid rgba(122, 147, 165, 0.35); border-radius: 20px; padding: 7px 14px;
-  transition: 0.15s;
-}
-.story-skip:hover { color: #d6e6f2; border-color: #7a93a5; }
-
-.story-frame {
-  display: flex; flex-direction: column; align-items: center; text-align: center;
-  max-width: 640px; padding: 0 24px;
-  animation: chapter-in 0.55s ease-out;
-}
-@keyframes chapter-in { from { opacity: 0; transform: translateY(14px); } }
-
-.story-hour {
-  font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em;
-  color: #e6a23c; margin-bottom: 18px;
-}
-.story-scene {
-  width: min(560px, 86vw);
-  border-radius: 16px; overflow: hidden;
-  border: 1px solid rgba(122, 147, 165, 0.22);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
-  background: #0a141c;
-}
 .scene-svg { display: block; width: 100%; height: auto; }
-.scene-lottie { width: 100%; max-height: 260px; }
-.scene-lottie.big { width: min(340px, 70vw); background: #fff; border-radius: 16px; }
-
-.story-title {
-  font-family: var(--serif); font-size: clamp(22px, 3.4vw, 32px); font-weight: 600;
-  color: #eef5fa; margin-top: 22px; letter-spacing: 0.01em;
-}
-.story-text { font-size: 14.5px; line-height: 1.65; color: #93aabb; margin-top: 10px; max-width: 480px; }
-
-.story-cta {
-  margin-top: 22px; padding: 12px 26px; border-radius: 10px;
-  background: #0e7490; color: #fff; font-weight: 600; font-size: 14px;
-  box-shadow: 0 4px 20px rgba(14, 116, 144, 0.45);
-  transition: 0.15s;
-}
-.story-cta:hover { transform: translateY(-2px); }
-
-.story-dots { position: absolute; bottom: 34px; display: flex; gap: 8px; }
-.story-dots button {
-  width: 26px; height: 4px; border-radius: 2px; padding: 0;
-  background: rgba(122, 147, 165, 0.28); overflow: hidden; position: relative;
-}
-.story-dots button.done { background: #e6a23c; }
-.story-dots button.on { background: rgba(230, 162, 60, 0.3); }
-.story-dots button.on i {
-  position: absolute; inset: 0; background: #e6a23c; transform-origin: left;
-  animation: dot-fill linear forwards;
-}
-.story-hint { position: absolute; bottom: 14px; font-size: 10px; letter-spacing: 0.12em; color: #58707f; text-transform: uppercase; }
 
 /* the hand-animated scenes */
 .st-rain { animation: st-rainfall 0.8s linear infinite; }
@@ -406,3 +350,27 @@ main { position: relative; min-height: 0; display: flex; }
 
 .st-link { stroke-dashoffset: 120; opacity: 0; animation: st-linkin 1.1s ease-out forwards; }
 @keyframes st-linkin { to { stroke-dashoffset: 0; opacity: 0.85; } }
+
+/* ------------------------------------------------------------ saved finale */
+.saved-pop {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  z-index: 30; width: min(380px, 86vw);
+  background: var(--card); border: 1px solid #bfe3d2; border-radius: 18px;
+  padding: 22px 26px 20px; text-align: center;
+  box-shadow: 0 24px 80px rgba(7, 148, 85, 0.28), 0 4px 18px rgba(35, 42, 49, 0.15);
+  animation: saved-in 0.55s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes saved-in { from { opacity: 0; transform: translate(-50%, -46%) scale(0.85); } }
+.saved-lottie { width: 190px; height: 150px; margin: 0 auto; overflow: hidden; }
+.saved-pop b {
+  display: block; font-family: var(--serif); font-size: 24px; color: var(--green);
+  letter-spacing: 0.06em; margin-top: 4px;
+}
+.saved-pop p { font-size: 12px; line-height: 1.6; color: var(--dim); margin-top: 8px; }
+.saved-actions { display: flex; justify-content: center; gap: 10px; margin-top: 16px; }
+.saved-actions .ghost { padding: 8px 14px; border: 1px solid var(--hair); border-radius: 9px; color: var(--dim); }
+.saved-actions .ghost:hover { color: var(--ink); border-color: var(--faint); }
+.saved-actions .primary {
+  padding: 8px 16px; border-radius: 9px; background: var(--green); color: #fff; font-weight: 600;
+  box-shadow: 0 2px 10px rgba(7, 148, 85, 0.35);
+}

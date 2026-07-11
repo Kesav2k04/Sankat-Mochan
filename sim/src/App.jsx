@@ -1,18 +1,51 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import SimMap from './components/SimMap.jsx'
-import Story from './components/Story.jsx'
 import StoryLayer from './components/StoryLayer.jsx'
 import Lottie from './components/Lottie.jsx'
 import aiRobot from './assets/ai-robot.json'
 import { BEATS } from './sim/story.js'
+import savedAnim from './assets/saved.json'
+import { autoLayout, MAX_NODES, OUTPOST, RANGE_KM, bestOrigin, buildLinks, buildTimeline, inZone, placeRangers } from './sim/lora.js'
 
-/** After the full-screen chapters, only these beats continue ON the map. */
-const MAP_BEATS = BEATS.filter((b) => b.mesh || b.phone)
-import { autoLayout, MAX_NODES, RANGE_KM, bestOrigin, buildLinks, buildTimeline, inZone, placeRangers } from './sim/lora.js'
+function easeInOut(u) {
+  return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2
+}
+
+/**
+ * What the camera should be looking at right now: the packet in flight, the
+ * camp while it thinks, the ranger while they decide and travel, and finally
+ * the victim. One continuous shot from the SOS tap to the rescue.
+ */
+function followTarget(run, clock) {
+  const resp = run.segs.find((s) => s.kind === 'respond')
+  if (resp && clock >= resp.t0) {
+    const u = easeInOut(Math.min(1, (clock - resp.t0) / resp.dur))
+    if (u >= 1) return { lat: run.victim.lat, lng: run.victim.lng, zoom: 12.8 }
+    return { lat: resp.from.lat + (resp.to.lat - resp.from.lat) * u, lng: resp.from.lng + (resp.to.lng - resp.from.lng) * u, zoom: 12.2 }
+  }
+  const hops = run.segs.filter((s) => s.kind === 'hop')
+  const active = [...hops].reverse().find((s) => clock >= s.t0 && clock <= s.t0 + s.dur)
+  if (active) {
+    // ride ON the dot — tight zoom so you watch it travel hop by hop
+    const u = Math.min(1, (clock - active.t0) / active.dur)
+    return { lat: active.from.lat + (active.to.lat - active.from.lat) * u, lng: active.from.lng + (active.to.lng - active.from.lng) * u, zoom: 13.3 }
+  }
+  // the quiet moments between signals
+  if (clock < (hops[0]?.t0 ?? 0)) return { lat: run.victim.lat, lng: run.victim.lng, zoom: 12.8 } // speaking
+  if (clock >= run.task.tAlert && clock < run.task.tAccept + 0.4) {
+    const r = run.rangers.find((x) => x.id === run.task.rid)
+    return { lat: r.lat, lng: r.lng, zoom: 12.9 } // the ranger, deciding
+  }
+  return { lat: OUTPOST.lat, lng: OUTPOST.lng, zoom: 12.8 } // the camp, thinking
+}
+
+const WIDE = [
+  [76.0, 11.57],
+  [76.27, 11.8],
+]
 
 export default function App() {
-  const [screenStory, setScreenStory] = useState(true) // the animated full-screen chapters
-  const [story, setStory] = useState({ on: false, beat: 0 }) // then the on-map beats
+  const [story, setStory] = useState({ on: true, beat: 0 }) // the whole story lives on the map
   const [towerDown, setTowerDown] = useState(false)
   const [scarSeen, setScarSeen] = useState(false)
   const [phase, setPhase] = useState('setup') // setup -> run -> done
@@ -22,10 +55,13 @@ export default function App() {
   const [hint, setHint] = useState('')
 
   const layoutRef = useRef(null) // one layout per story session, so beats and skip agree
+  const mapApi = useRef(null)
+  const [mapReady, setMapReady] = useState(false)
   const storyRef = useRef(story)
   storyRef.current = story
 
-  const beat = story.on ? MAP_BEATS[story.beat] : null
+  const inStory = story.on
+  const beat = story.on ? BEATS[story.beat] : null
 
   const links = useMemo(() => buildLinks(nodes), [nodes])
   const best = useMemo(() => (nodes.length ? bestOrigin(nodes) : { heard: 0, path: null }), [nodes])
@@ -34,23 +70,22 @@ export default function App() {
   const rangers = useMemo(() => (run ? run.rangers : path ? placeRangers(path) : []), [run, path])
   const canStart = phase === 'setup' && !!path
 
-  // ---- story direction (the on-map beats) -----------------------------------
+  // ---- story direction — each beat plays on the map, then hands to the next --
   useEffect(() => {
     if (!story.on) return
-    const b = MAP_BEATS[story.beat]
+    const b = BEATS[story.beat]
     if (!b || b.dur == null) return
-    const t = setTimeout(() => setStory((s) => ({ ...s, beat: Math.min(s.beat + 1, MAP_BEATS.length - 1) })), b.dur * 1000)
+    const t = setTimeout(() => setStory((s) => ({ ...s, beat: Math.min(s.beat + 1, BEATS.length - 1) })), b.dur * 1000)
     return () => clearTimeout(t)
   }, [story])
 
-  // the full-screen chapters hand over to the map: the scars of the night are
-  // already on the ground, then the mesh wakes and the victim reaches for the phone
-  const screenStoryDone = () => {
-    setScreenStory(false)
-    setTowerDown(true)
-    setScarSeen(true)
-    setStory({ on: true, beat: 0 })
-  }
+  // the camera dives into each beat: the sliding rock, the dead tower, the
+  // waking mesh, the victim. Safe now — the overlay re-projects on every move.
+  useEffect(() => {
+    if (!story.on || !mapReady) return
+    const b = BEATS[story.beat]
+    if (b?.cam) mapApi.current?.easeTo({ center: b.cam.center, zoom: b.cam.zoom, duration: 1800 })
+  }, [story, mapReady])
 
   // the tower stays broken and the scar stays scarred once the story shows them
   useEffect(() => {
@@ -88,6 +123,26 @@ export default function App() {
     if (phase === 'run' && run && clock >= run.total) setPhase('done')
   }, [phase, run, clock])
 
+  // the follow shot: every frame, glide the camera toward whatever carries the
+  // story right now — the signal, the camp, the ranger, the victim
+  const camPos = useRef(null)
+  useEffect(() => {
+    if (phase !== 'run' || !run || !mapReady) return
+    const m = mapApi.current
+    if (!m) return
+    const t = followTarget(run, clock)
+    if (!camPos.current) {
+      const c = m.getCenter()
+      camPos.current = { lat: c.lat, lng: c.lng, zoom: m.getZoom() }
+    }
+    const p = camPos.current
+    // tight tracking: at this zoom the dot must stay in the frame
+    p.lat += (t.lat - p.lat) * 0.11
+    p.lng += (t.lng - p.lng) * 0.11
+    p.zoom += (t.zoom - p.zoom) * 0.06
+    m.jumpTo({ center: [p.lng, p.lat], zoom: p.zoom })
+  }, [clock, phase, run, mapReady])
+
   // ---- actions --------------------------------------------------------------
   const place = useCallback((p) => {
     if (storyRef.current.on) return // the story owns the map until it ends
@@ -102,6 +157,7 @@ export default function App() {
   const start = useCallback(() => {
     const t = buildTimeline(layoutRef.current && !nodes.length ? layoutRef.current : nodes)
     if (!t) return
+    camPos.current = null
     setRun(t)
     setClock(0)
     setPhase('run')
@@ -112,12 +168,13 @@ export default function App() {
     setNodes(layoutRef.current)
     setTowerDown(true)
     setScarSeen(true)
-    setScreenStory(false)
     setStory({ on: false, beat: 0 })
+    mapApi.current?.fitBounds(WIDE, { padding: 24, duration: 1200 })
   }
 
   const onSos = () => {
     setStory({ on: false, beat: 0 })
+    camPos.current = null // the follow shot picks up from wherever we are
     start()
   }
 
@@ -129,21 +186,21 @@ export default function App() {
     setTowerDown(false)
     setScarSeen(false)
     layoutRef.current = null
-    setStory({ on: false, beat: 0 })
-    setScreenStory(true)
+    setStory({ on: true, beat: 0 })
   }
 
   const reset = () => {
     setRun(null)
     setClock(0)
     setPhase('setup')
+    camPos.current = null
+    mapApi.current?.fitBounds(WIDE, { padding: 24, duration: 1200 })
   }
 
   const events = run ? run.events.filter((e) => e.t <= clock).slice(-6) : []
 
   return (
     <div className="app">
-      {screenStory && <Story onDone={screenStoryDone} onSkip={skipStory} />}
       <header className="masthead">
         <div className="brand">
           <span className="beacon" />
@@ -154,8 +211,8 @@ export default function App() {
         </div>
 
         <div className="clock">
-          <b>{story.on ? MAP_BEATS[story.beat].hour.split('·')[0].trim() : phase === 'setup' ? '—' : `T+${clock.toFixed(1)}s`}</b>
-          <span>{screenStory || story.on ? 'the night of the disaster' : phase === 'setup' ? 'placing modules' : phase === 'run' ? 'live' : 'complete'}</span>
+          <b>{story.on ? BEATS[story.beat].hour.split('·')[0].trim() : phase === 'setup' ? '—' : `T+${clock.toFixed(1)}s`}</b>
+          <span>{story.on ? 'the night of the disaster' : phase === 'setup' ? 'placing modules' : phase === 'run' ? 'live' : 'complete'}</span>
         </div>
 
         <div className="controls">
@@ -183,7 +240,7 @@ export default function App() {
 
       <main>
         <SimMap
-          phase={story.on ? 'story' : phase}
+          phase={inStory ? 'story' : phase}
           nodes={nodes}
           links={links}
           path={path}
@@ -192,25 +249,29 @@ export default function App() {
           clock={clock}
           fx={beat?.fx ?? null}
           beatKey={beat?.key ?? null}
-          showZone={!story.on || !!beat?.zone}
+          showZone={!inStory || !!beat?.zone}
           showTower={towerDown}
           showScar={scarSeen}
           storyVictim={!!beat?.phone}
           onPlace={place}
+          onReady={(m) => {
+            mapApi.current = m
+            setMapReady(true)
+          }}
         />
 
         {story.on && (
           <StoryLayer
-            beats={MAP_BEATS}
+            beats={BEATS}
             beat={story.beat}
-            onNext={() => setStory((s) => ({ ...s, beat: Math.min(s.beat + 1, MAP_BEATS.length - 1) }))}
+            onNext={() => setStory((s) => ({ ...s, beat: Math.min(s.beat + 1, BEATS.length - 1) }))}
             onJump={(k) => setStory((s) => ({ ...s, beat: k }))}
             onSkip={skipStory}
             onSos={onSos}
           />
         )}
 
-        {!story.on && phase === 'setup' && (
+        {!inStory && phase === 'setup' && (
           <div className="setup-card">
             <b>Set up the mesh</b>
             <p>
@@ -261,11 +322,17 @@ export default function App() {
         )}
 
         {phase === 'done' && (
-          <div className="finished">
-            <b>Rescue loop closed</b>
-            <span>
-              camp received in {run.outpostAt.toFixed(1)} s ({run.hops} hops) · supplies suggested from the voice note · ranger tasked, accepted, and on scene · victim told help is coming — no tower, no internet
-            </span>
+          <div className="saved-pop">
+            <Lottie data={savedAnim} className="saved-lottie" />
+            <b>VICTIM SAVED</b>
+            <p>
+              SOS reached the camp in {run.outpostAt.toFixed(1)} s over {run.hops} LoRa hops · supplies suggested from the
+              voice note · ranger tasked, accepted, on scene — no tower, no internet.
+            </p>
+            <div className="saved-actions">
+              <button className="ghost" onClick={replayStory}>✦ Replay the story</button>
+              <button className="primary" onClick={reset}>↺ Run again</button>
+            </div>
           </div>
         )}
       </main>

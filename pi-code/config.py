@@ -95,19 +95,31 @@ def load(path: str | os.PathLike | None = None) -> Dict[str, Any]:
 
 
 def _validate(cfg: Dict[str, Any]) -> None:
-    for node in ("field", "gateway"):
+    # Which radio node(s) this board actually runs. Defaults to both for the original
+    # single-Pi bench; a split board (Pi=gateway, UNO Q=field) lists just one.
+    active = cfg.get("run", {}).get("nodes")
+    if not isinstance(active, list) or not active or not all(isinstance(n, str) for n in active):
+        raise ConfigError("run.nodes must be a non-empty list of radio names, e.g. [\"field\"]")
+    if len(set(active)) != len(active):
+        raise ConfigError(f"run.nodes has duplicates: {active}")
+
+    for node in active:
         r = cfg["radios"].get(node)
         if not r:
-            raise ConfigError(f"radios.{node} missing")
+            raise ConfigError(f"run.nodes lists '{node}' but there is no radios.{node} block")
         for key in ("cs", "rst_gpio", "dio0_gpio"):
             if not isinstance(r.get(key), int):
                 raise ConfigError(f"radios.{node}.{key} must be an int")
-    if cfg["radios"]["field"]["cs"] == cfg["radios"]["gateway"]["cs"]:
-        raise ConfigError("the two radios must sit on different SPI chip-selects")
 
-    pins = [cfg["radios"][n][k] for n in ("field", "gateway") for k in ("rst_gpio", "dio0_gpio")]
-    if len(set(pins)) != len(pins):
-        raise ConfigError(f"radio GPIO pins must be unique, got {pins}")
+    # These two only bite when a single board drives more than one radio (both on the
+    # same SPI bus, inches apart). A split board runs one radio, so they are vacuous.
+    if len(active) > 1:
+        cs = [cfg["radios"][n]["cs"] for n in active]
+        if len(set(cs)) != len(cs):
+            raise ConfigError("radios on one board must sit on different SPI chip-selects")
+        pins = [cfg["radios"][n][k] for n in active for k in ("rst_gpio", "dio0_gpio")]
+        if len(set(pins)) != len(pins):
+            raise ConfigError(f"radio GPIO pins must be unique, got {pins}")
 
     if cfg["lora"]["tx_repeats"] < 1:
         raise ConfigError("lora.tx_repeats must be >= 1")

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import phonePng from '../assets/phone.png'
+import { SCENES } from './scenes.jsx'
 
 /**
  * The story overlays that sit ON TOP of the live map: film-style captions,
@@ -18,10 +19,13 @@ export default function StoryLayer({ beats, beat, onNext, onJump, onSkip, onSos 
       </button>
 
       <div className={`cine-caption ${b.phone ? 'left' : ''}`} key={beat} onClick={() => !b.phone && onNext()}>
-        <span className="cine-hour">{b.hour}</span>
-        <b>{b.title}</b>
-        <p>{b.text}</p>
-        {!b.phone && <span className="cine-hint">click to continue</span>}
+        {SCENES[b.key] && <div className="cine-scene">{SCENES[b.key]}</div>}
+        <div className="cine-copy">
+          <span className="cine-hour">{b.hour}</span>
+          <b>{b.title}</b>
+          <p>{b.text}</p>
+          {!b.phone && <span className="cine-hint">click to continue</span>}
+        </div>
       </div>
 
       <div className="cine-dots">

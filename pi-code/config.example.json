@@ -9,6 +9,11 @@
     "console": true
   },
 
+  "run": {
+    "_comment": "Which radio node(s) THIS board runs. A single Pi holding both radios lists both (the original bench setup). Once radio A moves to the UNO Q, that board lists only 'field' and the Pi lists only 'gateway' — same code, two boxes, still bridged only by 433 MHz. Each name here must have a matching block under 'radios'. The RF startup probe (which needs both radios on one board) auto-disables when only one node runs.",
+    "nodes": ["field", "gateway"]
+  },
+
   "lora": {
     "frequency_hz": 433000000,
     "spreading_factor": 7,

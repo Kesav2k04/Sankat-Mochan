@@ -311,8 +311,10 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               )
             })()}
 
-          {/* radio links that close, and the chosen route */}
-          {links.map((l) => {
+          {/* link preview only while BUILDING the mesh — during the story and
+              the run there are no wires on the map, only travelling signals */}
+          {phase === 'setup' &&
+            links.map((l) => {
             const a = px(l.a)
             const b = px(l.b)
             const onPath =

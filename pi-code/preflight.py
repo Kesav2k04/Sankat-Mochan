@@ -40,16 +40,27 @@ def record(label: str, ok: bool, detail: str = "", fix: str = "") -> bool:
 
 def check_deps() -> bool:
     missing = []
-    for mod in ("spidev", "RPi.GPIO", "bleak", "requests"):
+    for mod in ("spidev", "bleak", "requests"):
         try:
             __import__(mod)
         except ImportError:
             missing.append(mod)
-    return record(
+    ok = record(
         "python deps installed", not missing,
-        "spidev, RPi.GPIO, bleak, requests" if not missing else f"missing: {', '.join(missing)}",
+        "spidev, bleak, requests" if not missing else f"missing: {', '.join(missing)}",
         "run.sh recreates the venv: rm -rf ../.venv && ./run.sh check",
     )
+    # GPIO backend is board-specific: RPi.GPIO on the Pi, lgpio/sysfs on the UNO Q.
+    # gpio_compat picks whichever is available; report which one so wiring is unambiguous.
+    try:
+        import gpio_compat
+        backend = gpio_compat.backend_name()
+        gpio_ok = record("gpio backend available", True, backend)
+    except Exception as e:
+        gpio_ok = record("gpio backend available", False, str(e),
+                         "Pi: ensure RPi.GPIO is installed. UNO Q: `pip install lgpio` "
+                         "(or enable /sys/class/gpio for the sysfs fallback).")
+    return ok and gpio_ok
 
 
 def check_config():
@@ -68,9 +79,13 @@ def check_config():
     return cfg
 
 
+def _active_nodes(cfg):
+    return list(cfg.get("run", {}).get("nodes", ["field", "gateway"]))
+
+
 def check_spi_nodes(cfg) -> bool:
     bus = cfg["lora"]["spi"]["bus"]
-    needed = [f"/dev/spidev{bus}.{cfg['radios'][n]['cs']}" for n in ("field", "gateway")]
+    needed = [f"/dev/spidev{bus}.{cfg['radios'][n]['cs']}" for n in _active_nodes(cfg)]
     missing = [p for p in needed if not Path(p).exists()]
     return record(
         "SPI device nodes present", not missing,
@@ -82,8 +97,20 @@ def check_spi_nodes(cfg) -> bool:
 def check_groups() -> bool:
     if os.geteuid() == 0:
         return record("user in spi + gpio groups", True, "running as root")
+    # The 'spi'/'gpio' groups are a Raspberry Pi OS convention. On the UNO Q's Debian the
+    # device nodes may be owned by other groups (e.g. 'dialout'), so don't hard-fail there —
+    # a real permission problem still surfaces when we actually open the SPI device below.
+    try:
+        import gpio_compat
+        is_pi = gpio_compat.backend_name().startswith("RPi")
+    except Exception:
+        is_pi = False
     mine = {grp.getgrgid(g).gr_name for g in os.getgroups()}
     missing = {"spi", "gpio"} - mine
+    if not is_pi:
+        return record("device access", True,
+                      "non-Pi board — group check skipped; access is verified by opening the "
+                      "radio below")
     return record("user in spi + gpio groups", not missing,
                   "spi, gpio" if not missing else f"missing: {', '.join(sorted(missing))}",
                   f"sudo usermod -aG {','.join(sorted(missing))} $USER  # then log out and back in")
@@ -117,7 +144,7 @@ def check_radios(cfg) -> bool:
     all_ok = True
     radios = []
     try:
-        for name in ("field", "gateway"):
+        for name in _active_nodes(cfg):
             r = cfg["radios"][name]
             label = f"radio {name} (CE{r['cs']} rst=GPIO{r['rst_gpio']} dio0=GPIO{r['dio0_gpio']})"
             try:
