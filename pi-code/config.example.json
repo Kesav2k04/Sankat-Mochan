@@ -24,6 +24,8 @@
     "preamble_len": 8,
     "crc": true,
     "tx_repeats": 2,
+    "voice_tx_repeats": 3,
+    "_voice_tx_repeats_comment": "How many times each VOICE chunk is sent on the air (text/SOS use tx_repeats). A voice clip is all-or-nothing — every one of its ~16-45 chunks must arrive or it is unplayable — so a single shot per chunk loses whole clips on a lossy hop. 3 gets most chunks across on the first pass; the NACK repair loop recovers the rest. Raise to 4-5 on a poor RF link (costs proportionally more airtime); SOS is unaffected (exempt critical lane + mid-clip yield).",
     "max_payload": 255,
     "startup_probe": true,
     "csma": {

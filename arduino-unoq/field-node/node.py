@@ -173,11 +173,20 @@ class MeshNode:
     def __init__(self, name: str, logger, chain: clog.ChainLog,
                  on_accept: Optional[Callable[[env.Envelope], Awaitable[None]]] = None,
                  *, seen_max: int = 4096, queue_max: int = 256,
-                 global_frames_per_s: float = 50.0, voice_post_delay_s: float = 0.02):
+                 global_frames_per_s: float = 50.0, voice_post_delay_s: float = 0.02,
+                 voice_tx_repeats: int = 3):
         self.name = name
         self.links: List[Link] = []
         # Yield after each voice chunk on LoRa so an SOS can grab the air mid-clip (A6).
         self.voice_post_delay_s = max(0.0, float(voice_post_delay_s))
+        # Blind repeats for each voice chunk on the air. A clip is all-or-nothing (every one
+        # of its ~16-45 chunks must land or it is unplayable), so a single unacknowledged
+        # shot per chunk fails often on a lossy RF hop and leaves the whole clip lost until
+        # the slow NACK loop repairs it. Sending each chunk a few times up front makes voice
+        # actually reach the far phone; the NACK loop still mops up whatever slips through.
+        # SOS is unaffected: it rides the exempt CRITICAL lane and the mid-clip yield above
+        # still lets a queued SOS grab the air between chunks.
+        self.voice_tx_repeats = max(1, int(voice_tx_repeats))
         # Dedup ring: an OrderedDict used as an LRU. Bounded so a flood of forged ids over
         # untrusted RF (CLAUDE.md #8) can't grow it without limit. The mesh TTL (MAX_HOPS)
         # bounds how long a genuine duplicate can loop, so a recent window is all we need.
@@ -468,12 +477,14 @@ class MeshNode:
         await asyncio.gather(*(self._send_one(l, raw, msg) for l in targets))
 
     def _tx_policy(self, msg) -> tuple[Optional[int], float]:
-        """Per-frame LoRa airtime policy (A6). Voice chunks send ONCE (their NACK repair
-        loop recovers any dropped piece, so blind repeats are wasted airtime) and yield the
-        air briefly afterwards so a queued SOS can win _AIRWAVES mid-clip instead of waiting
+        """Per-frame LoRa airtime policy (A6). Voice chunks send `voice_tx_repeats` times
+        (default 3): a clip is unplayable unless EVERY chunk arrives, so a single shot per
+        chunk loses whole clips on a lossy hop — the up-front repeats get most chunks across
+        on the first pass while the NACK repair loop still recovers the rest. Each chunk then
+        yields the air briefly so a queued SOS can win _AIRWAVES mid-clip instead of waiting
         out ~45 chunks. Everything else (SOS, dispatch, NACK) keeps the link default."""
         if getattr(msg, "type", None) == "VOICE":
-            return 1, self.voice_post_delay_s
+            return self.voice_tx_repeats, self.voice_post_delay_s
         return None, 0.0
 
     async def _send_one(self, link: Link, raw: bytes, msg: env.Envelope) -> None:
