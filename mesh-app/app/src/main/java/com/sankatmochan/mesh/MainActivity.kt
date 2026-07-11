@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
                 // The moment the app is usable, make sure location is actually switched on —
                 // one tap, in place, no trip to Settings.
                 if (role == MeshRole.VICTIM) promptEnableLocationOneTap()
-                updateShakeService(role)
+                updateSosGestureService(role)
             } else if (role != null) {
                 Toast.makeText(
                     this,
@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity() {
     private val themePrefs by lazy { getSharedPreferences("offnet_prefs", Context.MODE_PRIVATE) }
     private var darkTheme by mutableStateOf(true)
 
-    // Raised by a hard shake (ShakeSosService) — shows the full-screen 30s SOS countdown.
+    // Raised by the flip gesture (SosGestureService) — shows the full-screen 30s SOS countdown.
     private var showSosCountdown by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -175,7 +175,7 @@ class MainActivity : ComponentActivity() {
                         darkTheme = darkTheme,
                         onToggleTheme = ::toggleTheme,
                     )
-                    // Full-screen shake-triggered countdown, drawn over everything.
+                    // Full-screen flip-triggered countdown, drawn over everything.
                     if (showSosCountdown) {
                         SosCountdownOverlay(
                             totalSeconds = 30,
@@ -197,33 +197,33 @@ class MainActivity : ComponentActivity() {
         // A retained ViewModel keeps its role across configuration changes, so only ask on a
         // genuinely cold start.
         if (vm.role == null) onPickRole(MeshRole.VICTIM)
-        handleShakeIntent(intent)
+        handleSosGestureIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleShakeIntent(intent)
+        handleSosGestureIntent(intent)
     }
 
-    /** A shake fired while we were backgrounded routes back here via a full-screen intent. */
-    private fun handleShakeIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(ShakeSosService.EXTRA_SHOW_SOS_COUNTDOWN, false) == true) {
+    /** A flip gesture fired while we were backgrounded routes back here via a full-screen intent. */
+    private fun handleSosGestureIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(SosGestureService.EXTRA_SHOW_SOS_COUNTDOWN, false) == true) {
             showSosCountdown = true
         }
     }
 
     /**
-     * Fire an SOS with safe emergency defaults — used when the shake countdown elapses or the
-     * user taps "Send now". A person who triggered a panic gesture may be unable to fill in
-     * details, so this sends the highest urgency with the live GPS fix the ViewModel already
-     * holds, then nudges Battery saver like any other send.
+     * Fire an SOS with safe emergency defaults — used when the countdown elapses or the user taps
+     * "Send now". A person who triggered the flip gesture may be unable to fill in details, so this
+     * sends the highest urgency with the live GPS fix the ViewModel already holds, then nudges
+     * Battery saver like any other send.
      */
     private fun sendAutoSos() {
         vm.sendSos(
             category = "trapped",
             urgency = 5,
-            gist = "Auto-SOS — triggered by shake",
+            gist = "Auto-SOS — triggered by flip gesture",
             lang = "en",
             locationHint = "",
         )
@@ -290,14 +290,14 @@ class MainActivity : ComponentActivity() {
         } else {
             vm.selectRole(role)
             if (role == MeshRole.VICTIM) promptEnableLocationOneTap()
-            updateShakeService(role)
+            updateSosGestureService(role)
         }
     }
 
-    /** Shake-to-SOS only makes sense for the person who might need help. Run the detector while
-     *  this phone is a victim console; stop it if it becomes a responder. */
-    private fun updateShakeService(role: MeshRole) {
-        if (role == MeshRole.VICTIM) ShakeSosService.start(this) else ShakeSosService.stop(this)
+    /** The flip-to-SOS gesture only makes sense for the person who might need help. Run the
+     *  detector while this phone is a victim console; stop it if it becomes a responder. */
+    private fun updateSosGestureService(role: MeshRole) {
+        if (role == MeshRole.VICTIM) SosGestureService.start(this) else SosGestureService.stop(this)
     }
 
     /**

@@ -30,14 +30,15 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
-      Shake-to-SOS (ShakeSosService): a foreground service watches the accelerometer so a hard
-      shake can raise the emergency SOS countdown even with the app backgrounded / screen off.
+      Flip-to-SOS (SosGestureService): a foreground service watches the accelerometer's orientation
+      so a deliberate "flip face-down and back up 3×" gesture can raise the emergency SOS countdown
+      even with the app backgrounded / screen off.
       - FOREGROUND_SERVICE + FOREGROUND_SERVICE_SPECIAL_USE: run the detector as a foreground
         service (API 34+ requires the typed permission; justification in the <service> property).
       - USE_FULL_SCREEN_INTENT: pop the SOS countdown full-screen from the background. On
         Android 14+ a non-calling app may be downgraded to a heads-up notification the user taps.
-      SECURITY-SENSITIVE (CLAUDE.md #6): this is user-safety code — reviewer, confirm the shake
-      threshold and that no SOS is sent without either the countdown elapsing or an explicit tap.
+      SECURITY-SENSITIVE (CLAUDE.md #6): this is user-safety code — reviewer, confirm the flip
+      thresholds and that no SOS is sent without either the countdown elapsing or an explicit tap.
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -81,15 +82,15 @@
             </intent-filter>
         </activity>
 
-        <!-- Shake-to-SOS detector. specialUse: a novel foreground use (emergency shake trigger)
-             not covered by a standard FGS type; the subtype string documents why. -->
+        <!-- Flip-to-SOS detector. specialUse: a novel foreground use (emergency flip-gesture
+             trigger) not covered by a standard FGS type; the subtype string documents why. -->
         <service
-            android:name=".ShakeSosService"
+            android:name=".SosGestureService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Emergency shake-to-SOS detection for a disaster-relief safety console" />
+                android:value="Emergency flip-gesture SOS detection for a disaster-relief safety console" />
         </service>
     </application>
 </manifest>
