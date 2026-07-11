@@ -1,0 +1,31 @@
+[Unit]
+Description=Sankat-Mochan LoRa field-node gateway (Linux/MPU side)
+Documentation=file:///home/arduino/sankat-mochan/arduino-unoq/field-node/FIELD-NODE.md
+# The gateway reaches the on-board LoRa modem over the Router Bridge socket
+# (/var/run/arduino-router.sock, provided by arduino-router.service) and needs the
+# modem sketch that arduino-app-cli.service boots on the MCU. Order after both; if
+# the modem is not ready yet at cold boot the gateway exits and Restart retries.
+After=arduino-router.service arduino-app-cli.service bluetooth.service
+
+[Service]
+Type=simple
+User=arduino
+Group=arduino
+WorkingDirectory=/home/arduino/sankat-mochan/arduino-unoq/field-node
+# NOTE: do NOT run 'hciconfig hci0 up' here — on this board's UART HCI that call can
+# hang and wedge the controller. BlueZ powers the adapter itself (AutoEnable=true in
+# /etc/bluetooth/main.conf); run.sh 'service' mode then waits for it to be ready
+# before scanning, so we never fight bluetoothd for the controller.
+ExecStart=/home/arduino/sankat-mochan/arduino-unoq/field-node/run.sh service
+# Stay alive across crashes, brownouts, and a not-yet-ready modem at power-on.
+Restart=always
+RestartSec=5
+# systemctl stop -> SIGTERM -> gateway exits 0 (clean). SIGINT -> 130. Both mean
+# "stopped on purpose", not a crash. Exit 3 (RF link down) is left as a failure so the
+# service keeps retrying until the radio link comes back.
+SuccessExitStatus=130
+TimeoutStopSec=20
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
