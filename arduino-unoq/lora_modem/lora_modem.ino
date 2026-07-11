@@ -163,10 +163,19 @@ void setup() {
 // --- transmit one frame, report airtime -------------------------------------
 static void doTransmit(int len) {
   unsigned long t0 = millis();
-  if (LoRa.beginPacket() == 0) {          // radio busy / could not enter TX
-    Serial.println("E radio_busy");
-    LoRa.receive();
-    return;
+  if (LoRa.beginPacket() == 0) {
+    // A healthy radio can never be mid-transmit here (endPacket blocks until the frame
+    // is on air), so busy means the SX1278 wedged in TX mode. Self-heal: standby first,
+    // full re-init as the last resort — otherwise it refuses every frame forever.
+    LoRa.idle();
+    if (LoRa.beginPacket() == 0) {
+      if (!radioBegin()) { Serial.println("E radio_down"); return; }
+      if (LoRa.beginPacket() == 0) {
+        Serial.println("E radio_busy");
+        LoRa.receive();
+        return;
+      }
+    }
   }
   LoRa.write(frame, len);
   LoRa.endPacket();                       // blocks until the frame is fully on air

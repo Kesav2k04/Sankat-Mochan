@@ -88,9 +88,21 @@ static int lora_tx(MsgPack::bin_t<uint8_t> payload) {
   if (len <= 0 || len > MAX_PAYLOAD) return TX_ERR_BAD_LEN;
 
   const unsigned long t0 = millis();
-  if (LoRa.beginPacket() == 0) {            // radio busy / could not enter TX
-    LoRa.receive();
-    return TX_ERR_RADIO_BUSY;
+  if (LoRa.beginPacket() == 0) {
+    // A healthy radio can NEVER be mid-transmit here: endPacket() below blocks until
+    // the frame is fully on air, and RPC handlers are serialised with loop(). So a
+    // busy answer means the SX1278 has WEDGED in TX mode (glitched register / lost
+    // TxDone). Left alone it stays wedged forever and every frame — including an SOS —
+    // is refused. Self-heal instead: standby first, full re-init as the last resort.
+    LoRa.idle();                            // force STANDBY, clearing a stuck TX mode
+    if (LoRa.beginPacket() == 0) {
+      radio_ok = radioBegin();              // radio still stuck — re-init it outright
+      if (!radio_ok) return TX_ERR_RADIO_DOWN;
+      if (LoRa.beginPacket() == 0) {        // give up on this frame; radio is healthy now
+        LoRa.receive();
+        return TX_ERR_RADIO_BUSY;
+      }
+    }
   }
   LoRa.write(payload.data(), len);
   LoRa.endPacket();                         // blocks until the frame is fully on air
