@@ -47,3 +47,6 @@ command-post/backends.json
 # Durable outbox / local DBs (runtime state, e.g. the Pi edge-link outbox)
 *.sqlite
 *.db
+
+# External tools
+ruflo/
