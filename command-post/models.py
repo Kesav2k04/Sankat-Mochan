@@ -98,17 +98,17 @@ def sample_sos(seq: int = 0) -> dict[str, Any]:
     Native-script Indic — what on-device STT actually emits."""
     #  lang, text, category, urgency, lat, lng, origin, locationHint
     samples = [
-        # cluster A: Chooralmala bridge flood — 3 humans within ~80m + sensor
-        ("ta", "தண்ணீர் வேகமாக ஏறுகிறது, இங்கே குழந்தைகள் இருக்கிறார்கள்", "flood", 5, 11.6854, 76.1320, "ph-01", "Chooralmala bridge"),
-        ("ml", "ഞങ്ങൾ പാലത്തിനടുത്താണ്, വെള്ളം കയറിക്കൊണ്ടിരിക്കുന്നു", "flood", 4, 11.6858, 76.1326, "ph-02", "Chooralmala bridge"),
-        ("sensor", "WLS-1 water level 2.4m and rising 12cm/min", "sensor", 4, 11.6851, 76.1317, "unoq-1", "Chooralmala bridge"),
-        ("hi", "पुल के नीचे दो परिवार फंसे हुए हैं, जल्दी आइए", "flood", 5, 11.6849, 76.1324, "ph-03", "Chooralmala bridge"),
+        # cluster A: Koramangala underpass flood — 3 humans within ~80m + sensor
+        ("ta", "தண்ணீர் வேகமாக ஏறுகிறது, இங்கே குழந்தைகள் இருக்கிறார்கள்", "flood", 5, 12.9332, 77.6248, "ph-01", "Koramangala underpass"),
+        ("ml", "ഞങ്ങൾ പാലത്തിനടുത്താണ്, വെള്ളം കയറിക്കൊണ്ടിരിക്കുന്നു", "flood", 4, 12.9336, 77.6253, "ph-02", "Koramangala underpass"),
+        ("sensor", "WLS-1 water level 2.4m and rising 12cm/min", "sensor", 4, 12.9329, 77.6245, "unoq-1", "Koramangala underpass"),
+        ("hi", "पुल के नीचे दो परिवार फंसे हुए हैं, जल्दी आइए", "flood", 5, 12.9334, 77.6250, "ph-03", "Koramangala underpass"),
         # lone incidents
-        ("hi", "मेरी माँ को साँस लेने में तकलीफ़ हो रही है, दवाई चाहिए", "medical", 4, 11.6921, 76.1258, "ph-04", "Attamala"),
-        ("ta", "சுவர் இடிஞ்சு விழுந்துச்சு, ரெண்டு பேர் உள்ளே மாட்டிக்கிட்டாங்க", "trapped", 5, 11.6790, 76.1385, "ph-05", "Mundakkai"),
+        ("hi", "मेरी माँ को साँस लेने में तकलीफ़ हो रही है, दवाई चाहिए", "medical", 4, 12.9719, 77.6412, "ph-04", "Indiranagar"),
+        ("ta", "சுவர் இடிஞ்சு விழுந்துச்சு, ரெண்டு பேர் உள்ளே மாட்டிக்கிட்டாங்க", "trapped", 5, 12.9857, 77.6050, "ph-05", "Shivajinagar"),
         # no-GPS lane — still triaged + dispatchable, not map-pinned
-        ("ta", "பழைய கோவில் பக்கத்துல மாட்டிக்கிட்டேன், GPS வரலை", "trapped", 4, None, None, "ph-06", "old church"),
-        ("en", "Eight estate workers stranded up the hill above the school", "flood", 3, 11.6712, 76.1443, "ph-07", "Vellarimala"),
+        ("ta", "பழைய கோவில் பக்கத்துல மாட்டிக்கிட்டேன், GPS வரலை", "trapped", 4, None, None, "ph-06", "old temple"),
+        ("en", "Eight workers stranded on the flooded ground floor of the tech park", "flood", 3, 12.9260, 77.6740, "ph-07", "Bellandur"),
     ]
     lang, gist, cat, urg, la, lo, origin, hint = samples[seq % len(samples)]
     env: dict[str, Any] = {

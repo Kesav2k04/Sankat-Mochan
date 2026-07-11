@@ -23,7 +23,7 @@ export default function Masthead({ connected, gatewayConnected, aiEnabled }) {
           Sankat-Mochan
         </h1>
         <div className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground mt-1">
-          COMMAND POST · WAYANAD FORWARD CAMP 7
+          COMMAND POST · BENGALURU CITY CONTROL
         </div>
       </div>
 

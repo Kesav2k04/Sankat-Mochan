@@ -58,7 +58,12 @@ object OfflineTiles {
     /**
      * Copy any bundled archives out of assets (once), then list everything usable.
      * Returns an empty list when this build ships no map - that is a supported state.
+     *
+     * Synchronized: both maps (LiveMap + OfflineMap) can call this off the IO dispatcher at once
+     * on a cold first run, and a concurrent unpack of the same archive to the same file would
+     * interleave writes and corrupt it.
      */
+    @Synchronized
     fun archives(context: Context): List<File> {
         val dest = tileDir(context)
         val bundled = try {

@@ -1,8 +1,7 @@
 // Map configuration — FULLY OFFLINE vector basemap.
 //
-// Basemap data: command-post/static/wayanad.pmtiles — a small-area extract of the Protomaps
-// OSM build, produced with the officially supported `pmtiles extract` CLI
-// (https://docs.protomaps.com/pmtiles/cli). Data © OpenStreetMap contributors,
+// Basemap data: command-post/static/bangalore.pmtiles — a small-area extract of the Protomaps
+// v4 OSM build (build.protomaps.com), covering the Bengaluru city box. Data © OpenStreetMap contributors,
 // ODbL. Fonts/sprites are vendored under static/basemaps-assets/ (OFL fonts),
 // so NOTHING here touches the network at runtime.
 //
@@ -13,12 +12,12 @@
 import { layers, namedFlavor } from "@protomaps/basemaps";
 
 // ── Where the map looks ───────────────────────────────────────────────────
-// Wayanad forward camp (Chooralmala / Mundakkai). This MUST sit inside the bundled
-// PMTiles archive (static/wayanad.pmtiles covers lng 76.05–76.22, lat 11.60–11.77) and
-// over the seeded incidents in models.py — a Bangalore dev-default here opened the map on
-// blank space 160 km from every beacon (the "map is blank / broken" report). Keep this
-// centre and the incident coordinates in the same valley.
-export const MAP_CENTER = [76.135, 11.685]; // [lng, lat] (MapLibre order)
+// Bengaluru city centre (Cubbon Park / Vidhana Soudha). This MUST sit inside the bundled
+// PMTiles archive (static/bangalore.pmtiles covers lng 77.40–77.80, lat 12.80–13.15) and
+// over the seeded incidents in models.py — a centre outside the archive bbox opens the map
+// on blank space away from every beacon (the "map is blank / broken" report). Keep this
+// centre and the incident coordinates inside the same box.
+export const MAP_CENTER = [77.5946, 12.9716]; // [lng, lat] (MapLibre order)
 export const MAP_ZOOM = 13;
 export const MAP_MIN_ZOOM = 10;
 export const MAP_MAX_ZOOM = 17; // archive tops out at z15; MapLibre over-zooms vector cleanly

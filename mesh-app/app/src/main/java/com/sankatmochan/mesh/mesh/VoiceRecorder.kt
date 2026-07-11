@@ -28,6 +28,10 @@ class VoiceRecorder(context: Context) {
     private var recorder: MediaRecorder? = null
     private var target: File? = null
 
+    /** Fired when the OS max-duration backstop trips, so the owner (the ViewModel) can flip its
+     *  state and keep the attached clip even if nothing else stopped us. */
+    var onMaxDurationReached: (() -> Unit)? = null
+
     val isRecording: Boolean get() = recorder != null
 
     /** Begin recording. Returns false if the microphone could not be opened. */
@@ -45,7 +49,15 @@ class VoiceRecorder(context: Context) {
             r.setAudioChannels(1)
             r.setAudioSamplingRate(8_000)          // AMR-NB is defined only at 8 kHz
             r.setAudioEncodingBitRate(BITRATE_BPS)
-            r.setMaxDuration(MAX_MILLIS)          // backstop; the UI stops us first
+            r.setMaxDuration(MAX_MILLIS)          // OS backstop; the VM's timer stops us first
+            // If the VM timer ever fails to fire (e.g. its scope is gone), the OS still stops
+            // encoding at MAX_MILLIS - hand that event back so the recorder is released and the
+            // app state doesn't get stuck "recording" with the mic held.
+            r.setOnInfoListener { _, what, _ ->
+                if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+                    onMaxDurationReached?.invoke()
+                }
+            }
             r.setOutputFile(out.absolutePath)
             r.prepare()
             r.start()

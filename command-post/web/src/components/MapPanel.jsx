@@ -3,9 +3,9 @@ import maplibregl from "maplibre-gl";
 import { MAP_CENTER, MAP_ZOOM, MAP_MIN_ZOOM, MAP_MAX_ZOOM, TILE_STYLE } from "../lib/mapConfig.js";
 import { pinColor } from "../lib/urgency.js";
 
-const CAMP_HQ = [76.1310, 11.6820]; // forward camp (the machine this runs on)
+const CAMP_HQ = [77.5921, 12.9767]; // forward camp — Bengaluru city control (Cubbon Park)
 
-// Sector map — real offline vector basemap (Wayanad PMTiles) with live
+// Sector map — real offline vector basemap (Bengaluru PMTiles) with live
 // incident beacons following the lifecycle arc (open red → claimed amber →
 // cleared green), square sensor glyphs, responder dots, and camp HQ.
 export default function MapPanel({ incidents, responders, selectedId, onSelect }) {

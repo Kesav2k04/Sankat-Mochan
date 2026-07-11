@@ -176,8 +176,14 @@ fun VictimScreen(
 
     LaunchedEffect(sending) {
         if (sending) {
+            // If the app is genuinely backgrounded and reopened during this window, beginNewSession
+            // bumps sessionEpoch and clears the sent list. Don't then raise the post-send map for
+            // an SOS the store no longer holds - fold back to the calm home instead.
+            val epochAtSend = vm.sessionEpoch
             delay(1700)
-            sosActive = true
+            if (vm.sessionEpoch == epochAtSend) {
+                sosActive = true
+            }
             sending = false
         }
     }
@@ -603,6 +609,9 @@ private fun VoiceTile(vm: MeshViewModel, modifier: Modifier = Modifier) {
     val attached = vm.pendingVoice != null
     var remaining by remember { mutableIntStateOf(MAX_VOICE_SECONDS) }
 
+    // Purely the on-screen countdown. The actual 10 s stop is owned by the ViewModel
+    // (MeshViewModel.autoStopJob), so it fires even when this tile has left composition - e.g.
+    // once the SOS radar/map takes over the screen.
     LaunchedEffect(recording) {
         if (!recording) { remaining = MAX_VOICE_SECONDS; return@LaunchedEffect }
         remaining = MAX_VOICE_SECONDS
@@ -610,7 +619,6 @@ private fun VoiceTile(vm: MeshViewModel, modifier: Modifier = Modifier) {
             delay(1000)
             remaining--
         }
-        vm.stopRecording()
     }
 
     val infinite = rememberInfiniteTransition(label = "recPulse")

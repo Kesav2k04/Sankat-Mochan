@@ -409,7 +409,15 @@ class GenieXEngine(context: Context) {
         val window = ArrayList<ChatMessage>(MAX_WINDOW_MESSAGES + 1)
         window.add(ChatMessage(role = history[0].role, sanitizeForSdk(history[0].content)))
         val tail = ArrayList<ChatMessage>(MAX_WINDOW_MESSAGES)
-        var budget = MAX_WINDOW_BYTES
+        // The LID tag is prepended to the newest message AFTER windowing, so reserve its bytes
+        // up front - otherwise a message truncated to exactly the budget is pushed back over it.
+        // The tag is pure ASCII, so length == UTF-8 bytes.
+        val langTag = replyLanguage?.let {
+            "[This message is in $it. Reply only in $it, using its native script.]\n"
+        }
+        // Floor the budget so an oversized tag can never drive it to zero and truncate the
+        // user's newest message to "" (a language instruction with no question).
+        var budget = (MAX_WINDOW_BYTES - (langTag?.length ?: 0)).coerceAtLeast(256)
         for (i in history.indices.reversed()) {
             if (i == 0 || tail.size == MAX_WINDOW_MESSAGES) break
             var content = sanitizeForSdk(history[i].content)
@@ -425,10 +433,9 @@ class GenieXEngine(context: Context) {
 
         // We already know the input language (from on-device LID), so tell the model outright and
         // override any earlier-language turns still in the window.
-        if (replyLanguage != null && window.isNotEmpty()) {
+        if (langTag != null && window.size > 1) {
             val last = window.removeAt(window.lastIndex)
-            window.add(ChatMessage(role = last.role, "[This message is in $replyLanguage. Reply only " +
-                "in $replyLanguage, using its native script.]\n${last.content}"))
+            window.add(ChatMessage(role = last.role, langTag + last.content))
         }
 
         // Non-ASCII must NEVER reach Genie's native templater. Its applyChatTemplate JNI sizes
@@ -468,26 +475,45 @@ class GenieXEngine(context: Context) {
         )
 
         val answer = StringBuilder()
-        w.generateStreamFlow(prompt, generation).collect { result ->
-            when (result) {
-                is LlmStreamResult.Token -> {
-                    answer.append(result.text)
-                    emit(ChatStream.Token(result.text))
-                }
-
-                is LlmStreamResult.Completed -> {
-                    // Sanitize before storing: streamed tokens can leave malformed multibyte
-                    // fragments that would crash the NEXT turn's applyChatTemplate.
-                    history.add(ChatMessage(role = "assistant", sanitizeForSdk(answer.toString())))
-                    emit(ChatStream.Done)
-                }
-
-                is LlmStreamResult.Error -> {
-                    Log.e(TAG, "generation error", result.throwable)
-                    if (history.isNotEmpty() && history.last().role == "user") {
-                        history.removeAt(history.lastIndex)
+        var terminal = false
+        try {
+            w.generateStreamFlow(prompt, generation).collect { result ->
+                when (result) {
+                    is LlmStreamResult.Token -> {
+                        answer.append(result.text)
+                        emit(ChatStream.Token(result.text))
                     }
-                    emit(ChatStream.Failed("The assistant stopped unexpectedly. Please try again."))
+
+                    is LlmStreamResult.Completed -> {
+                        terminal = true
+                        // Sanitize before storing: streamed tokens can leave malformed multibyte
+                        // fragments that would crash the NEXT turn's applyChatTemplate.
+                        history.add(ChatMessage(role = "assistant", sanitizeForSdk(answer.toString())))
+                        emit(ChatStream.Done)
+                    }
+
+                    is LlmStreamResult.Error -> {
+                        terminal = true
+                        Log.e(TAG, "generation error", result.throwable)
+                        if (history.isNotEmpty() && history.last().role == "user") {
+                            history.removeAt(history.lastIndex)
+                        }
+                        emit(ChatStream.Failed("The assistant stopped unexpectedly. Please try again."))
+                    }
+                }
+            }
+        } finally {
+            // The stream can end WITHOUT a terminal event: a Stop tap (stopStream closes the
+            // native stream bare) or the collecting job being cancelled. Left alone, history
+            // keeps an unanswered `user` turn, the next send appends a second one, and the chat
+            // template rejects the repeated role - wedging every later turn. Reconcile: keep the
+            // partial reply the user already saw on screen, or roll back an unanswered turn.
+            if (!terminal && history.isNotEmpty() && history.last().role == "user") {
+                val partial = sanitizeForSdk(answer.toString())
+                if (partial.isNotBlank()) {
+                    history.add(ChatMessage(role = "assistant", partial))
+                } else {
+                    history.removeAt(history.lastIndex)
                 }
             }
         }
