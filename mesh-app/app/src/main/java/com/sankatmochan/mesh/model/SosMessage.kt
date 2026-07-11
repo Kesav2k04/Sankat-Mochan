@@ -91,8 +91,8 @@ data class SosMessage(
             if (bytes.isEmpty() || bytes.size > MAX_BYTES + 8) return null // small tolerance
             return try {
                 val o = JSONObject(String(bytes, StandardCharsets.UTF_8))
-                val id = o.optString("i").take(MAX_ID)
-                val origin = o.optString("o").take(MAX_ID)
+                val id = clean(o.optString("i")).take(MAX_ID)
+                val origin = clean(o.optString("o")).take(MAX_ID)
                 val typeName = o.optString("t")
                 if (id.isBlank() || origin.isBlank()) return null
                 val type = MsgType.entries.firstOrNull { it.name == typeName } ?: return null
@@ -100,15 +100,15 @@ data class SosMessage(
                     id = id,
                     type = type,
                     origin = origin,
-                    refId = if (o.has("r")) o.optString("r").take(MAX_ID) else null,
+                    refId = if (o.has("r")) clean(o.optString("r")).take(MAX_ID) else null,
                     urgency = o.optInt("u", 3).coerceIn(1, 5),
-                    category = o.optString("c").take(48),
-                    locationHint = o.optString("l").take(64),
-                    gist = o.optString("g").take(MAX_TEXT),
-                    lang = o.optString("ln", "en").take(8),
+                    category = clean(o.optString("c")).take(48),
+                    locationHint = clean(o.optString("l")).take(64),
+                    gist = clean(o.optString("g")).take(MAX_TEXT),
+                    lang = clean(o.optString("ln", "en")).take(8),
                     lat = parseCoord(o, "la", -90.0, 90.0),
                     lng = parseCoord(o, "lo", -180.0, 180.0),
-                    ts = o.optLong("ts", 0L),
+                    ts = o.optLong("ts", 0L).coerceAtLeast(0L),
                     hops = o.optInt("h", 0).coerceIn(0, 15)
                 )
             } catch (e: Exception) {
@@ -116,6 +116,18 @@ data class SosMessage(
                 null
             }
         }
+
+        /**
+         * Strip control characters (newlines, carriage returns, tabs, escapes, NUL, …) from an
+         * untrusted free-text field, collapsing them to spaces. Two reasons (CLAUDE.md #8/#9/#10):
+         *  - the mesh event log is a single line per entry, so an embedded '\n' would let a
+         *    crafted SOS inject fake log lines a reader can't distinguish from real ones;
+         *  - the text is later shown on-screen; keeping it to printable characters means what a
+         *    responder reads is exactly what was sent, with no hidden or spoofing control codes.
+         * This is data cleaning only — the content is never interpreted as commands.
+         */
+        private fun clean(s: String): String =
+            buildString(s.length) { for (ch in s) append(if (ch.isISOControl()) ' ' else ch) }.trim()
 
         /** Read a coordinate only if present, finite, and within valid bounds. */
         private fun parseCoord(o: JSONObject, key: String, min: Double, max: Double): Double? {

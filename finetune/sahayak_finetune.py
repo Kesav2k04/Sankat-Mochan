@@ -132,33 +132,36 @@ def build_text_mapper(tokenizer):
 def run_unsloth(args, env):
     from unsloth import FastModel
     from unsloth.chat_templates import train_on_responses_only
-    import torch
 
     max_seq = args.max_seq_len
     template = resolve_template(args.model, args.chat_template)
 
-    # Precision: DON'T force a dtype. Unsloth auto-selects the best per GPU and OVERRIDES what we
-    # pass — on a T4 (no native bf16) it refuses bf16 and, for Gemma 4's numerically-unsafe
-    # vision/audio ops, deliberately keeps them in float32 while doing matmuls in fp16 on tensor
-    # cores. Passing dtype=bfloat16 did nothing (it still logged "float16 won't work -> float32").
-    # So pass None and let Unsloth decide. NOTE: this float32 path is why E4B does NOT fit on a
-    # single 16 GB T4 — use E2B there, or a native-bf16 GPU (L4/A100, cc >= 8) for E4B.
+    # Precision: DON'T force a dtype, and DON'T re-cast the model afterwards. Unsloth manages a
+    # deliberately HETEROGENEOUS dtype layout per GPU. On a T4 (no native bf16) its "float16
+    # won't work -> float32" banner does NOT mean everything becomes fp32: matmul weights (incl.
+    # the multi-GB per-layer embedding table) intentionally stay fp16 for the tensor cores, while
+    # activations/norms and fp16-unsafe ops run fp32, with Unsloth inserting the casts (this is
+    # its documented Gemma-on-T4 scheme, per the Gemma 3 blog + Gemma 4 fine-tuning guide; the
+    # Gemma 4 T4 bugs — fp16 -1e9 audio overflow, grad-accum loss explosion — are fixed in
+    # unsloth >= 2026.6.7, see requirements.txt). Officially E2B trains in ~8 GB / E4B in ~10 GB,
+    # so both fit a 16 GB T4 as QLoRA. Any whole-model re-cast on top of this layout breaks it:
+    # to fp16 -> fp32 activations hit fp16 weights ("float != c10::Half"); to fp32 -> the fp16
+    # per-layer table balloons 2x and OOMs. That's why --legacy-dtype-align is OFF by default.
     native_bf16 = env["bf16"]   # cc >= 8.0 => real bf16 tensor cores (Ampere+). False on a T4.
-    # Gemma 4 has fp16-unsafe ops (vision/audio + the per-layer-input projection), so on a
-    # non-native-bf16 GPU (e.g. a Kaggle T4, cc 7.5) Unsloth prints "float16 won't work -> float32"
-    # and trains the whole model in PURE float32 with mixed-precision autocast OFF. We MUST mirror
-    # that in the trainer: handing SFTConfig fp16=True there is silently overridden by Unsloth and,
-    # worse, invites a half/float dtype clash. force_fp32 makes our config match Unsloth's reality.
-    force_fp32 = ("gemma-4" in args.model.lower()) and not native_bf16
     # Model parallelism (opt-in): device_map="balanced" asks accelerate to SHARD layers across
     # GPUs. WARNING: on a T4 this collides with Unsloth's manual float32 re-cast of the vision
     # module and dies with "CUDA illegal memory access" — it does NOT rescue the E4B fit. Kept as
     # an option only for native-bf16 multi-GPU boxes where the float32 cast never happens.
+    # 4-bit: mirror Unsloth's official notebooks. Gemma4_(E2B)-Text loads with
+    # load_in_4bit=False — E2B 16-bit LoRA needs only ~8-10 GB (their train guide), so it fits
+    # a T4 without quantization and skips the bnb path entirely. E4B LoRA needs ~17 GB, so it
+    # stays QLoRA (4-bit) by default. --four-bit on/off overrides either way.
+    four_bit = resolve_four_bit(args)
     load_kwargs = dict(
         model_name=args.model,
         max_seq_length=max_seq,
         dtype=None,                      # let Unsloth pick (bf16 on Ampere+, fp16/fp32 mix on T4)
-        load_in_4bit=not args.no_4bit,   # QLoRA by default (spec: prefer E4B QLoRA)
+        load_in_4bit=four_bit,
         full_finetuning=False,
         token=os.environ.get("HF_TOKEN"),
         # Force trust_remote_code=False. Unsloth auto-ENABLES it for unsloth/* models on
@@ -171,10 +174,10 @@ def run_unsloth(args, env):
     if args.device_map:
         load_kwargs["device_map"] = args.device_map
     print(f"[unsloth] model={args.model} chat_template={template}")
-    print(f"[unsloth] precision: dtype=auto (native bf16={native_bf16}); "
-          f"train mixed-precision -> {'bf16' if native_bf16 else 'fp16'}")
+    print(f"[unsloth] precision: dtype=auto, trainer precision=Unsloth-managed "
+          f"(native bf16={native_bf16})")
     print(f"[unsloth] device_map={args.device_map or 'single-GPU'}")
-    print(f"[unsloth] loading {args.model} (4bit={not args.no_4bit}) …")
+    print(f"[unsloth] loading {args.model} (4bit={four_bit}) …")
     model, tokenizer = FastModel.from_pretrained(**load_kwargs)
     if args.device_map:
         dev_map = getattr(model, "hf_device_map", None)
@@ -200,16 +203,15 @@ def run_unsloth(args, env):
         random_state=args.seed,
     )
 
-    # ── Fix the "expected mat1 and mat2 to have the same dtype, but got: float != c10::Half" crash.
-    # On the force_fp32 path (Gemma 4 on a T4) Unsloth trains in PURE float32, but its own upcast
-    # leaves stray fp16 tensors behind (per_layer_model_projection, sometimes the embeddings too).
-    # Aligning to the *embedding* dtype is NOT safe here — when the embeddings themselves are one
-    # of the strays (fp16), that downcasts the whole model to fp16 and the trainer's later
-    # "Switching to float32 training" re-cast of the inputs recreates the exact float!=Half crash.
-    # So on force_fp32 the target is torch.float32, hard-coded — embeddings included. Elsewhere
-    # the embedding dtype stays the ground truth. 4-bit weights are uint8-backed, so the
-    # float-only guard skips them and bitsandbytes' own compute-dtype handling is left untouched.
-    _align_model_dtype(model, target=torch.float32 if force_fp32 else None)
+    # Legacy whole-model dtype re-cast — OFF by default and deliberately so. Unsloth's dtype
+    # layout is heterogeneous BY DESIGN (fp16 matmul weights + fp32 activations on a T4), and
+    # both align targets break it: embedding-dtype alignment downcast the net to fp16 (step-0
+    # "float != c10::Half"), fp32 alignment tried to double the multi-GB fp16 per-layer table
+    # (8.75 GiB alloc -> OOM). Unsloth >= 2026.6.7 fixes the Gemma 4 dtype bugs itself; the
+    # official Gemma4_(E2B)-Text notebook does no re-cast, and neither do we. The flag remains
+    # only as a debugging aid for older Unsloth installs.
+    if args.legacy_dtype_align:
+        _align_model_dtype(model, target=None)
 
     tokenizer = apply_chat_template(tokenizer, template)
 
@@ -237,14 +239,10 @@ def run_unsloth(args, env):
         output_dir=str(Path(args.out) / "checkpoints"),
         report_to="none",
         max_seq_length=max_seq,
-        # Mixed-precision training: bf16 only on native-bf16 GPUs (Ampere+); fp16 on a T4, where
-        # Unsloth's selective upcasting makes fp16 training numerically safe. Matches Unsloth's
-        # own gate (its banner prints "Bfloat16 = FALSE" on a T4 and trains in fp16 there).
-        # bf16 only on native-bf16 GPUs (Ampere+). Otherwise fp16 on a T4 — EXCEPT for Gemma 4,
-        # which Unsloth forces to pure float32 (force_fp32): there both must be False so the
-        # trainer doesn't try fp16 autocast against a float32 model (the source of the dtype clash).
-        bf16=native_bf16,
-        fp16=(not native_bf16) and not force_fp32,
+        # NO fp16/bf16 args — deliberately. The official Gemma4_(E2B)-Text notebook passes
+        # neither: Unsloth's patched trainer picks the training precision itself to match the
+        # dtype layout it built at load time. Every combination we forced here (fp16=True,
+        # both False via force_fp32) fought that choice and produced a step-0 dtype clash.
         eval_strategy="epoch" if eval_ds is not None else "no",
     )
 
@@ -284,7 +282,11 @@ def run_unsloth(args, env):
 
 
 def _align_model_dtype(model, target=None) -> None:
-    """Force every non-quantized floating parameter/buffer to one consistent dtype.
+    """LEGACY (--legacy-dtype-align only): force every non-quantized floating parameter/buffer
+    to one consistent dtype. Do NOT run this on Unsloth >= 2026.6.7 — its Gemma 4 dtype layout
+    is intentionally mixed (fp16 matmul weights + fp32 activations on a T4) and homogenizing it
+    either recreates the float!=Half crash (fp16 target) or doubles the multi-GB fp16 per-layer
+    embedding table and OOMs (fp32 target). Kept only for debugging older installs.
 
     Root cause this fixes (Gemma 4 on a non-bf16 GPU, e.g. Kaggle T4): Unsloth trains Gemma 4 in
     pure float32 there ("float16 won't work -> float32"), but its upcast leaves stray fp16
@@ -433,6 +435,24 @@ MODEL_PROFILES = {
 }
 
 
+def resolve_four_bit(args) -> bool:
+    """Resolve --four-bit into a concrete bool, mirroring Unsloth's official notebooks.
+
+    Gemma4_(E2B)-Text loads load_in_4bit=False (E2B 16-bit LoRA ~8-10GB per the train guide —
+    fits a T4 and avoids the bitsandbytes path entirely); the E4B/larger notebooks keep 4-bit
+    (E4B LoRA ~17GB does not fit a 16GB card). --no-4bit is honoured as 'off' for backwards
+    compatibility with existing commands.
+    """
+    if args.no_4bit or args.four_bit == "off":
+        return False
+    if args.four_bit == "on":
+        return True
+    low = args.model.lower()
+    if "gemma-4" in low and "e2b" in low:
+        return False   # official E2B notebook behaviour
+    return True
+
+
 def resolve_template(model_id: str, requested: str) -> str:
     """Pick the chat template: honour --chat-template unless 'auto', else infer from model id."""
     if requested and requested != "auto":
@@ -573,7 +593,17 @@ def parse_args(argv=None):
     p.add_argument("--lora-r", type=int, default=16)
     p.add_argument("--lora-alpha", type=int, default=16)
     p.add_argument("--seed", type=int, default=3407)
-    p.add_argument("--no-4bit", action="store_true", help="Disable 4-bit (QLoRA) loading.")
+    p.add_argument("--four-bit", choices=["auto", "on", "off"], default="auto",
+                   help="4-bit (QLoRA) loading. 'auto' mirrors Unsloth's official notebooks: "
+                        "OFF for Gemma 4 E2B (16-bit LoRA fits ~8-10GB, skips the bnb path), "
+                        "ON for everything else (e.g. E4B LoRA needs ~17GB -> QLoRA on a T4).")
+    p.add_argument("--no-4bit", action="store_true",
+                   help="Deprecated alias for --four-bit off.")
+    p.add_argument("--legacy-dtype-align", action="store_true",
+                   help="Re-enable the whole-model dtype re-cast workaround for OLD Unsloth "
+                        "installs (< 2026.6.7). Off by default: current Unsloth manages Gemma 4's "
+                        "mixed fp16/fp32 layout itself, and re-casting it causes the very "
+                        "float!=Half / OOM failures the workaround once papered over.")
     p.add_argument("--device-map", default=None,
                    help="Unsloth backend only. Set 'balanced' to SHARD the model's layers across "
                         "all visible GPUs (model parallelism — e.g. Kaggle's 2xT4). Leave unset "
