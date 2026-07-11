@@ -283,6 +283,118 @@ de-conflict lock[code] → draft_reply[LLM] → victim "help on the way" → aud
 
 ---
 
+## Agent-tools expansion (C14–C18) — added 10 Jul 2026
+> Grows the drafted brain into a more capable, more autonomous — but still boxed —
+> agent. **C14–C16 extend C10's scoped-LLM-tool family (4 → 7 tools)**; C17 extends
+> C5 dispatch; C18 extends the C11 loop into a proactive watchdog. Same governing rule
+> holds: **code owns control flow, coordinates, and every commit; the LLM only reads,
+> translates, and judges.** Nothing added here lets a model select a responder, emit raw
+> coordinates, or fire a broadcast unsupervised — C12's structural defense still holds.
+> All tools are **offline-first**: anything web-derived (gazetteer, road graph, POI DB)
+> is *pre-loaded before the event*, never fetched live over the mesh.
+
+## Component 14 — Needs extraction `[LLM]`
+**Purpose:** turn one free-text / voice SOS into **structured, actionable needs** so
+ranking (C3), dispatch (C5/C17) and briefs (C10) act on facts, not a text blob. The 5th
+scoped LLM tool. `extract_needs(sos)` → `{people:int?, injured:int?, trapped:bool,
+medical:[enum], hazards:[enum], mobility:str, notes:str}`.
+**Decisions:**
+- *PROPOSED* **Grounded extraction only** — every field must be present in the message;
+  absent ⇒ `null`, never guessed. (Anti-"bullshit": the model *reports*, it does not
+  infer a diabetic where none was stated.)
+- *PROPOSED* **Controlled vocabularies** — `medical`/`hazards` map to a fixed enum
+  (insulin, oxygen, dialysis, bleeding, cardiac… / gas, fire, water_rising, collapse,
+  electrical). Free text → nearest enum or `other`; unknowns never invented.
+- *PROPOSED* **Feeds, never overrides** — needs inform urgency (C3) + capability match
+  (C17); code owns the final rank. A parse failure degrades to `assess()` alone.
+- *PROPOSED* Same C10 guardrails — forced JSON, data-tag wrap (#7), clamp/validate,
+  per-call timeout, cache per SOS.
+**Edge cases / sim:** "we are 4, my father is diabetic, out of insulin, water rising" →
+`{people:4, medical:[insulin], hazards:[water_rising]}` → card shows need-chips, dispatch
+prefers a medic. Empty/garbled → all `null`, card unchanged.
+
+## Component 15 — Location resolution from text `[LLM]`+`[code]`
+**Purpose:** most rural SOS carry no GPS. Recover an approximate location from landmark
+text so the incident can be mapped + routed to. `resolve_location_text(text, gazetteer)`
+→ `{gazetteer_id, confidence}`; **code** turns the id into coordinates.
+**Decisions:**
+- *PROPOSED* **Pre-loaded local gazetteer** (village/landmark/POI list for the operating
+  area, from OSM, bundled offline). The LLM only fuzzy-matches to *existing* entries — it
+  can never emit raw coordinates (a hijacked output can't teleport an incident).
+- *PROPOSED* **Confidence-gated + always flagged approximate** — low confidence ⇒
+  "unlocated, near <landmark>?" for operator confirmation, never silently auto-dispatched.
+- *PROPOSED* **Two-lane with C1** — resolved-approx coords enter the no-GPS lane, not the
+  trusted-fix lane.
+- *PROPOSED* Handles transliteration (Tamil/Hindi landmark names in Latin letters) — same
+  multilingual strength as `assess`.
+**Edge cases / sim:** "behind old temple near broken bridge" → gazetteer "Punchiri bridge,
+Meppadi" @ conf 0.7 → amber pin with a "confirm?" tag. No match → stays in the no-coords
+queue (C1 lane 2).
+
+## Component 16 — Family reunification / missing-persons `[code]`+`[LLM]`
+**Purpose:** the highest-emotion disaster job — connect "I can't find my daughter Asha, 7"
+with "found safe: girl ~7 at Meppadi shelter."
+**Decisions:**
+- *PROPOSED* **Two code-owned registries** — `missing` (from SOS) and `found/safe`
+  (responder- or shelter-entered). Storage, ids, and the match *commit* are code.
+- *PROPOSED* `match_missing(query, candidates)` `[LLM]` → ranked `{candidate_id,
+  same_person:bool, reason}` — fuzzy over name variants/transliteration, age bands,
+  last-seen area. **Defaults to no-match on uncertainty** (a false reunion is cruel and
+  dangerous). LLM proposes; a human confirms the link.
+- *PROPOSED* **PII discipline (#10)** — names/descriptions live in the store + audit log;
+  the public projection shows counts + status, not raw personal detail.
+- *PROPOSED* Runs over the mesh at trickle bandwidth — a lookup/notify, not a data sync.
+**Edge cases / sim:** "missing: Asha, ~7, last seen Meppadi" + "safe: girl 6–8, Meppadi
+shelter" → suggested match, confidence shown, operator taps Confirm → both parties get a
+templated `draft_reply` "safe/reunited" message.
+
+## Component 17 — Resource-aware dispatch `[code]`
+**Purpose:** upgrade C5 from "nearest body" to "nearest *capable* body via a real route,"
+and put the right *asset* (boat, medic, AED) on the right need.
+**Decisions:**
+- *PROPOSED* **Offline road routing** (OSRM/Valhalla + pre-downloaded region graph)
+  replaces the haversine ETA where a graph exists; haversine stays the fallback (C5).
+  Flooded/blocked edges (from C7 sensors / responder reports) are penalized so routes
+  avoid them.
+- *PROPOSED* **Nearest-resource POI lookup** over a pre-loaded DB — hospital, shelter,
+  AED, boat cache, high-ground — surfaced per incident and for evacuation.
+- *PROPOSED* **Needs↔capability matching** — C14 `needs` + C4 responder capabilities form
+  a **soft** bipartite match: `medical:[insulin]` prefers a medic, `hazards:[water_rising]`
+  prefers a boat. Capability is a soft weight on top of priority-then-distance (C3/C5),
+  **never** a hard gate that strands a critical.
+- *PROPOSED* All additive to C5's greedy-by-priority walk; a missing graph/POI/capability
+  just falls back to current behavior. Coords/route come from code; the LLM never selects
+  a responder (C12).
+**Edge cases / sim:** two equidistant responders, one a medic → medic wins for a medical
+incident; the route line bends around the flooded segment; a "nearest boat 300 m" chip on
+a water-rescue card.
+
+## Component 18 — Proactive watchdog / coverage-gap scanner `[code]`
+**Purpose:** the piece that makes it an *agent*, not a queue — a **scheduled sweep** (not
+per-event) that notices what's slipping and escalates, human still in the loop.
+**Decisions:**
+- *PROPOSED* **Periodic scan** of live state; each finding → audit log + operator signal:
+  - critical unacked > N min → re-propose to next-nearest (C5/C6) / raise "need hands" (C8);
+  - responder silent > heartbeat window (C4) → mark offline + reassign their incident;
+  - **cluster growth** — reports in one area crossing a threshold ⇒ mass-casualty flag +
+    pre-position (ties C1/C7);
+  - **deteriorating victim** — status ladder moving *down* (C9) ⇒ auto-bump rank + re-propose;
+  - **coverage gap** — an area with SOS but zero available responders ⇒ the coordinator's
+    #1 signal.
+- *PROPOSED* **Autonomy ladder (C11)** — findings act at L0 propose / L1 auto-notify
+  (still one-tap) / L2 opt-in guarded auto-act. Every action reversible + logged; nothing
+  dispatches without the C11 gate.
+- *PROPOSED* **Cheap + async (C13)** — a lightweight timer, never on the ingest hot path;
+  degrades to "off" cleanly.
+- *PROPOSED* **Mesh area-broadcast** (side-effecting, code-gated) — C7 early-warning ⇒
+  human-confirmed "move to high ground" broadcast to a mesh region; plain text (#9),
+  honest, no false promises.
+**Edge cases / sim:** the "system caught it" beat — a critical no one accepted goes
+amber→red with an auto-escalation toast; a silent responder's incident visibly re-homes;
+a swelling cluster trips the mass-casualty banner.
+
+---
+
 ## Open decisions awaiting confirmation
 - C1: two-lane no-GPS · split-bias · cluster-level dispatch — *PROPOSED, unconfirmed.*
 - C2: dedup-vs-corroboration split · merge policy · abuse = stretch — *PROPOSED, unconfirmed.*
@@ -297,8 +409,16 @@ de-conflict lock[code] → draft_reply[LLM] → victim "help on the way" → aud
 - C11: code-driven event loop · autonomy L0/L1/L2(opt-in) · burst-graceful · cache-for-sim — *PROPOSED, unconfirmed.*
 - C12: structural defense LOCKED · data-tag · clamp outputs · PII-to-file · abuse=stretch — *PROPOSED, unconfirmed.*
 - C13: append-only audit log · latency+tokens/s+counts metrics · async — *PROPOSED, unconfirmed.*
+- C14: grounded needs-extraction · controlled-vocab enums · feeds-not-overrides · C10 guardrails — *PROPOSED, unconfirmed.*
+- C15: pre-loaded gazetteer · LLM-matches-only / code-owns-coords · confidence-gated-approx · no-GPS lane — *PROPOSED, unconfirmed.*
+- C16: two code registries · match_missing defaults-no-match · human-confirms-link · PII-to-store-only — *PROPOSED, unconfirmed.*
+- C17: offline routing + flood-penalty · nearest-resource POI · soft needs↔capability match · additive-fallback-to-C5 — *PROPOSED, unconfirmed.*
+- C18: periodic watchdog sweep · unacked/silent/cluster-growth/deteriorating/coverage-gap · autonomy L0/L1/L2 · async · gated area-broadcast — *PROPOSED, unconfirmed.*
 
-## Status: ✅ all 13 components drafted (10 Jul 2026)
-Full spec complete. **Next:** a quick thumbs-up / tweak on the C1–C13 "Open decisions"
-above locks the foundation, then build the `[code]` services first (C1–C9, C13) —
-they're deterministic, testable, and independent of the frontend + the LLM.
+## Status: ✅ 13 core (C1–C13) + 5 agent-tool (C14–C18) components drafted (10 Jul 2026)
+Full spec complete. **Build order unchanged:** the `[code]` core (C1–C9, C13) first —
+deterministic, testable, LLM-independent. The agent-tools expansion layers on afterward,
+each additive with a graceful fallback: **C14 `extract_needs`** (highest leverage — slots
+in next to `assess` in `triage.py`), then **C17 resource-aware dispatch** + **C18 watchdog**
+for the autonomy story, with **C15 location-resolution** and **C16 reunification** as the
+higher-effort stretch. Nothing here ships without its C12 clamp + C13 audit line.

@@ -13,6 +13,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -109,6 +110,7 @@ private val URGENCIES = listOf(
  * questions a person in trouble actually has — "can anyone hear me?" and "do they know
  * where I am?" — without a word of jargon. Everything optional lives behind Details.
  */
+@OptIn(ExperimentalFoundationApi::class) // BringIntoViewRequester is still experimental
 @Composable
 fun VictimScreen(
     vm: MeshViewModel,
