@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sankatmochan.mesh.MeshViewModel
+import com.sankatmochan.mesh.mesh.VoiceClip
 import com.sankatmochan.mesh.model.SosMessage
 import com.sankatmochan.mesh.ui.theme.urgencyColors
 
@@ -58,6 +59,19 @@ fun ResponderScreen(vm: MeshViewModel, peers: Int, onOpenSettings: () -> Unit) {
                 EmptyQueue(peers)
             } else {
                 val waiting = sosList.count { it.id !in accepted }
+                // Correlate voice with text by originating node. A clip id is
+                // "<origin>-v<seq>" and an SOS id is "<origin>-<seq>", so a shared `origin`
+                // means the same phone sent both — that is what lets a recording ride inside
+                // the SOS card it belongs to instead of sitting in a disconnected list where a
+                // responder can't tell which text it matches. Each origin's clips attach to its
+                // top-ranked SOS (sosList is already urgency- then recency-sorted).
+                val clipsByOrigin = voice.groupBy { it.origin }
+                val hostSosIdByOrigin = sosList
+                    .groupBy { it.origin }
+                    .mapValues { (_, group) -> group.first().id }
+                // Clips whose sender has no SOS on this screen yet: show them on their own so a
+                // recording arriving before its SOS is never lost.
+                val orphanClips = voice.filter { it.origin !in hostSosIdByOrigin }
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -80,16 +94,21 @@ fun ResponderScreen(vm: MeshViewModel, peers: Int, onOpenSettings: () -> Unit) {
                             )
                         }
                     }
-                    // Voice above text: a recording still arriving is the most
-                    // time-sensitive thing on this screen.
-                    items(voice, key = { it.clipId }) { clip ->
+                    // Unmatched voice first: a recording with no SOS yet is the most
+                    // time-sensitive, still-arriving thing on this screen.
+                    items(orphanClips, key = { it.clipId }) { clip ->
                         VoiceClipCard(clip)
                     }
                     items(sosList, key = { it.id }) { sos ->
+                        val attached =
+                            if (hostSosIdByOrigin[sos.origin] == sos.id)
+                                clipsByOrigin[sos.origin].orEmpty()
+                            else emptyList()
                         SosCard(
                             sos = sos,
                             accepted = sos.id in accepted,
                             route = Geo.describeRoute(vm.lat, vm.lng, sos.lat, sos.lng),
+                            voiceClips = attached,
                             onAccept = { vm.accept(sos) }
                         )
                     }
@@ -190,6 +209,7 @@ private fun SosCard(
     accepted: Boolean,
     route: String?,
     onAccept: () -> Unit,
+    voiceClips: List<VoiceClip> = emptyList(),
 ) {
     val palette = urgencyColors
     val accent = palette.forLevel(sos.urgency)
@@ -277,6 +297,28 @@ private fun SosCard(
                 letterSpacing = 0.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
+
+            // Voice recorded and sent WITH this SOS, shown inside its own card so the
+            // recording and the text it belongs to are never split apart (matched by origin).
+            if (voiceClips.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SectionLabel(if (voiceClips.size == 1) "attached voice" else "attached voice (${voiceClips.size})")
+                    voiceClips.forEach { clip ->
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f))
+                        ) {
+                            VoiceClipContent(
+                                clip = clip,
+                                modifier = Modifier.padding(12.dp),
+                                hideOrigin = true,
+                            )
+                        }
+                    }
+                }
+            }
 
             Spacer(Modifier.height(2.dp))
             if (accepted) {

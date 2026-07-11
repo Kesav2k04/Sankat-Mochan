@@ -3,15 +3,20 @@ package com.sankatmochan.mesh.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -59,13 +64,27 @@ fun SosCountdownOverlay(
     }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
+        // This overlay is drawn over everything from MainActivity, OUTSIDE the app's
+        // safeDrawingPadding scope, so it must inset itself or the buttons hide behind the
+        // status/navigation bars. It also scrolls: on a short screen, in landscape, or at a
+        // large system font scale the ring + copy + buttons are taller than the viewport, and
+        // a fixed centered column would clip the life-critical Cancel / Send now buttons off
+        // the bottom. heightIn(min = maxHeight) keeps it vertically centred when it fits and
+        // lets it grow-and-scroll when it doesn't — adaptive to any device.
+        BoxWithConstraints(
             Modifier
                 .fillMaxSize()
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+                .safeDrawingPadding()
         ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .heightIn(min = maxHeight)
+                    .padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
             Text(
                 "EMERGENCY SOS",
                 style = MaterialTheme.typography.labelMedium,
@@ -131,6 +150,7 @@ fun SosCountdownOverlay(
                     modifier = Modifier.weight(1f),
                     onClick = onSend,
                 )
+            }
             }
         }
     }

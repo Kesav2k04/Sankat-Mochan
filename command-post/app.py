@@ -36,6 +36,25 @@ app = FastAPI(title="Sankat-Mochan Command Post")
 STATIC_DIR = Path(__file__).parent / "static"
 AUDIO_DIR = Path(__file__).parent / "audio_store"
 AUDIO_DIR.mkdir(exist_ok=True)
+
+
+def _purge_audio_store() -> None:
+    """Every process start is a fresh session (see database.py). In DB-less mode the
+    live Store already starts empty, but voice clips are written to disk under
+    audio_store/ and OUTLIVE the process — worse, the clip-id counters (_voice_seq,
+    _test_seq) reset to 0 on restart, so a NEW `voice-0` would be served the STALE
+    bytes of a previous run's `voice-0.webm`. Clear the transient clips on startup so
+    a killed-and-restarted server never replays an old session's audio. Only our own
+    generated clip files are removed (validated names + known suffixes); anything else
+    a user dropped in the folder is left untouched."""
+    if not AUDIO_DIR.exists():
+        return
+    for f in AUDIO_DIR.iterdir():
+        try:
+            if f.is_file() and _valid_audio_name(f.name):
+                f.unlink()
+        except OSError as exc:  # never let a locked/undeletable file stop startup (rule #10)
+            print(f"[audio] could not purge {f.name}: {type(exc).__name__}")
 WEB_DIST = Path(__file__).parent / "web" / "dist"  # built React app (npm run build)
 
 _seen_ids: set[str] = set()  # transport-level dedup (CONTRACT 1)
@@ -642,6 +661,7 @@ async def gateway_ws(ws: WebSocket) -> None:
 
 @app.on_event("startup")
 async def start_background() -> None:
+    _purge_audio_store()  # fresh session: drop any prior run's cached voice clips
     await database.start()
     await database.persist_snapshot(_snapshot())
     async def watchdog() -> None:

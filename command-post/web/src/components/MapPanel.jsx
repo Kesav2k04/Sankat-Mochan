@@ -12,6 +12,7 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef(new Map()); // key -> maplibregl.Marker
+  const fittedRef = useRef(false); // one-time auto-fit so both victims + responders show
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -97,6 +98,21 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
       if (!seen.has(key)) {
         marker.remove();
         markersRef.current.delete(key);
+      }
+    }
+
+    // First time we have any pins, frame the map so BOTH the victim (incident) and
+    // responder mobiles are on screen at once — otherwise a responder near the edge of
+    // the sector (or a distant incident) opens off-view and looks "not plotted". Runs
+    // once; afterwards the operator's panning and the pan-to-selection below are left be.
+    if (!fittedRef.current) {
+      const pts = [];
+      for (const inc of incidents) if (inc.lat != null) pts.push([inc.lng, inc.lat]);
+      for (const r of responders) if (r.lat != null) pts.push([r.lng, r.lat]);
+      if (pts.length > 0) {
+        fittedRef.current = true;
+        const b = pts.reduce((acc, p) => acc.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
+        map.fitBounds(b, { padding: 64, maxZoom: 15, duration: 0 });
       }
     }
   }, [incidents, responders, selectedId, onSelect]);

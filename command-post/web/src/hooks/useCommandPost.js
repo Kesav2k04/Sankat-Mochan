@@ -45,6 +45,11 @@ export function useCommandPost() {
         } catch {
           return;
         }
+        // The backend is the single source of truth: every snapshot fully REPLACES
+        // local state (never merges). So a killed-and-restarted server — which starts a
+        // brand-new empty session — clears the dashboard the instant it reconnects, and
+        // stale incidents/voice from the previous run can never linger. `database.session_id`
+        // changes each process start; App watches it to drop transient per-session UI state.
         if (m.kind === "snapshot") setSnap(m);
       };
     }
