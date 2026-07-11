@@ -40,6 +40,12 @@ android {
         // the APK build doesn't burn time squeezing ~16 MB for no gain.
         noCompress += "mbtiles"
     }
+    packaging {
+        // The GenieX SDK loads its QAIRT / llama.cpp native libraries with dlopen() at
+        // runtime, which needs them unpacked onto disk rather than mmap'd from the APK.
+        // Legacy packaging keeps extractNativeLibs=true so the on-device LLM can start.
+        jniLibs.useLegacyPackaging = true
+    }
 }
 
 dependencies {
@@ -58,6 +64,16 @@ dependencies {
     // Offline map rendering. Apache-2.0 (CLAUDE.md #1). Renders only from a local tile
     // archive — we never let it reach the network.
     implementation("org.osmdroid:osmdroid-android:6.1.20")
+
+    // On-device LLM for the offline assistant. Qualcomm GenieX Android binding, published to
+    // Maven Central (BSD-3-Clause per the ai-hub-apps geniex_chat_android sample it mirrors —
+    // CLAUDE.md #1/#4). Runs small GGUF chat models on the Snapdragon NPU/GPU/CPU fully
+    // offline; the model itself is downloaded once at runtime, not bundled in the APK.
+    // Docs: https://github.com/qualcomm/ai-hub-apps/tree/main/geniex_chat_android
+    implementation("com.qualcomm.qti:geniex-android:0.3.5")
+    // Pulled in transitively by the GenieX SDK's data beans; declared explicitly so the
+    // version is pinned. Apache-2.0.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -22,11 +22,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.sankatmochan.mesh.mesh.MeshRole
+import com.sankatmochan.mesh.ui.ChatScreen
 import com.sankatmochan.mesh.ui.LoraOnlyBanner
 import com.sankatmochan.mesh.ui.RelayScreen
 import com.sankatmochan.mesh.ui.ResponderScreen
@@ -261,11 +265,14 @@ private fun AppRoot(
     // frame.
     val role = vm.role ?: MeshRole.VICTIM
     var settingsOpen by remember { mutableStateOf(false) }
+    var chatOpen by remember { mutableStateOf(false) }
     val openSettings = { settingsOpen = true }
 
     // Task 3: on the responder screen the back gesture returns to the user (home) console
     // rather than closing the app — "user" is the previous page now that the picker is gone.
-    BackHandler(enabled = role == MeshRole.RESPONDER) { onPickRole(MeshRole.VICTIM) }
+    BackHandler(enabled = role == MeshRole.RESPONDER && !chatOpen) { onPickRole(MeshRole.VICTIM) }
+    // The assistant is a page over the top of whatever role is active; back closes it first.
+    BackHandler(enabled = chatOpen) { chatOpen = false }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         // One animated container: switching role cross-fades and rises the whole page, so the
@@ -288,12 +295,29 @@ private fun AppRoot(
                 LoraOnlyBanner(enabled = loraOnly, onChange = vm::setLoraOnly)
                 Box(modifier = Modifier.weight(1f)) {
                     when (current) {
-                        MeshRole.VICTIM -> VictimScreen(vm, peers, onOpenSettings = openSettings, onSosSent = onSosSent)
+                        MeshRole.VICTIM -> VictimScreen(
+                            vm, peers,
+                            onOpenSettings = openSettings,
+                            onOpenChat = { chatOpen = true },
+                            onSosSent = onSosSent,
+                        )
                         MeshRole.RESPONDER -> ResponderScreen(vm, peers, onOpenSettings = openSettings)
                         MeshRole.RELAY -> RelayScreen(vm, peers, onBack = openSettings)
                     }
                 }
             }
+        }
+    }
+
+    // The offline AI assistant slides in over the console. It owns its own ViewModel, so its
+    // model stays loaded while it is on screen and is released when it leaves.
+    AnimatedVisibility(
+        visible = chatOpen,
+        enter = slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(220)),
+        exit = slideOutHorizontally(tween(240, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(160)),
+    ) {
+        Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+            ChatScreen(onBack = { chatOpen = false })
         }
     }
 

@@ -13,6 +13,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -36,6 +37,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -109,11 +111,13 @@ private val URGENCIES = listOf(
  * questions a person in trouble actually has — "can anyone hear me?" and "do they know
  * where I am?" — without a word of jargon. Everything optional lives behind Details.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VictimScreen(
     vm: MeshViewModel,
     peers: Int,
     onOpenSettings: () -> Unit,
+    onOpenChat: () -> Unit,
     onSosSent: () -> Unit,
 ) {
     var gist by remember { mutableStateOf("") }
@@ -186,7 +190,16 @@ fun VictimScreen(
                 MeshTopBar(
                     "Send for help", "no signal needed", peers,
                     onSettings = onOpenSettings,
-                    actions = { LocationIndicator(vm) },
+                    actions = {
+                        // Offline AI assistant — answers first-aid / safety questions on-device.
+                        TopBarChip(
+                            icon = Icons.Rounded.AutoAwesome,
+                            description = "Open the offline AI assistant",
+                            onClick = onOpenChat,
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        LocationIndicator(vm)
+                    },
                 )
 
                 // Swiggy move: the live map grows down from the top, the rest of the screen
