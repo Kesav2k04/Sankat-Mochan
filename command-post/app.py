@@ -700,7 +700,7 @@ _pmtiles_cache: list = []  # [Reader] once opened (module-lifetime mmap)
 def _pmtiles_reader():
     if _pmtiles_cache:
         return _pmtiles_cache[0]
-    path = STATIC_DIR / "wayanad.pmtiles"
+    path = STATIC_DIR / "bangalore.pmtiles"
     if not path.exists():
         return None
     from pmtiles.reader import Reader, MmapSource
@@ -710,10 +710,10 @@ def _pmtiles_reader():
     return _pmtiles_cache[0]
 
 
-@app.get("/static/wayanad.pmtiles")
+@app.get("/static/bangalore.pmtiles")
 async def pmtiles_archive(request: Request):
     """Serve the offline basemap archive with HTTP Range support (RFC 7233)."""
-    path = STATIC_DIR / "wayanad.pmtiles"
+    path = STATIC_DIR / "bangalore.pmtiles"
     if not path.exists():
         return JSONResponse({"status": "missing"}, status_code=404)
     size = path.stat().st_size
