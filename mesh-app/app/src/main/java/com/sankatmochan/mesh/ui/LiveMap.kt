@@ -132,6 +132,10 @@ fun LiveLocationMap(
             // Hold the live MapView so the custom controls below can drive it.
             var mapRef by remember { mutableStateOf<MapView?>(null) }
             val here = if (meLat != null && meLng != null) GeoPoint(meLat, meLng) else BENGALURU
+            // Recentre the map only on the FIRST real fix. After that, following every 1 Hz GPS
+            // tick with animateTo would fight the user's own pan/zoom (yank back within a second),
+            // so subsequent fixes just move the "you" marker. Manual Recenter still re-centres.
+            var centredOnFix by remember { mutableStateOf(false) }
 
             AndroidView(
                 factory = { ctx ->
@@ -182,7 +186,11 @@ fun LiveLocationMap(
                             title = if (meLat != null) "You are here" else "Bengaluru"
                         }
                     )
-                    map.controller.animateTo(here)
+                    // Centre once, on the first genuine fix; later fixes only move the marker above.
+                    if (meLat != null && meLng != null && !centredOnFix) {
+                        map.controller.animateTo(here)
+                        centredOnFix = true
+                    }
                     map.invalidate()
                 },
                 onRelease = { it.onDetach() },

@@ -211,10 +211,16 @@ private fun drawPins(
         map.controller.setZoom(OfflineTiles.clampZoom(17.0))
         map.controller.setCenter(points[0])
     } else {
-        // zoomToBoundingBox needs a laid-out view, so defer until we have one.
+        // zoomToBoundingBox needs a laid-out view, so defer until we have one. The fit zoom it
+        // computes can land above the archive's deepest tile (blank grey), so clamp it back into
+        // the stored band afterwards.
         val box = BoundingBox.fromGeoPoints(points).increaseByScale(1.4f)
-        map.addOnFirstLayoutListener { _, _, _, _, _ -> map.zoomToBoundingBox(box, false) }
-        if (map.width > 0 && map.height > 0) map.zoomToBoundingBox(box, false)
+        val fit = {
+            map.zoomToBoundingBox(box, false)
+            map.controller.setZoom(OfflineTiles.clampZoom(map.zoomLevelDouble))
+        }
+        map.addOnFirstLayoutListener { _, _, _, _, _ -> fit() }
+        if (map.width > 0 && map.height > 0) fit()
     }
     map.invalidate()
 }

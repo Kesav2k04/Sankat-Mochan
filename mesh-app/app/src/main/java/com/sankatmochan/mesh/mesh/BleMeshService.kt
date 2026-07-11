@@ -43,8 +43,12 @@ class BleMeshService(context: Context) {
     var role: MeshRole = MeshRole.RELAY
         private set
 
-    private var seq = 0
-    private var voiceSeq = 0
+    // Atomic: nextId() is reached from the UI thread (sendSos / accept) AND the BLE binder thread
+    // (a RESPONDER emitting DELIVERED from handle()). A plain seq++ could tear or repeat a value,
+    // minting two envelopes with the same id - the second would be dropped by dedup, so the
+    // victim would never see "help is on the way". voiceSeq is atomic for the same reason.
+    private val seq = java.util.concurrent.atomic.AtomicInteger(0)
+    private val voiceSeq = java.util.concurrent.atomic.AtomicInteger(0)
     private var running = false
 
     private val handler = Handler(Looper.getMainLooper())
@@ -126,7 +130,7 @@ class BleMeshService(context: Context) {
         store.log("Mesh stopped")
     }
 
-    private fun nextId(): String = "$nodeId-${seq++}"
+    private fun nextId(): String = "$nodeId-${seq.getAndIncrement()}"
 
     private fun recomputePeers() {
         // Union of addresses across both roles → one physical peer counts once.
@@ -318,7 +322,7 @@ class BleMeshService(context: Context) {
      */
     fun sendVoice(clip: ByteArray, codec: Int) {
         val chunks = try {
-            VoiceChunk.split(nodeId, voiceSeq++, clip, codec)
+            VoiceChunk.split(nodeId, voiceSeq.getAndIncrement(), clip, codec)
         } catch (e: IllegalArgumentException) {
             store.log("Voice message too long to send")
             return

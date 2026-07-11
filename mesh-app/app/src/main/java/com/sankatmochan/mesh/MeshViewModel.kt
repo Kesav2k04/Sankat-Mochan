@@ -12,8 +12,11 @@ import com.sankatmochan.mesh.mesh.MeshRole
 import com.sankatmochan.mesh.mesh.SentSos
 import com.sankatmochan.mesh.mesh.VoiceRecorder
 import com.sankatmochan.mesh.model.SosMessage
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 
 /**
  * Thin bridge between Compose and the mesh. Holds the single [BleMeshService]
@@ -166,6 +169,18 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
 
     private val recorder = VoiceRecorder(app)
 
+    /** Owns the 10 s airtime cap. Lives here, not in the voice tile's LaunchedEffect, because the
+     *  tile leaves composition the instant the SOS radar/map takes over - which would otherwise
+     *  strand a live recording (mic held, no auto-stop). See [startRecording]. */
+    private var autoStopJob: Job? = null
+
+    init {
+        // OS backstop: if the coroutine timer ever fails to fire, MediaRecorder's own
+        // setMaxDuration still stops encoding at the cap - fold that back into our state so the
+        // recorder is released and the clip is kept.
+        recorder.onMaxDurationReached = { stopRecording() }
+    }
+
     var isRecording by mutableStateOf(false)
         private set
     var voiceStatus by mutableStateOf("")
@@ -187,6 +202,13 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
         }
         isRecording = true
         voiceStatus = "Recording…"
+        // Stop at the airtime cap no matter what happens to the UI. Cancelled by any explicit
+        // stop/cancel so it never fires against a fresh recording.
+        autoStopJob?.cancel()
+        autoStopJob = viewModelScope.launch {
+            delay(VoiceRecorder.MAX_MILLIS.toLong())
+            stopRecording()
+        }
     }
 
     /** Tap-to-toggle from the voice tile: start if idle, stop and keep the clip if recording. */
@@ -197,6 +219,8 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     /** Stop and keep the clip. Nothing goes on air until the SOS button is pressed. */
     fun stopRecording() {
         if (!isRecording) return
+        autoStopJob?.cancel()
+        autoStopJob = null
         isRecording = false
         val clip = recorder.stop()
         if (clip == null) {
@@ -214,6 +238,8 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelRecording() {
         if (!isRecording) return
+        autoStopJob?.cancel()
+        autoStopJob = null
         isRecording = false
         recorder.cancel()
         voiceStatus = ""

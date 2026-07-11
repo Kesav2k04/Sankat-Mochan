@@ -100,6 +100,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var voiceState by mutableStateOf(VoiceState.IDLE)
         private set
 
+    /** True while a voice capture/transcription is in flight - model unload/delete/switch must
+     *  wait, or the pending transcription lands on a torn-down engine and is silently dropped. */
+    private val voiceBusy get() = voiceState != VoiceState.IDLE
+
     /** True when the STT model files are on the phone (else the mic button is hidden/disabled). */
     var voiceAvailable by mutableStateOf(false)
         private set
@@ -169,7 +173,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Import a user-picked model file, then select and load it (plug-and-play). */
     fun importLocalModel(uri: android.net.Uri, suggestedName: String) {
-        if (isGenerating || isImporting || phase == Phase.DOWNLOADING) return
+        if (isGenerating || isImporting || voiceBusy || phase == Phase.DOWNLOADING) return
         viewModelScope.launch {
             isImporting = true
             try {
@@ -212,7 +216,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
      * so the screen never ends up pointing at a file that no longer exists.
      */
     fun deleteLocalModel(model: AssistantModel) {
-        if (!model.isLocal || isGenerating || isImporting || phase == Phase.DOWNLOADING) return
+        if (!model.isLocal || isGenerating || isImporting || voiceBusy || phase == Phase.DOWNLOADING) return
         viewModelScope.launch {
             val wasSelected = model.id == selectedModel.id
             val deleted = engine.deleteLocalModel(model)
@@ -246,7 +250,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
      *  path back to [Phase.NEEDS_MODEL] - once a model is loaded, the UI never offers the
      *  ChooseModelCard again, so the user is stuck on whatever model they first loaded. */
     fun switchModel() {
-        if (isGenerating || isImporting || phase != Phase.READY) return
+        if (isGenerating || isImporting || voiceBusy || phase != Phase.READY) return
         viewModelScope.launch {
             engine.unload()
             messages.clear()
@@ -255,7 +259,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectModel(model: AssistantModel) {
-        if (model.id == selectedModel.id || isGenerating || isImporting || phase == Phase.DOWNLOADING) return
+        if (model.id == selectedModel.id || isGenerating || isImporting || voiceBusy || phase == Phase.DOWNLOADING) return
         viewModelScope.launch {
             downloadJob?.cancel()
             engine.unload()
@@ -267,7 +271,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun chooseCompute(enabled: Boolean) {
-        if (enabled == runOnNpu || isGenerating || isImporting || phase == Phase.DOWNLOADING) return
+        if (enabled == runOnNpu || isGenerating || isImporting || voiceBusy || phase == Phase.DOWNLOADING) return
         runOnNpu = enabled
         // The compute unit is baked in at load time, so re-load if a model is already up.
         if (phase == Phase.READY || phase == Phase.LOAD_FAILED) {
@@ -364,8 +368,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun stop() {
         if (!isGenerating) return
-        // Ask the native runtime to wind down; the flow then completes and clears isGenerating.
+        // Ask the native runtime to wind down AND cancel the collecting job ourselves - the
+        // native stream can close without a terminal event, which would leave the collect
+        // suspended and isGenerating pinned true (Send disabled forever). Cancelling runs
+        // send()'s finally (spinner + isGenerating) and replyFlow's history reconciliation.
         viewModelScope.launch { engine.stop() }
+        generateJob?.cancel()
     }
 
     /** Tap the mic: if idle, start recording; if recording, stop and transcribe→send. */
