@@ -69,6 +69,7 @@ class Envelope:
     id: str
     type: str
     origin: str
+    device_id: str = ""      # stable id of the originating handset ("d" on the wire)
     ref_id: Optional[str] = None
     urgency: int = 3
     category: str = ""
@@ -90,6 +91,8 @@ class Envelope:
 
     def to_dict(self) -> Dict[str, Any]:
         o: Dict[str, Any] = {"i": self.id, "t": self.type, "o": self.origin}
+        if self.device_id:
+            o["d"] = self.device_id
         if self.ref_id is not None:
             o["r"] = self.ref_id
         o["u"] = self.urgency
@@ -108,8 +111,8 @@ class Envelope:
         return json.dumps(replace(self, gist=gist).to_dict(),
                           separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
-    def encode(self) -> bytes:
-        """UTF-8 JSON, <= MAX_BYTES. Only the free-text gist is trimmed to fit.
+    def encode(self, max_bytes: int = MAX_BYTES) -> bytes:
+        """UTF-8 JSON, <= max_bytes. Only the free-text gist is trimmed to fit.
 
         Trims one CHARACTER at a time. The Kotlin original drops a *byte* count from a
         *character* string (`dropLast(bytes.size - MAX_BYTES)`), which throws away the
@@ -117,10 +120,14 @@ class Envelope:
         those are exactly the languages this app exists to carry. Both produce a valid
         <= 244-byte envelope, so the wire contract is unchanged; this one just keeps as
         much of the victim's message as physically fits.
+
+        `max_bytes` lets a link with a smaller frame budget than the 244-byte wire cap
+        (the UNO Q Router-Bridge modem takes at most 234 B per call) shrink the envelope
+        to fit rather than refuse it — a shortened SOS delivered beats a full one lost.
         """
         gist = self.gist
         raw = self._raw(gist)
-        while len(raw) > MAX_BYTES and gist:
+        while len(raw) > max_bytes and gist:
             gist = gist[:-1]
             raw = self._raw(gist)
         return raw
@@ -317,6 +324,7 @@ def decode(raw: bytes):
         id=msg_id,
         type=msg_type,
         origin=origin,
+        device_id=_clamp_str(o.get("d"), MAX_ID),
         ref_id=_clamp_str(o["r"], MAX_ID) if "r" in o else None,
         urgency=_clamp_int(o, "u", 3, 1, 5),
         category=_clamp_str(o.get("c"), 48),

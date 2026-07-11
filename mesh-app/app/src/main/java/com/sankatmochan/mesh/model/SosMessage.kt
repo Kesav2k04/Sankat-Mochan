@@ -34,11 +34,16 @@ data class SosMessage(
     val hasLocation: Boolean get() = lat != null && lng != null
     /** UTF-8 JSON bytes, guaranteed <= [MAX_BYTES] (gist is trimmed if needed). */
     fun encode(): ByteArray {
-        var trimmedGist = gist
+        // Receivers cap the gist at MAX_TEXT chars anyway (decode), so anything beyond
+        // that is dead weight - cut it up front instead of iterating thousands of times.
+        var trimmedGist = gist.take(MAX_TEXT)
         var bytes = toBytes(trimmedGist)
         // Only the free-text gist is trimmed to fit - never the structured fields.
+        // One CHARACTER at a time: dropping (excess bytes) characters over-trims 3x for
+        // Tamil/Hindi, where a character is three UTF-8 bytes - exactly the languages
+        // this app exists to carry. Mirrors Envelope.encode() in pi-code/envelope.py.
         while (bytes.size > MAX_BYTES && trimmedGist.isNotEmpty()) {
-            trimmedGist = trimmedGist.dropLast((bytes.size - MAX_BYTES).coerceAtLeast(1))
+            trimmedGist = trimmedGist.dropLast(1)
             bytes = toBytes(trimmedGist)
         }
         if (bytes.size > MAX_BYTES) {
