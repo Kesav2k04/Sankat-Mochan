@@ -80,6 +80,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     val messages = mutableStateListOf<UiMessage>()
 
+    /** GGUF files the user has side-loaded onto the phone, shown alongside the hub catalogue. */
+    val localModels = mutableStateListOf<AssistantModel>()
+
     private var downloadJob: Job? = null
     private var generateJob: Job? = null
 
@@ -92,6 +95,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun bootstrap() {
         viewModelScope.launch {
             phase = Phase.INITIALIZING
+            refreshLocalModels()
             when (val result = engine.initialize()) {
                 is GenieXEngine.InitResult.Unsupported -> {
                     statusMessage = result.reason
@@ -100,6 +104,34 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
                 GenieXEngine.InitResult.Ready -> evaluateModel()
             }
+        }
+    }
+
+    /** Re-scan device storage for side-loaded `.gguf` files. */
+    fun refreshLocalModels() {
+        viewModelScope.launch {
+            val found = engine.scanLocalModels()
+            localModels.clear()
+            localModels.addAll(found)
+        }
+    }
+
+    /** Import a user-picked GGUF, then select and load it (plug-and-play). */
+    fun importLocalModel(uri: android.net.Uri, suggestedName: String) {
+        if (isGenerating || phase == Phase.DOWNLOADING) return
+        viewModelScope.launch {
+            val imported = engine.importGguf(uri, suggestedName)
+            if (imported == null) {
+                statusMessage = "Could not import that file. Make sure it is a .gguf model."
+                phase = Phase.NEEDS_MODEL
+                return@launch
+            }
+            if (localModels.none { it.id == imported.id }) localModels.add(0, imported)
+            if (phase == Phase.UNSUPPORTED) return@launch
+            engine.unload()
+            messages.clear()
+            selectedModel = imported
+            evaluateModel()
         }
     }
 

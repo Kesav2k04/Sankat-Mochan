@@ -1,14 +1,20 @@
 package com.sankatmochan.mesh.ui
 
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,12 +27,15 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.CloudDownload
@@ -51,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -61,7 +71,6 @@ import com.sankatmochan.mesh.chat.AssistantModels
 import com.sankatmochan.mesh.chat.ChatViewModel
 import com.sankatmochan.mesh.chat.ChatViewModel.Phase
 import com.sankatmochan.mesh.chat.ChatViewModel.Role
-import com.sankatmochan.mesh.ui.theme.urgencyColors
 
 /**
  * The on-device AI assistant page. Reached from the chat chip on the home console. Everything
@@ -71,6 +80,22 @@ import com.sankatmochan.mesh.ui.theme.urgencyColors
 @Composable
 fun ChatScreen(onBack: () -> Unit) {
     val vm: ChatViewModel = viewModel()
+    val context = LocalContext.current
+
+    // Plug-and-play: pick a .gguf from device storage; we copy it in and load it.
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            val name = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: "model.gguf"
+            vm.importLocalModel(uri, name)
+        }
+    }
+    // GGUF has no registered MIME type, so accept any file and validate by extension.
+    val onPickLocal = { importLauncher.launch(arrayOf("application/octet-stream", "*/*")) }
+
+    // Pick up any models side-loaded onto the phone while we were away.
+    LaunchedEffect(Unit) { vm.refreshLocalModels() }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
@@ -79,7 +104,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 if (vm.phase == Phase.READY) {
                     Conversation(vm)
                 } else {
-                    SetupPanel(vm)
+                    SetupPanel(vm, onPickLocal = onPickLocal)
                 }
             }
             if (vm.phase == Phase.READY) {
@@ -151,10 +176,11 @@ private fun ChatHeader(vm: ChatViewModel, onBack: () -> Unit) {
 // ── Setup (init / download / load / errors) ───────────────────────────────────
 
 @Composable
-private fun SetupPanel(vm: ChatViewModel) {
+private fun SetupPanel(vm: ChatViewModel, onPickLocal: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -178,15 +204,17 @@ private fun SetupPanel(vm: ChatViewModel) {
 
             Phase.DOWNLOADING -> DownloadCard(vm)
 
-            Phase.NEEDS_MODEL, Phase.LOAD_FAILED -> ChooseModelCard(vm)
+            Phase.NEEDS_MODEL, Phase.LOAD_FAILED -> ChooseModelCard(vm, onPickLocal)
 
             Phase.READY -> Unit // handled by Conversation
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChooseModelCard(vm: ChatViewModel) {
+private fun ChooseModelCard(vm: ChatViewModel, onPickLocal: () -> Unit) {
+    val selected = vm.selectedModel
     Tile(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -209,15 +237,29 @@ private fun ChooseModelCard(vm: ChatViewModel) {
             Spacer(Modifier.height(16.dp))
             SectionLabel("Choose a model")
             Spacer(Modifier.height(10.dp))
-            ChipRow(
-                options = AssistantModels.catalog.map { it.id to it.displayName },
-                selected = vm.selectedModel.id,
-                onSelect = { id -> AssistantModels.byId(id)?.let(vm::selectModel) },
-            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                AssistantModels.catalog.forEach { model ->
+                    OptionChip(
+                        label = model.displayName,
+                        selected = model.id == selected.id,
+                    ) { vm.selectModel(model) }
+                }
+                vm.localModels.forEach { model ->
+                    OptionChip(
+                        label = "📁 ${model.displayName}",
+                        selected = model.id == selected.id,
+                    ) { vm.selectModel(model) }
+                }
+                AddModelChip(onClick = onPickLocal)
+            }
 
             Spacer(Modifier.height(12.dp))
             Text(
-                "${vm.selectedModel.blurb}  (${vm.selectedModel.approxSize})",
+                "${selected.blurb}  (${selected.approxSize})",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 18.sp,
@@ -244,13 +286,53 @@ private fun ChooseModelCard(vm: ChatViewModel) {
             Spacer(Modifier.height(18.dp))
             val loadFailed = vm.phase == Phase.LOAD_FAILED
             PrimaryButton(
-                text = if (loadFailed) "Try again" else "Download & start",
-                icon = Icons.Rounded.CloudDownload,
+                text = when {
+                    loadFailed -> "Try again"
+                    selected.isLocal -> "Load"
+                    else -> "Download & start"
+                },
+                icon = if (selected.isLocal) Icons.Rounded.AutoAwesome else Icons.Rounded.CloudDownload,
                 onClick = { if (loadFailed) vm.retryLoad() else vm.download() },
             )
         }
     }
 }
+
+/** The "+" chip that opens the file picker to side-load a local .gguf model. */
+@Composable
+private fun AddModelChip(onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(shape)
+            .background(scheme.surfaceContainerHigh)
+            .border(1.dp, scheme.outline, shape)
+            .bounceClick(pressedScale = 0.93f, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Icon(
+            Icons.Rounded.Add,
+            contentDescription = "Add a model from device storage",
+            tint = scheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.size(6.dp))
+        Text(
+            "Local file",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Medium,
+            color = scheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Look up a content Uri's display name (the original file name) for the imported copy. */
+private fun queryDisplayName(context: android.content.Context, uri: android.net.Uri): String? =
+    context.contentResolver
+        .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
 
 @Composable
 private fun DownloadCard(vm: ChatViewModel) {

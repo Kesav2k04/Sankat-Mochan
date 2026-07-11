@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application") version "8.5.2"
     id("org.jetbrains.kotlin.android") version "2.0.20"
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.20"
+}
+
+// Hugging Face token for gated model pulls (Gemma). Read from the gitignored local.properties
+// so the secret never lands in version control (CLAUDE.md #2). Absent locally → empty string,
+// and only gated models fail to download (non-gated ones still work).
+val huggingFaceToken: String = run {
+    val props = Properties()
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { props.load(it) }
+    props.getProperty("HF_TOKEN").orEmpty()
 }
 
 android {
@@ -14,6 +26,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
+
+        // Injected from local.properties at build time — never a committed literal.
+        buildConfigField("String", "HF_TOKEN", "\"$huggingFaceToken\"")
 
         ndk {
             // Every Snapdragon device we target (incl. the OnePlus 15 demo phone) is arm64.
@@ -41,6 +56,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     androidResources {
         // The bundled Bengaluru map archive is already PNG-packed; leave it uncompressed so

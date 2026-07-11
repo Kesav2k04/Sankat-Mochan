@@ -1,7 +1,9 @@
 package com.sankatmochan.mesh.chat
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
+import com.sankatmochan.mesh.BuildConfig
 import com.geniex.sdk.GenieXSdk
 import com.geniex.sdk.LlmWrapper
 import com.geniex.sdk.ModelManagerWrapper
@@ -13,6 +15,7 @@ import com.geniex.sdk.bean.LlmCreateInput
 import com.geniex.sdk.bean.LlmStreamResult
 import com.geniex.sdk.bean.ModelConfig
 import com.geniex.sdk.bean.ModelPullInput
+import com.geniex.sdk.bean.ModelType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -21,7 +24,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.IOException
+import java.util.Locale
 import kotlin.coroutines.resume
 
 /**
@@ -42,6 +47,13 @@ import kotlin.coroutines.resume
 class GenieXEngine(context: Context) {
 
     private val appContext = context.applicationContext
+
+    /**
+     * Where side-loaded models live. App-scoped external storage needs no runtime permission
+     * and is reachable over adb — you can `adb push model.gguf` into
+     * `Android/data/<pkg>/files/models/` and it shows up in the picker (plug-and-play).
+     */
+    val localModelsDir: File = File(appContext.getExternalFilesDir(null), "models")
 
     /** Guards one-time SDK init and the single native LLM handle. */
     private val lock = Mutex()
@@ -98,8 +110,9 @@ class GenieXEngine(context: Context) {
 
     // ── Download ──────────────────────────────────────────────────────────────
 
-    /** True when the model's weights are already fully pulled into the manager's cache. */
+    /** True when the model is ready to load — a local file on disk, or a cached hub pull. */
     suspend fun isDownloaded(model: AssistantModel): Boolean = withContext(Dispatchers.IO) {
+        if (model.isLocal) return@withContext File(model.localPath!!).exists()
         runCatching { ModelManagerWrapper.getPaths(model.modelName) != null }.getOrDefault(false)
     }
 
@@ -107,15 +120,24 @@ class GenieXEngine(context: Context) {
      * Download [model]'s weights, emitting whole-percent progress (0..100). Resumable: a
      * cancelled collection leaves partial files on disk for the next call to continue. Throws
      * [IOException] on a hub error so the caller can show a retry.
+     *
+     * Gated models (e.g. Gemma) carry the Hugging Face token from BuildConfig; it is only sent
+     * to Hugging Face for the pull and never logged.
      */
     fun downloadFlow(model: AssistantModel): Flow<Int> = flow {
-        val hub = runCatching { HubSource.valueOf(model.hub) }.getOrDefault(HubSource.AUTO)
+        // Local models are already on disk — nothing to pull.
+        if (model.isLocal) {
+            emit(100)
+            return@flow
+        }
         val input = ModelPullInput(
             model_name = model.modelName,
             precision = model.quant,
-            hub = hub,
+            hub = HubSource.HUGGINGFACE,
+            hf_token = if (model.gated) BuildConfig.HF_TOKEN else "",
             chipset = null,       // GGUF/HuggingFace pulls are chipset-agnostic.
             display_name = null,
+            model_type = ModelType.LLM,
         )
         emit(0)
         ModelManagerWrapper.pullFlow(input).collect { event ->
@@ -153,25 +175,49 @@ class GenieXEngine(context: Context) {
      */
     suspend fun load(model: AssistantModel, onNpu: Boolean): LoadResult = lock.withLock {
         withContext(Dispatchers.IO) {
-            val paths = runCatching { ModelManagerWrapper.getPaths(model.modelName) }.getOrNull()
-                ?: return@withContext LoadResult.Failed("Model files are missing — download it again.")
+            // Resolve the on-disk model. Side-loaded files are used verbatim (llama.cpp reads
+            // the tokenizer embedded in the GGUF); hub models come from the manager's cache.
+            val modelPath: String
+            val tokenizerPath: String
+            val runtimeId: String
+            val modelKey: String
+            if (model.isLocal) {
+                val f = File(model.localPath!!)
+                if (!f.exists()) {
+                    return@withContext LoadResult.Failed("That file is no longer on the phone.")
+                }
+                modelPath = f.absolutePath
+                tokenizerPath = ""
+                runtimeId = GenieXSdk.PLUGIN_ID_LLAMA_CPP
+                modelKey = model.id
+            } else {
+                val paths = runCatching { ModelManagerWrapper.getPaths(model.modelName) }.getOrNull()
+                    ?: return@withContext LoadResult.Failed("Model files are missing — download it again.")
+                modelPath = paths.model_path
+                    ?: return@withContext LoadResult.Failed("Model files are missing — download it again.")
+                tokenizerPath = paths.tokenizer_path.orEmpty()
+                // A GGUF pull writes no runtime manifest, so fall back to the llama.cpp runtime.
+                runtimeId = paths.runtime_id?.ifEmpty { GenieXSdk.PLUGIN_ID_LLAMA_CPP }
+                    ?: GenieXSdk.PLUGIN_ID_LLAMA_CPP
+                modelKey = paths.model_name ?: model.modelName
+            }
 
-            // A GGUF pull writes no runtime manifest, so fall back to the llama.cpp runtime.
-            val runtimeId = paths.runtime_id.ifEmpty { "llama_cpp" }
             val config = ModelConfig(
                 nCtx = 2048,
-                nGpuLayers = if (onNpu) 999 else 0,
+                nGpuLayers = if (onNpu) 999 else 0,   // llama.cpp: full offload = NPU, 0 = CPU.
                 enable_thinking = false,
             )
+            val computeUnit =
+                if (onNpu) ComputeUnitValue.NPU.value else ComputeUnitValue.CPU.value
             val built = LlmWrapper.builder()
                 .llmCreateInput(
                     LlmCreateInput(
-                        model_name = paths.model_name,
-                        model_path = paths.model_path,
-                        tokenizer_path = paths.tokenizer_path,
+                        model_name = modelKey,
+                        model_path = modelPath,
+                        tokenizer_path = tokenizerPath,
                         config = config,
                         runtime_id = runtimeId,
-                        compute_unit = ComputeUnitValue.NPU.value,
+                        compute_unit = computeUnit,
                     )
                 )
                 .build()
@@ -189,6 +235,63 @@ class GenieXEngine(context: Context) {
                 },
             )
         }
+    }
+
+    // ── Local (side-loaded) models ──────────────────────────────────────────────
+
+    /** Every `*.gguf` sitting in [localModelsDir], newest first, as ready-to-load models. */
+    suspend fun scanLocalModels(): List<AssistantModel> = withContext(Dispatchers.IO) {
+        val files = localModelsDir.listFiles { f ->
+            f.isFile && f.name.endsWith(".gguf", ignoreCase = true)
+        } ?: return@withContext emptyList()
+        files.sortedByDescending { it.lastModified() }.map { it.toLocalModel() }
+    }
+
+    /**
+     * Copy a user-picked GGUF (content:// Uri) into [localModelsDir] so the native runtime can
+     * open it by path, and return it as a loadable model. Returns null on any I/O failure.
+     */
+    suspend fun importGguf(uri: Uri, suggestedName: String): AssistantModel? =
+        withContext(Dispatchers.IO) {
+            localModelsDir.mkdirs()
+            val safe = suggestedName.substringAfterLast('/').substringAfterLast('\\')
+                .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                .ifBlank { "model.gguf" }
+                .let { if (it.endsWith(".gguf", ignoreCase = true)) it else "$it.gguf" }
+            val dest = File(localModelsDir, safe)
+            val ok = runCatching {
+                appContext.contentResolver.openInputStream(uri)?.use { input ->
+                    dest.outputStream().use { output -> input.copyTo(output) }
+                } ?: error("could not open picked file")
+            }.isSuccess
+            if (!ok) {
+                Log.e(TAG, "importGguf failed for $safe")
+                dest.delete()
+                null
+            } else {
+                dest.toLocalModel()
+            }
+        }
+
+    private fun File.toLocalModel(): AssistantModel = AssistantModel(
+        id = "local:$name",
+        displayName = nameWithoutExtension,
+        modelName = name,
+        quant = "",
+        approxSize = humanSize(length()),
+        blurb = "On your phone · loads instantly, no download.",
+        localPath = absolutePath,
+    )
+
+    private fun humanSize(bytes: Long): String {
+        if (bytes <= 0) return "0 B"
+        val units = arrayOf("B", "KB", "MB", "GB")
+        var value = bytes.toDouble()
+        var i = 0
+        while (value >= 1024 && i < units.lastIndex) {
+            value /= 1024; i++
+        }
+        return String.format(Locale.US, if (i >= 2) "%.1f %s" else "%.0f %s", value, units[i])
     }
 
     // ── Chat ──────────────────────────────────────────────────────────────────

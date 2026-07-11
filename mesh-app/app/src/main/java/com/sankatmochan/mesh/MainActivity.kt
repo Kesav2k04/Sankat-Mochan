@@ -42,6 +42,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
@@ -265,7 +266,8 @@ private fun AppRoot(
     // frame.
     val role = vm.role ?: MeshRole.VICTIM
     var settingsOpen by remember { mutableStateOf(false) }
-    var chatOpen by remember { mutableStateOf(false) }
+    // Survives rotation / process death so an auto-rotate never bounces the user back home.
+    var chatOpen by rememberSaveable { mutableStateOf(false) }
     val openSettings = { settingsOpen = true }
 
     // Task 3: on the responder screen the back gesture returns to the user (home) console
