@@ -1,6 +1,6 @@
 // Map configuration — FULLY OFFLINE vector basemap.
 //
-// Basemap data: static/wayanad.pmtiles — a small-area extract of the Protomaps
+// Basemap data: command-post/static/wayanad.pmtiles — a small-area extract of the Protomaps
 // OSM build, produced with the officially supported `pmtiles extract` CLI
 // (https://docs.protomaps.com/pmtiles/cli). Data © OpenStreetMap contributors,
 // ODbL. Fonts/sprites are vendored under static/basemaps-assets/ (OFL fonts),
@@ -46,20 +46,28 @@ const SATELLITE_STYLE = {
 // ── VENUE basemap: fully offline vector from static/*.pmtiles (no network) ──
 // To go offline for the demo: regenerate a .pmtiles for your area (pmtiles
 // extract), point /vtiles at it, and set `TILE_STYLE = OFFLINE_STYLE` below.
+// Key names must match @protomaps/basemaps' Flavor interface exactly — unknown
+// keys are silently ignored (parks/roads previously kept their default colors
+// because of this).
 const flavor = {
   ...namedFlavor("light"),
   background: "#f4f3f0",
   earth: "#f4f3f0",
-  park: "#c8dcb3",
-  wood: "#c8dcb3",
+  park_a: "#c8dcb3",
+  park_b: "#c8dcb3",
+  wood_a: "#c8dcb3",
+  wood_b: "#c8dcb3",
   water: "#a9cbf5",
   buildings: "#e3e1df",
   highway: "#fceea7",
-  highwayCasing: "#eab875",
-  major_road: "#ffffff",
-  major_roadCasing: "#dcd9d6",
-  minor_road: "#ffffff",
-  minor_roadCasing: "#dcd9d6",
+  highway_casing_early: "#eab875",
+  highway_casing_late: "#eab875",
+  major: "#ffffff",
+  major_casing_early: "#dcd9d6",
+  major_casing_late: "#dcd9d6",
+  minor_a: "#ffffff",
+  minor_b: "#ffffff",
+  minor_casing: "#dcd9d6",
 };
 const OFFLINE_STYLE = {
   version: 8,
