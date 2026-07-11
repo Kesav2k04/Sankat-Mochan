@@ -19,7 +19,10 @@
 #     5.5.0 was cut that same day, so 5.6.0 is the first release guaranteed to include it.
 
 # Fast path (needs an NVIDIA CUDA GPU). Unsloth pulls transformers/trl/peft/datasets/bitsandbytes:
-unsloth>=2026.4.1,<2027
+# Floor raised 2026.4.1 -> 2026.6.7: the "Gemma 4 Fixes" release (unsloth discussion #4921)
+# fixes the T4 fp16 -1e9 audio-attention overflow, grad-accum loss explosion, and the Gemma 4
+# dtype handling this script previously worked around with a manual re-cast (now removed).
+unsloth>=2026.6.7,<2027
 
 # Fallback path deps (CPU/MPS, no CUDA). Also satisfied by the unsloth install above; listed so
 # `pip install -r requirements.txt` gives a working transformers+PEFT trainer without a GPU.
