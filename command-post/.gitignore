@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .env
 backends.json
+# Per-session voice clips written at runtime; purged on startup, never committed.
+audio_store/
 aihub_out/
 # AI Hub compile staging: multi-GB ONNX weights, never track
 aihub_stage/

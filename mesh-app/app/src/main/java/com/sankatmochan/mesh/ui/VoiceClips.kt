@@ -45,6 +45,28 @@ private const val TAG = "VoiceClips"
  */
 @Composable
 fun VoiceClipCard(clip: VoiceClip, modifier: Modifier = Modifier) {
+    Tile(modifier.fillMaxWidth()) {
+        VoiceClipContent(clip, Modifier.padding(14.dp))
+    }
+}
+
+/**
+ * The clip's playable body without an outer [Tile]. Rendered standalone by
+ * [VoiceClipCard] and embedded INSIDE the matching [SosCard] (see ResponderScreen), so a
+ * recording sits with the SOS it belongs to instead of floating in a separate list where
+ * a responder can't tell which text it goes with. Correlation is by `origin` — the clip id
+ * is "<origin>-v<seq>" and the SOS id is "<origin>-<seq>", same originating node.
+ *
+ * [hideOrigin] drops the "Voice from <origin>" line when embedded (the host card already
+ * names the sender); [label] overrides that line for the standalone/unmatched case.
+ */
+@Composable
+fun VoiceClipContent(
+    clip: VoiceClip,
+    modifier: Modifier = Modifier,
+    hideOrigin: Boolean = false,
+    label: String = "Voice from ${clip.origin}",
+) {
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var playing by remember { mutableStateOf(false) }
 
@@ -56,65 +78,65 @@ fun VoiceClipCard(clip: VoiceClip, modifier: Modifier = Modifier) {
         }
     }
 
-    Tile(modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconBadge(
-                Icons.Rounded.Mic,
-                tint = if (clip.complete) urgencyColors.critical
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                size = 42.dp
-            )
-            Spacer(Modifier.size(12.dp))
-            Column(Modifier.weight(1f)) {
+    Row(
+        modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconBadge(
+            Icons.Rounded.Mic,
+            tint = if (clip.complete) urgencyColors.critical
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            size = 42.dp
+        )
+        Spacer(Modifier.size(12.dp))
+        Column(Modifier.weight(1f)) {
+            if (!hideOrigin) {
                 Text(
-                    "Voice from ${clip.origin}",
+                    label,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    text = if (clip.complete) routeLabel(clip.hops)
-                    else "receiving - ${clip.received} of ${clip.total} pieces " +
-                        "(${clip.missing} still missing)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (!clip.complete) {
-                    Spacer(Modifier.height(8.dp))
-                    Progress(clip.received.toFloat() / clip.total)
-                }
             }
+            Text(
+                text = if (clip.complete) routeLabel(clip.hops)
+                else "receiving - ${clip.received} of ${clip.total} pieces " +
+                    "(${clip.missing} still missing)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (!clip.complete) {
+                Spacer(Modifier.height(8.dp))
+                Progress(clip.received.toFloat() / clip.total)
+            }
+        }
 
-            if (clip.complete) {
-                Spacer(Modifier.size(10.dp))
-                // Reflects the true state: stop glyph while audio is playing.
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(if (playing) urgencyColors.critical else urgencyColors.low)
-                        .bounceClick(pressedScale = 0.88f) {
-                            if (playing) {
-                                player?.run { runCatching { stop(); release() } }
-                                player = null
-                                playing = false
-                            } else {
-                                player = startPlayback(clip) { playing = false; player = null }
-                                playing = player != null
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        if (playing) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
-                        contentDescription = if (playing) "Stop playback" else "Play voice message",
-                        tint = Color.White,
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
+        if (clip.complete) {
+            Spacer(Modifier.size(10.dp))
+            // Reflects the true state: stop glyph while audio is playing.
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(if (playing) urgencyColors.critical else urgencyColors.low)
+                    .bounceClick(pressedScale = 0.88f) {
+                        if (playing) {
+                            player?.run { runCatching { stop(); release() } }
+                            player = null
+                            playing = false
+                        } else {
+                            player = startPlayback(clip) { playing = false; player = null }
+                            playing = player != null
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (playing) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
+                    contentDescription = if (playing) "Stop playback" else "Play voice message",
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp)
+                )
             }
         }
     }

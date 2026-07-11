@@ -75,12 +75,18 @@ class Store:
 
     # ---- C4 responder registry ----------------------------------------
     def _seed_responders(self) -> None:
-        """Pre-registered roster for the demo (also fed by heartbeats later)."""
+        """Pre-registered roster for the demo (also fed by heartbeats later).
+
+        Coordinates MUST sit inside the Bengaluru operating box — the same box the map
+        centres on (web mapConfig.js) and the sample SOS clusters live in (models.py).
+        They previously pointed at Wayanad (~11.68, 76.13), ~140 km away, so every
+        seeded responder mobile fell off the edge of the command-post map and only the
+        victim pins were ever visible. Placed near the four demo clusters instead."""
         base = [
-            ("R1", "NDRF ALPHA", "heavy rescue · rope, cutting gear", 11.6800, 76.1330),
-            ("R2", "FIRE BRAVO", "swift-water · 6 crew", 11.6905, 76.1255),
-            ("R3", "MEDIC CHARLIE", "field medical · O2, stretchers", 11.6832, 76.1402),
-            ("R4", "K9 DELTA", "search dogs · debris survey", 11.6752, 76.1288),
+            ("R1", "NDRF ALPHA", "heavy rescue · rope, cutting gear", 12.9350, 77.6210),   # Koramangala
+            ("R2", "FIRE BRAVO", "swift-water · 6 crew", 12.9700, 77.6380),                 # Indiranagar
+            ("R3", "MEDIC CHARLIE", "field medical · O2, stretchers", 12.9720, 77.5950),    # city centre
+            ("R4", "K9 DELTA", "search dogs · debris survey", 12.9850, 77.6030),            # Shivajinagar
         ]
         for rid, callsign, cap, lat, lng in base:
             self.responders[rid] = {

@@ -10,9 +10,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
@@ -53,7 +56,15 @@ fun RoleSettingsDialog(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             border = null,
         ) {
-            Column(Modifier.padding(20.dp)) {
+            // Scrolls if the viewport is short (small phone, landscape, or a large system
+            // font scale) so the appearance row is never clipped below the fold; capped to
+            // most of the screen height so the dialog never runs edge to edge.
+            Column(
+                Modifier
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp)
+            ) {
                 SectionLabel("this phone's job")
                 Spacer(Modifier.size(14.dp))
                 RoleOption(
