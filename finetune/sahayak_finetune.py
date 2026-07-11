@@ -136,12 +136,24 @@ def run_unsloth(args, env):
 
     max_seq = args.max_seq_len
     template = resolve_template(args.model, args.chat_template)
+
+    # Precision: prefer bfloat16 whenever the card supports it AT ALL (native on Ampere+, or
+    # emulated on Turing/T4 where torch.cuda.is_bf16_supported() is still True). Why not fp16 on
+    # a T4: Gemma 4's vision/audio conv path overflows fp16 (values > 65504), so Unsloth refuses
+    # fp16 ("Using float16 precision for gemma4 won't work! Using float32.") and upcasts that
+    # module to float32 = 4 bytes, which spikes ~5 GB and OOMs the load on a 16 GB T4. bf16 has
+    # fp32's dynamic range in only 2 bytes, so the module stays 2 bytes and fits. Load and train
+    # in the SAME dtype so nothing silently re-casts. (env["bf16"] = NATIVE bf16, kept for logs.)
+    use_bf16 = torch.cuda.is_bf16_supported()
+    load_dtype = torch.bfloat16 if use_bf16 else torch.float16
     print(f"[unsloth] model={args.model} chat_template={template}")
+    print(f"[unsloth] precision: dtype={load_dtype} "
+          f"(native bf16={env['bf16']}, bf16 usable={use_bf16})")
     print(f"[unsloth] loading {args.model} (4bit={not args.no_4bit}) …")
     model, tokenizer = FastModel.from_pretrained(
         model_name=args.model,
         max_seq_length=max_seq,
-        dtype=torch.float16,
+        dtype=load_dtype,
         load_in_4bit=not args.no_4bit,   # QLoRA by default (spec: prefer E4B QLoRA)
         full_finetuning=False,
         token=os.environ.get("HF_TOKEN"),
@@ -192,8 +204,11 @@ def run_unsloth(args, env):
         output_dir=str(Path(args.out) / "checkpoints"),
         report_to="none",
         max_seq_length=max_seq,
-        bf16=env["bf16"],
-        fp16=not env["bf16"],
+        # Train in the SAME precision the weights loaded in (see load_dtype above). On a T4 this
+        # is emulated bf16 — slower than fp16 but the only 2-byte path Gemma 4 accepts, and it
+        # fits. On Ampere+ it's native bf16 (fast). fp16 only if the card has no bf16 at all.
+        bf16=use_bf16,
+        fp16=not use_bf16,
         eval_strategy="epoch" if eval_ds is not None else "no",
     )
 
