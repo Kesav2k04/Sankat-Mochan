@@ -1,5 +1,7 @@
 package com.sankatmochan.mesh.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +43,7 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.AlertDialog
@@ -68,6 +71,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -99,8 +103,23 @@ fun ChatScreen(onBack: () -> Unit) {
     // GGUF has no registered MIME type, so accept any file and validate by extension.
     val onPickLocal = { importLauncher.launch(arrayOf("application/octet-stream", "*/*")) }
 
+    // Mic → on-device STT. Ask for RECORD_AUDIO the first time, then start/stop capture.
+    val recordPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) vm.toggleVoiceInput() }
+    val onMic = {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) vm.toggleVoiceInput() else recordPermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
     // Pick up any models side-loaded onto the phone while we were away.
     LaunchedEffect(Unit) { vm.refreshLocalModels() }
+
+    // Auto-dismiss the transient voice notice (mic denied, no speech heard, …).
+    LaunchedEffect(vm.voiceNotice) {
+        if (vm.voiceNotice != null) { kotlinx.coroutines.delay(2600); vm.clearVoiceNotice() }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
@@ -113,10 +132,23 @@ fun ChatScreen(onBack: () -> Unit) {
                 }
             }
             if (vm.phase == Phase.READY) {
+                vm.voiceNotice?.let { note ->
+                    Text(
+                        note,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                    )
+                }
                 InputBar(
                     isGenerating = vm.isGenerating,
+                    voiceState = vm.voiceState,
+                    voiceAvailable = vm.voiceAvailable,
                     onSend = vm::send,
                     onStop = vm::stop,
+                    onMic = onMic,
                 )
             }
         }
@@ -645,8 +677,11 @@ private fun ThinkingDots(color: Color) {
 @Composable
 private fun InputBar(
     isGenerating: Boolean,
+    voiceState: ChatViewModel.VoiceState,
+    voiceAvailable: Boolean,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
+    onMic: () -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
     val canSend = text.isNotBlank() && !isGenerating
@@ -665,6 +700,10 @@ private fun InputBar(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
+        if (voiceAvailable) {
+            MicButton(voiceState = voiceState, enabled = !isGenerating, onMic = onMic)
+            Spacer(Modifier.size(8.dp))
+        }
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },
@@ -730,5 +769,54 @@ private fun SendOrStopButton(
             tint = tint,
             modifier = Modifier.size(24.dp),
         )
+    }
+}
+
+/** Mic button: tap to record, tap again to stop→transcribe→send. Pulses red while recording,
+ *  spins while preparing the model or transcribing. Feeds the SAME chat pipeline as typing. */
+@Composable
+private fun MicButton(
+    voiceState: ChatViewModel.VoiceState,
+    enabled: Boolean,
+    onMic: () -> Unit,
+) {
+    val recording = voiceState == ChatViewModel.VoiceState.RECORDING
+    val busy = voiceState == ChatViewModel.VoiceState.PREPARING ||
+        voiceState == ChatViewModel.VoiceState.TRANSCRIBING
+    val tappable = enabled && (voiceState == ChatViewModel.VoiceState.IDLE || recording)
+
+    // Gentle pulse while recording so it's obvious the mic is live.
+    val pulse by rememberInfiniteTransition(label = "mic").animateFloat(
+        initialValue = 1f,
+        targetValue = if (recording) 1.15f else 1f,
+        animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
+        label = "micPulse",
+    )
+    val bg = when {
+        recording -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    Box(
+        Modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(bg)
+            .bounceClick(pressedScale = 0.9f, enabled = tappable) { onMic() },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (busy) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            Icon(
+                Icons.Rounded.Mic,
+                contentDescription = if (recording) "Stop recording" else "Speak",
+                tint = if (recording) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(if (recording) (24 * pulse).dp else 24.dp),
+            )
+        }
     }
 }

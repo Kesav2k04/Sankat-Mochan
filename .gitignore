@@ -35,6 +35,10 @@ node_modules/
 # JVM heap dumps (e.g. a crashed Gradle/Studio daemon leaves these behind)
 *.hprof
 
+# Compiled AI Hub model artifacts + local model cache (build outputs, not source; too large for git)
+command-post/export_assets/
+command-post/pretrained_models/
+
 # Transient test data / benchmark artifacts (not source)
 command-post/fleurs/
 command-post/audio/
