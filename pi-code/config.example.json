@@ -84,6 +84,8 @@
     "node_id": "PiG1",
     "nack_quiet_s": 4.0,
     "sweep_interval_s": 1.0,
+    "outbox_ttl_s": 180.0,
+    "_outbox_ttl_s_comment": "How long a reassembled voice clip may sit in the upload queue before it is retired. A clip whose SOS never reached the command post keeps getting a 409 ('awaiting_sos'); rather than retry — and log — forever, drop it after this long. A fresh recording's clock starts only when it is enqueued, so raising/lowering this never affects new clips.",
     "upload_concurrency": 2,
     "upload_connect_s": 5.0,
     "upload_read_s": 30.0

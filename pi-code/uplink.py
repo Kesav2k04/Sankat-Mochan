@@ -272,9 +272,40 @@ class VoiceUploadOutbox:
         audio_tmp.replace(self.root / audio_name)
         meta_tmp.replace(self.root / f"{clip.clip_id}.json")
 
+    def drop_expired(self, ttl_s: float) -> int:
+        """Retire clips that have sat un-uploaded longer than ttl_s. Voice is best-effort: if
+        a clip's SOS never reached the command post (so it keeps getting 409'd) or the AI PC
+        stayed unreachable, stop retrying rather than 409-spamming forever. A fresh recording
+        is untouched — its clock only starts when it is enqueued. Returns how many dropped."""
+        if ttl_s <= 0:
+            return 0
+        now = time.time()
+        dropped = 0
+        for meta_path in list(self.root.glob("*.json")):
+            try:
+                if now - meta_path.stat().st_mtime <= ttl_s:
+                    continue
+                meta = json.loads(meta_path.read_text())
+            except (OSError, ValueError, KeyError, TypeError):
+                meta = None
+            if meta is not None:
+                with contextlib.suppress(OSError):
+                    (self.root / str(meta["audio_name"])).unlink()
+            with contextlib.suppress(OSError):
+                meta_path.unlink()
+                dropped += 1
+        return dropped
+
     def pending(self) -> list[tuple[Path, dict[str, Any], bytes]]:
+        # Newest clip first: when upload slots are scarce, a fresh recording should win them
+        # over older queued clips (which the TTL sweep retires anyway).
+        def _mtime(p: Path) -> float:
+            try:
+                return p.stat().st_mtime
+            except OSError:
+                return 0.0
         result = []
-        for meta_path in sorted(self.root.glob("*.json")):
+        for meta_path in sorted(self.root.glob("*.json"), key=_mtime, reverse=True):
             try:
                 meta = json.loads(meta_path.read_text())
                 audio_path = self.root / str(meta["audio_name"])
@@ -309,6 +340,7 @@ class EdgeUplink:
         voice_concurrency: int = 2,
         voice_connect_s: float = 5.0,
         voice_read_s: float = 30.0,
+        voice_outbox_ttl_s: float = 180.0,
     ) -> None:
         self.ws_url = ws_url
         self.http_url = http_url  # e.g. http://<mac>:9000/sos — fallback only
@@ -336,6 +368,10 @@ class EdgeUplink:
             max_workers=self._voice_concurrency, thread_name_prefix="voice-upload")
         self._voice_sema = asyncio.Semaphore(self._voice_concurrency)
         self._voice_timeout = (float(voice_connect_s), float(voice_read_s))
+        # Voice is best-effort: a clip that can't attach (its SOS never reached the command
+        # post, so it keeps getting 409'd) is retired after this long instead of retrying —
+        # and 409-spamming — forever. A fresh recording is never affected.
+        self._voice_ttl_s = float(voice_outbox_ttl_s)
         # One reused session (keep-alive) instead of one per POST; never via a proxy.
         self._session = None
         if requests is not None:
@@ -567,6 +603,10 @@ class EdgeUplink:
         retried next pass (durability unchanged)."""
         if not self.voice_url or self._session is None:
             return
+        expired = self.voice_outbox.drop_expired(self._voice_ttl_s)
+        if expired:
+            self.log.info("cleared %d stale voice clip(s) — no matching SOS within %.0fs; "
+                          "newer clips are unaffected", expired, self._voice_ttl_s)
         loop = asyncio.get_running_loop()
 
         async def _one(meta_path: Path, meta: dict[str, Any], audio: bytes) -> None:
@@ -600,6 +640,13 @@ class EdgeUplink:
             )
             if 200 <= response.status_code < 300:
                 return True
+            if response.status_code == 409:
+                # Expected, not an error: the victim's SOS has not reached the command post
+                # yet, so there is no card to attach to. Stay queued and retry quietly; the
+                # TTL sweep retires the clip if its SOS never comes.
+                self.log.debug("voice %s is waiting for its SOS at the command post (409)",
+                               meta.get("clip_id", "?"))
+                return False
             self.log.warning("voice upload returned HTTP %d; clip remains queued",
                              response.status_code)
             return False

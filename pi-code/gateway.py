@@ -419,6 +419,7 @@ async def run() -> int:
                 voice_concurrency=int(voice_cfg.get("upload_concurrency", 2)),
                 voice_connect_s=float(voice_cfg.get("upload_connect_s", 5.0)),
                 voice_read_s=float(voice_cfg.get("upload_read_s", 30.0)),
+                voice_outbox_ttl_s=float(voice_cfg.get("outbox_ttl_s", 180.0)),
             )
             edge_task = asyncio.create_task(edge.run(stop))
             logger.info("edge link to AI PC: %s (durable outbox, HTTP fallback %s)",
