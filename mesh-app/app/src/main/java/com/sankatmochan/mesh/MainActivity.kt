@@ -125,6 +125,15 @@ class MainActivity : ComponentActivity() {
     // fires when we come back FROM the Bluetooth prompt from immediately firing another.
     private var suppressNextRadioCheck = false
 
+    // A reopened app should greet the user with a clean SOS console, not the last session's sent
+    // SOS (the persistence bug). `wasBackgrounded` records a genuine trip to the background so the
+    // next onStart can reset the session - but NOT a configuration change (rotation retains the
+    // ViewModel and its send state on purpose). `suppressNextSessionReset` covers the outward
+    // excursions we launch ourselves - the battery-saver screen fires on every send, and coming
+    // back from it must not wipe the SOS the user just sent.
+    private var wasBackgrounded = false
+    private var suppressNextSessionReset = false
+
     private val enableBtLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             suppressNextRadioCheck = true
@@ -251,6 +260,25 @@ class MainActivity : ComponentActivity() {
         applyBarStyle(darkTheme)
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Returning to the foreground. If we genuinely left the app (not a rotation, not one of
+        // our own excursions like the battery-saver screen), treat this as a fresh session and
+        // clear any SOS the previous session left on the console.
+        when {
+            suppressNextSessionReset -> { suppressNextSessionReset = false; wasBackgrounded = false }
+            wasBackgrounded -> { wasBackgrounded = false; vm.beginNewSession() }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // A configuration change (rotation) also stops us, but the app never actually left the
+        // foreground and the retained ViewModel should keep its send state. Only a real background
+        // ends the SOS session.
+        if (!isChangingConfigurations) wasBackgrounded = true
+    }
+
     override fun onResume() {
         super.onResume()
         // Watch for a radio being switched off while we're up.
@@ -324,6 +352,7 @@ class MainActivity : ComponentActivity() {
             .addOnFailureListener { e ->
                 if (e is ResolvableApiException) {
                     try {
+                        suppressNextSessionReset = true
                         enableLocationLauncher.launch(
                             IntentSenderRequest.Builder(e.resolution).build()
                         )
@@ -363,6 +392,7 @@ class MainActivity : ComponentActivity() {
 
     private fun promptEnableBluetooth() {
         try {
+            suppressNextSessionReset = true
             enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
         } catch (_: SecurityException) {
             // BLUETOOTH_CONNECT was revoked between the check and the launch - the permission
@@ -383,6 +413,9 @@ class MainActivity : ComponentActivity() {
             "Turn on Battery saver to make your phone last on the mesh",
             Toast.LENGTH_LONG
         ).show()
+        // This bounce to the battery-saver screen fires the instant an SOS is sent, so returning
+        // from it must not be mistaken for reopening the app and wipe that very SOS.
+        suppressNextSessionReset = true
         try {
             startActivity(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS))
         } catch (_: Exception) {

@@ -32,6 +32,33 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     // Which stage we've already raised a banner for, per SOS id, so each step notifies once.
     private val notifiedStage = HashMap<String, Int>()
 
+    /**
+     * Bumped once each time the app is reopened after genuinely leaving the foreground (see
+     * [beginNewSession]). The victim console observes it to fold its transient send/echo UI back
+     * to the calm home state, so a reopened app never opens onto the last session's SOS. It is a
+     * plain counter rather than a boolean so every reopen is a distinct, observable event.
+     */
+    var sessionEpoch by mutableStateOf(0)
+        private set
+
+    /**
+     * End the current SOS session and start a clean one. Drops the sent-SOS list so the console
+     * reads READY again, forgets which status banners we have already shown, and signals the UI
+     * (via [sessionEpoch]) to reset its transient state. Called by [MainActivity] when the app
+     * returns from the background - never on a configuration change or one of our own outward
+     * excursions (the battery-saver bounce right after a send), so an in-flight SOS is only ever
+     * cleared when the user has actually left the app and come back.
+     */
+    fun beginNewSession() {
+        service.store.clearSent()
+        notifiedStage.clear()
+        // A half-recorded clip or an unsent attachment from before we left is last-session state
+        // too - drop it, and make sure no microphone is left live behind a reopened console.
+        cancelRecording()
+        discardVoice()
+        sessionEpoch++
+    }
+
     init {
         // When the mesh bumps one of *our* SOS messages to "reached control room" (1) or
         // "help on the way" (2), surface it as a real notification - the person may not be
@@ -162,13 +189,18 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
         voiceStatus = "Recording…"
     }
 
+    /** Tap-to-toggle from the voice tile: start if idle, stop and keep the clip if recording. */
+    fun toggleRecording() {
+        if (isRecording) stopRecording() else startRecording()
+    }
+
     /** Stop and keep the clip. Nothing goes on air until the SOS button is pressed. */
     fun stopRecording() {
         if (!isRecording) return
         isRecording = false
         val clip = recorder.stop()
         if (clip == null) {
-            voiceStatus = "Nothing recorded - hold the button while you speak"
+            voiceStatus = "Nothing recorded - tap to start, speak, then tap again"
             return
         }
         pendingVoice = clip

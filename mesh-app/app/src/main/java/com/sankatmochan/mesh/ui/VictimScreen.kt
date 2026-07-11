@@ -16,8 +16,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
@@ -70,7 +68,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -162,6 +159,21 @@ fun VictimScreen(
     // has breathed for a moment we raise the map (`sosActive`).
     var sending by remember { mutableStateOf(false) }
     var sosActive by remember { mutableStateOf(false) }
+
+    // Reopening the app after leaving it starts a clean session (see MeshViewModel.beginNewSession):
+    // fold the post-send faces of the screen back to the calm home so a previous session's SOS is
+    // never what greets the user. The store's `sent` list is cleared alongside this, so the SOS
+    // tile reads READY again on its own; here we just retire the transient overlays. sessionEpoch
+    // starts at 0, so this never fires on first launch - only on a genuine reopen.
+    LaunchedEffect(vm.sessionEpoch) {
+        if (vm.sessionEpoch > 0) {
+            sending = false
+            sosActive = false
+            detailsOpen = false
+            justSent = false
+        }
+    }
+
     LaunchedEffect(sending) {
         if (sending) {
             delay(1700)
@@ -581,8 +593,9 @@ private fun LocationIndicator(vm: MeshViewModel) {
 }
 
 /**
- * Hold to speak, release to attach. The 10-second cap is airtime budget, not a nicety:
- * a 10 s AMR-NB clip is ~32 LoRa frames, during which nobody else's SOS gets through.
+ * Tap to start, tap again to stop and attach. The 10-second cap is airtime budget, not a
+ * nicety: a 10 s AMR-NB clip is ~32 LoRa frames, during which nobody else's SOS gets through -
+ * so recording also stops itself at the cap even if the user doesn't tap again.
  */
 @Composable
 private fun VoiceTile(vm: MeshViewModel, modifier: Modifier = Modifier) {
@@ -629,35 +642,19 @@ private fun VoiceTile(vm: MeshViewModel, modifier: Modifier = Modifier) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .pointerInput(Unit) {
-                        // Hold-to-record, done by hand rather than with detectTapGestures.
-                        // The tile lives inside a vertical scroll, and detectTapGestures let
-                        // the scroll claim the tiniest finger wobble: the press was cancelled,
-                        // so the clip attached (or the record state closed) before the user
-                        // meant to let go. Here we consume every pointer change while the
-                        // finger is down, so the scroll can never steal the gesture, and only
-                        // a genuine lift stops the recording. A stray cancel (e.g. leaving the
-                        // screen) drops the clip instead of attaching a half-recording.
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false).consume()
-                            vm.startRecording()
-                            var released = false
-                            try {
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    event.changes.forEach { it.consume() }
-                                    if (event.changes.none { it.pressed }) {
-                                        released = true
-                                        break
-                                    }
-                                }
-                            } finally {
-                                if (released) vm.stopRecording() else vm.cancelRecording()
-                            }
-                        }
-                    }
+                    // Tap-to-toggle rather than hold-to-record. `clickable` already tells a tap
+                    // apart from a scroll drag, so the tile can live inside the vertical scroll
+                    // without the scroll stealing the gesture - the exact failure the old
+                    // hold-gesture had to guard against by hand. A stray recording can never be
+                    // left running: the 10 s cap stops it, and leaving the app cancels it (see
+                    // MeshViewModel.beginNewSession).
+                    .clickable { vm.toggleRecording() }
                     .padding(14.dp)
-                    .semantics { contentDescription = "Hold to record a voice message" },
+                    .semantics {
+                        contentDescription =
+                            if (recording) "Recording - tap to stop and attach"
+                            else "Tap to record a voice message"
+                    },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconBadge(
@@ -676,9 +673,9 @@ private fun VoiceTile(vm: MeshViewModel, modifier: Modifier = Modifier) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = when {
-                            recording -> "Recording · release to attach"
+                            recording -> "Recording · tap to stop"
                             attached -> "Voice message attached"
-                            else -> "Hold to add your voice"
+                            else -> "Tap to add your voice"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         color = if (recording) Color.White else MaterialTheme.colorScheme.onSurface

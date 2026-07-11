@@ -59,6 +59,26 @@ class MessageStoreTest {
         assertThat(sent.statusText).isEqualTo("Help is on the way")
     }
 
+    @Test fun `clearSent empties the sent list for a fresh session`() {
+        val store = MessageStore()
+        store.addSent(sos("me-1"))
+        store.addSent(sos("me-2"))
+        assertThat(store.sent.value).hasSize(2)
+        store.clearSent()
+        assertThat(store.sent.value).isEmpty()
+    }
+
+    @Test fun `clearSent leaves received SOS and dedup bookkeeping intact`() {
+        val store = MessageStore()
+        store.addReceivedSos(sos("a-1", urgency = 3, ts = 10))
+        store.markSeen("a-1")
+        store.addSent(sos("me-1"))
+        store.clearSent()
+        // The victim's own console is reset, but the mesh's view of the incident is not.
+        assertThat(store.receivedSos.value).hasSize(1)
+        assertThat(store.markSeen("a-1")).isFalse() // still remembered as seen
+    }
+
     @Test fun `event log is bounded`() {
         val store = MessageStore()
         repeat(250) { store.log("line-$it") }
