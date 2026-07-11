@@ -42,6 +42,11 @@ import platform
 import sys
 from pathlib import Path
 
+# Must be set before torch initializes CUDA. float32 compute on a T4 runs close to the 16 GB
+# ceiling; expandable segments stops fragmentation from turning "almost fits" into an OOM.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")  # torch >= 2.8 name
+
 # The one fixed system prompt from SAHAYAK_DATASET_SPEC.md §1.1. Training must match on-device
 # inference byte-for-byte; validate_dataset.py imports this as the canonical copy, so module
 # import must stay stdlib-only (all heavy imports live inside functions).
@@ -356,6 +361,10 @@ def run_training(args, env) -> None:
     training_args = TrainingArguments(
         output_dir=str(out / "checkpoints"),
         per_device_train_batch_size=args.batch_size,
+        # Eval batch stays at 1 regardless of train batch: eval runs without gradient
+        # checkpointing, and the fp32 logits over Gemma's ~262k vocab (~1 GB per sequence at
+        # seq-len 1024) make the Trainer's default of 8 an instant OOM on a 16 GB T4.
+        per_device_eval_batch_size=1,
         gradient_accumulation_steps=args.grad_accum,
         num_train_epochs=args.epochs,
         learning_rate=args.lr,
