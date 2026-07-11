@@ -146,11 +146,13 @@ def run_unsloth(args, env):
     # in the SAME dtype so nothing silently re-casts. (env["bf16"] = NATIVE bf16, kept for logs.)
     use_bf16 = torch.cuda.is_bf16_supported()
     load_dtype = torch.bfloat16 if use_bf16 else torch.float16
-    print(f"[unsloth] model={args.model} chat_template={template}")
-    print(f"[unsloth] precision: dtype={load_dtype} "
-          f"(native bf16={env['bf16']}, bf16 usable={use_bf16})")
-    print(f"[unsloth] loading {args.model} (4bit={not args.no_4bit}) …")
-    model, tokenizer = FastModel.from_pretrained(
+    # Model parallelism (opt-in): device_map="balanced" tells Unsloth/accelerate to SHARD one
+    # model's layers across every visible GPU (per Unsloth's multi-GPU docs: "we will split the
+    # model for you on each GPU"). This is naive model-parallel — NOT DDP (which replicates the
+    # whole model per GPU and so can't relieve an OOM). It only works in a SINGLE process; never
+    # combine it with torchrun/accelerate launchers. On Kaggle's 2×T4 (~29 GB total) this gives
+    # E4B wide headroom. Default None = single-GPU (unchanged behaviour).
+    load_kwargs = dict(
         model_name=args.model,
         max_seq_length=max_seq,
         dtype=load_dtype,
@@ -158,6 +160,18 @@ def run_unsloth(args, env):
         full_finetuning=False,
         token=os.environ.get("HF_TOKEN"),
     )
+    if args.device_map:
+        load_kwargs["device_map"] = args.device_map
+    print(f"[unsloth] model={args.model} chat_template={template}")
+    print(f"[unsloth] precision: dtype={load_dtype} "
+          f"(native bf16={env['bf16']}, bf16 usable={use_bf16})")
+    print(f"[unsloth] device_map={args.device_map or 'single-GPU'}")
+    print(f"[unsloth] loading {args.model} (4bit={not args.no_4bit}) …")
+    model, tokenizer = FastModel.from_pretrained(**load_kwargs)
+    if args.device_map:
+        dev_map = getattr(model, "hf_device_map", None)
+        gpus_used = len({v for v in dev_map.values()}) if dev_map else 1
+        print(f"[unsloth] model sharded across {gpus_used} device(s): {dev_map}")
 
     # Text-only fine-tune — keep vision layers frozen (spec §3 notes).
     model = FastModel.get_peft_model(
@@ -496,6 +510,10 @@ def parse_args(argv=None):
     p.add_argument("--lora-alpha", type=int, default=16)
     p.add_argument("--seed", type=int, default=3407)
     p.add_argument("--no-4bit", action="store_true", help="Disable 4-bit (QLoRA) loading.")
+    p.add_argument("--device-map", default=None,
+                   help="Unsloth backend only. Set 'balanced' to SHARD the model's layers across "
+                        "all visible GPUs (model parallelism — e.g. Kaggle's 2xT4). Leave unset "
+                        "for single-GPU. Never use with a torchrun/accelerate launcher.")
     p.add_argument("--export-merged", action="store_true", help="Also save merged fp16 weights.")
     p.add_argument("--export-gguf", default=None,
                    help="GGUF quant to export (e.g. q4_k_m, q8_0). Unsloth backend only.")
