@@ -20,7 +20,9 @@ data class SentSos(
  */
 class MessageStore {
 
-    private val seenIds = HashSet<String>()
+    // Bounded, not a raw HashSet: dedup ids come straight off the untrusted mesh, so an
+    // unbounded set is a memory-exhaustion DoS (see [BoundedIdSet]).
+    private val seenIds = BoundedIdSet()
 
     private val _receivedSos = MutableStateFlow<List<SosMessage>>(emptyList())
     val receivedSos: StateFlow<List<SosMessage>> = _receivedSos.asStateFlow()
@@ -40,7 +42,6 @@ class MessageStore {
     val acceptedIds: StateFlow<Set<String>> = _acceptedIds.asStateFlow()
 
     /** Returns true the FIRST time an id is seen; false thereafter (dedup). */
-    @Synchronized
     fun markSeen(id: String): Boolean = seenIds.add(id)
 
     fun markAccepted(sosId: String) {
@@ -52,8 +53,13 @@ class MessageStore {
         _receivedSos.update { current ->
             // Most urgent first, then newest — a fresh CRITICAL must never sort
             // below a stale one the responder has already read past.
+            // Capped so a flood of unique-id SOS packets (untrusted input, CLAUDE.md #8) can't
+            // grow this list — and the O(n log n) re-sort it drives — without bound. The cap
+            // keeps the highest-urgency, most-recent messages, which is exactly what a
+            // responder must not lose; it sits far above any real incident's volume.
             (current + msg).distinctBy { it.id }
                 .sortedWith(compareByDescending<SosMessage> { it.urgency }.thenByDescending { it.ts })
+                .take(MAX_RECEIVED_SOS)
         }
     }
 
@@ -77,5 +83,11 @@ class MessageStore {
 
     fun setPeerCount(n: Int) {
         _peerCount.value = n
+    }
+
+    private companion object {
+        /** Hard cap on the retained received-SOS list. Far above any real incident, small
+         *  enough that a flood can never blow up memory or the per-message re-sort. */
+        const val MAX_RECEIVED_SOS = 300
     }
 }
