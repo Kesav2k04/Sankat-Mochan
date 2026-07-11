@@ -30,6 +30,20 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
+      Shake-to-SOS (ShakeSosService): a foreground service watches the accelerometer so a hard
+      shake can raise the emergency SOS countdown even with the app backgrounded / screen off.
+      - FOREGROUND_SERVICE + FOREGROUND_SERVICE_SPECIAL_USE: run the detector as a foreground
+        service (API 34+ requires the typed permission; justification in the <service> property).
+      - USE_FULL_SCREEN_INTENT: pop the SOS countdown full-screen from the background. On
+        Android 14+ a non-calling app may be downgraded to a heads-up notification the user taps.
+      SECURITY-SENSITIVE (CLAUDE.md #6): this is user-safety code — reviewer, confirm the shake
+      threshold and that no SOS is sent without either the countdown elapsing or an explicit tap.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!--
       SECURITY-SENSITIVE (CLAUDE.md #6): network access.
       The mesh itself never touches the internet — it is BLE/LoRa only. INTERNET is used
       ONLY by the on-device AI assistant to download its LLM weights once from the model
@@ -57,6 +71,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.OffNet"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|density|uiMode"
             android:windowSoftInputMode="adjustResize">
@@ -65,5 +80,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Shake-to-SOS detector. specialUse: a novel foreground use (emergency shake trigger)
+             not covered by a standard FGS type; the subtype string documents why. -->
+        <service
+            android:name=".ShakeSosService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Emergency shake-to-SOS detection for a disaster-relief safety console" />
+        </service>
     </application>
 </manifest>

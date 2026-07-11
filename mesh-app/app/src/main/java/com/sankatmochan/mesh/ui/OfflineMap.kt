@@ -1,9 +1,6 @@
 package com.sankatmochan.mesh.ui
 
 import android.content.Context
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.ShapeDrawable
-import android.graphics.drawable.shapes.OvalShape
 import android.util.Log
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -82,6 +79,8 @@ fun OfflineMapCard(
 
     val critical = urgencyColors.critical.toArgb()
     val mine = MaterialTheme.colorScheme.secondary.toArgb()
+    val safeArgb = urgencyColors.low.toArgb()
+    val landmarkArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
 
     Tile(modifier.fillMaxWidth()) {
         AndroidView(
@@ -109,7 +108,9 @@ fun OfflineMapCard(
                     }
                 }
             },
-            update = { map -> drawPins(map, pins, meLat, meLng, critical, mine) },
+            update = { map ->
+                drawPins(map, context, pins, meLat, meLng, critical, mine, safeArgb, landmarkArgb)
+            },
             onRelease = { map -> map.onDetach() },
             modifier = Modifier
                 .fillMaxWidth()
@@ -121,13 +122,24 @@ fun OfflineMapCard(
 
 private fun drawPins(
     map: MapView,
+    context: Context,
     pins: List<SosMessage>,
     meLat: Double?,
     meLng: Double?,
     criticalArgb: Int,
     mineArgb: Int,
+    safeArgb: Int,
+    landmarkArgb: Int,
 ) {
     map.overlays.clear()
+    // Safe reunion points + landmarks under the incident pins, so an SOS is never hidden by a
+    // safe-zone ring. The auto-zoom below only fits SOS/you, keeping focus on the incident.
+    map.addSafePoints(
+        context = context,
+        greenArgb = safeArgb,
+        landmarkArgb = landmarkArgb,
+        showLandmarks = true,
+    )
     val points = mutableListOf<GeoPoint>()
 
     for (sos in pins) {
@@ -137,7 +149,7 @@ private fun drawPins(
             Marker(map).apply {
                 position = p
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                icon = dot(criticalArgb, 34)
+                icon = dotMarker(criticalArgb, 34)
                 // Untrusted incoming text, shown as a plain title (CLAUDE.md #9).
                 title = "${sos.origin} · ${sos.category.ifBlank { "SOS" }}"
                 snippet = "%.6f, %.6f".format(sos.lat, sos.lng)
@@ -152,7 +164,7 @@ private fun drawPins(
             Marker(map).apply {
                 position = me
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                icon = dot(mineArgb, 24)
+                icon = dotMarker(mineArgb, 26)
                 title = "You"
             }
         )
@@ -170,14 +182,6 @@ private fun drawPins(
         if (map.width > 0 && map.height > 0) map.zoomToBoundingBox(box, false)
     }
     map.invalidate()
-}
-
-/** A flat coloured dot — no bitmap assets, no tinting of osmdroid's stock pin. */
-private fun dot(argb: Int, sizePx: Int): Drawable = ShapeDrawable(OvalShape()).apply {
-    paint.color = argb
-    intrinsicWidth = sizePx
-    intrinsicHeight = sizePx
-    setBounds(0, 0, sizePx, sizePx)
 }
 
 /** First launch, while a bundled archive is unpacked out of the APK. */

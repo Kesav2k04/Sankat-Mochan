@@ -88,6 +88,14 @@ dependencies {
     // archive — we never let it reach the network.
     implementation("org.osmdroid:osmdroid-android:6.1.20")
 
+    // LICENSE FLAG (CLAUDE.md #1): Google Play services is NOT OSI open-source — it ships under
+    // the proprietary Google APIs Terms of Service. It's included ONLY for the one-tap "turn on
+    // GPS" system dialog (SettingsClient) so we can enable location without kicking the user out
+    // to Settings. No location data leaves the device through it. A human should confirm this
+    // dependency is acceptable before shipping; the app otherwise uses the framework
+    // LocationManager and needs no GMS.
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
     // On-device LLM for the offline assistant. Qualcomm GenieX Android binding, published to
     // Maven Central (BSD-3-Clause per the ai-hub-apps geniex_chat_android sample it mirrors —
     // CLAUDE.md #1/#4). Runs small GGUF chat models on the Snapdragon NPU/GPU/CPU fully

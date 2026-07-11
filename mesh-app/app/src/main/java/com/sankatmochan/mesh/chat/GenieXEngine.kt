@@ -326,6 +326,28 @@ class GenieXEngine(context: Context) {
             ImportResult.Ok(dest.toLocalModel())
         }
 
+    /**
+     * Delete a side-loaded model file off the phone. Returns true if it is gone afterwards
+     * (either we deleted it or it was already absent). The caller is responsible for first
+     * unloading it if it happens to be the model currently in the native handle.
+     */
+    suspend fun deleteLocalModel(model: AssistantModel): Boolean = withContext(Dispatchers.IO) {
+        val path = model.localPath ?: return@withContext false
+        val f = File(path)
+        // Refuse to follow a path that escapes the models dir — a side-loaded name is
+        // untrusted (CLAUDE.md #8); we only ever delete inside our own folder.
+        val insideModelsDir = runCatching {
+            f.canonicalPath.startsWith(localModelsDir.canonicalPath + File.separator)
+        }.getOrDefault(false)
+        if (!insideModelsDir) {
+            Log.e(TAG, "refusing to delete a model outside the models dir: ${f.name}")
+            return@withContext false
+        }
+        val gone = !f.exists() || f.delete()
+        if (!gone) Log.e(TAG, "could not delete local model ${f.name}")
+        gone
+    }
+
     private fun File.toLocalModel(): AssistantModel = AssistantModel(
         id = "local:$name",
         displayName = nameWithoutExtension,

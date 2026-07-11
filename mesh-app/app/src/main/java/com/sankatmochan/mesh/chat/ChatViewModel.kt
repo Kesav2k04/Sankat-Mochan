@@ -138,7 +138,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     }
 
                     GenieXEngine.ImportResult.UnsupportedFormat -> {
-                        statusMessage = "Only .gguf model files are supported right now."
+                        // .litertlm / .task / .tflite are LiteRT/MediaPipe bundles — a different
+                        // runtime that this build doesn't ship. Only GGUF runs on the wired-up
+                        // llama.cpp engine, so say so plainly instead of letting it fail deep in
+                        // the native loader (CLAUDE.md #4/#10).
+                        statusMessage = "This build runs GGUF models only. Formats like .litertlm, " +
+                            ".task or .tflite need a different engine that isn't included, so they " +
+                            "can't be loaded here."
                         phase = Phase.NEEDS_MODEL
                     }
 
@@ -149,6 +155,30 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } finally {
                 isImporting = false
+            }
+        }
+    }
+
+    /**
+     * Delete a side-loaded local model off the phone and drop it from the picker. If it is the
+     * model currently loaded (or selected), we unload it and fall back to the default hub model
+     * so the screen never ends up pointing at a file that no longer exists.
+     */
+    fun deleteLocalModel(model: AssistantModel) {
+        if (!model.isLocal || isGenerating || isImporting || phase == Phase.DOWNLOADING) return
+        viewModelScope.launch {
+            val wasSelected = model.id == selectedModel.id
+            val deleted = engine.deleteLocalModel(model)
+            if (!deleted) {
+                statusMessage = "Could not delete that model. It may be in use — try again."
+                return@launch
+            }
+            localModels.removeAll { it.id == model.id }
+            if (wasSelected) {
+                engine.unload()
+                messages.clear()
+                selectedModel = AssistantModels.default
+                if (phase != Phase.UNSUPPORTED) evaluateModel()
             }
         }
     }

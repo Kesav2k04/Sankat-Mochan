@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Sos
@@ -127,6 +128,8 @@ fun VictimScreen(
     var urgency by remember { mutableIntStateOf(5) }
     var detailsOpen by remember { mutableStateOf(false) }
     var justSent by remember { mutableStateOf(false) }
+    // The "prepare for offline" model-download helper, opened from the info chip.
+    var prepOpen by remember { mutableStateOf(false) }
 
     val sent by vm.sent.collectAsState()
     val latest = sent.lastOrNull()
@@ -191,6 +194,13 @@ fun VictimScreen(
                     "Send for help", "no signal needed", peers,
                     onSettings = onOpenSettings,
                     actions = {
+                        // Prepare-for-offline: recommends and downloads a safety model in advance.
+                        TopBarChip(
+                            icon = Icons.Rounded.Info,
+                            description = "Prepare offline safety models",
+                            onClick = { prepOpen = true },
+                        )
+                        Spacer(Modifier.size(8.dp))
                         // Offline AI assistant — answers first-aid / safety questions on-device.
                         TopBarChip(
                             icon = Icons.Rounded.AutoAwesome,
@@ -293,6 +303,10 @@ fun VictimScreen(
                 SendingRadar()
             }
         }
+    }
+
+    if (prepOpen) {
+        ModelPrepSheet(onDismiss = { prepOpen = false })
     }
 }
 
