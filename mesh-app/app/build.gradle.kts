@@ -26,6 +26,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Injected from local.properties at build time — never a committed literal.
         buildConfigField("String", "HF_TOKEN", "\"$huggingFaceToken\"")
@@ -45,7 +46,18 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Sign the release build with the debug key so it installs over the debug build (same
+            // signature → `adb install -r` keeps the side-loaded STT model). The point of testing
+            // release: it is NOT debuggable, so ART's CheckJNI is OFF — GenieX's applyChatTemplate
+            // NewStringUTF no longer hard-aborts on Indic text (that abort is a debug-only check).
+            signingConfig = signingConfigs.getByName("debug")
         }
+    }
+    lint {
+        // Don't fail the release build on pre-existing lint warnings (this is a demo build we sign
+        // with the debug key to test with CheckJNI off — not a Play release).
+        checkReleaseBuilds = false
+        abortOnError = false
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -60,14 +72,27 @@ android {
     }
     androidResources {
         // The bundled Bengaluru map archive is already PNG-packed; leave it uncompressed so
-        // the APK build doesn't burn time squeezing ~16 MB for no gain.
+        // the APK build doesn't burn time squeezing the ~29 MB voyager tiles for no gain.
         noCompress += "mbtiles"
+    }
+    testOptions {
+        // Pure-logic JVM unit tests (map zoom clamping, geo math) don't touch the framework;
+        // returning defaults for any stray android.* stub keeps them from throwing "not mocked".
+        unitTests.isReturnDefaultValues = true
     }
     packaging {
         // The GenieX SDK loads its QAIRT / llama.cpp native libraries with dlopen() at
         // runtime, which needs them unpacked onto disk rather than mmap'd from the APK.
         // Legacy packaging keeps extractNativeLibs=true so the on-device LLM can start.
         jniLibs.useLegacyPackaging = true
+        // Both GenieX and onnxruntime-android-qnn ship QAIRT libs. Keep ONE copy of each — GenieX's
+        // (declared first), which is QAIRT 2.45 with the V79/V81 Hexagon skels the Snapdragon 8
+        // Elite Gen 5 needs, and matches the AI-Hub context binary (also 2.45). ORT's libonnxruntime
+        // dlopens these at runtime. Broad glob so any lib both AARs ship resolves to GenieX's copy.
+        jniLibs.pickFirsts += listOf(
+            "**/libQnn*.so",
+            "**/libHexagon*.so",
+        )
     }
 }
 
@@ -106,5 +131,21 @@ dependencies {
     // version is pinned. Apache-2.0.
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
+    // On-device STT (IndicConformer CTC) runtime. ONNX Runtime with the QNN execution provider
+    // runs the AI-Hub-compiled encoder + ctc_decoder QNN context binaries on the Hexagon NPU.
+    // MIT-licensed (CLAUDE.md #1). See stt/README.md. 1.27.0 bundles qnn-runtime 2.42, whose QNN
+    // EP knows the Snapdragon 8 Elite Gen 5 (SM8850 / Hexagon V81) — 1.22 (QAIRT 2.33) did not and
+    // failed device creation with QNN_DEVICE_ERROR_INVALID_CONFIG + missing V81 skel on-device.
+    // Docs: https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html
+    implementation("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.27.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // JVM unit tests for pure logic (offline-tile zoom clamping, geo bearing/distance
+    // formatting). JUnit 4, Eclipse Public License 1.0 — a standard test-only dependency.
+    testImplementation("junit:junit:4.13.2")
+
+    // Instrumented test: mel-feature parity vs the Python preprocessor golden vectors.
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }

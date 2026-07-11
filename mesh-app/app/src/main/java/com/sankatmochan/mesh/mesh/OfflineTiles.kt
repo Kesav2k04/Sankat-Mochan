@@ -27,6 +27,20 @@ object OfflineTiles {
     private const val ASSET_DIR = "tiles"
     private val SUPPORTED = setOf("mbtiles", "sqlite", "zip", "gemf")
 
+    /**
+     * The zoom band the bundled archive actually holds — it MUST match
+     * `tools/fetch_bengaluru_tiles.py --minzoom/--maxzoom` and the mbtiles `metadata`.
+     * Every MapView that reads the archive is clamped to this range so a pinch, a
+     * fit-to-bounds, or a programmatic `setZoom` can never land above the deepest stored
+     * tile and paint a blank grey square (the "half-rendered / broken map" report). Bumping
+     * the fetch script's maxzoom? Bump [MAX_ZOOM] here in the same change.
+     */
+    const val MIN_ZOOM = 11.0
+    const val MAX_ZOOM = 15.0
+
+    /** Keep a requested zoom inside what the archive can actually draw. */
+    fun clampZoom(zoom: Double): Double = zoom.coerceIn(MIN_ZOOM, MAX_ZOOM)
+
     /** osmdroid insists on being told where to live before a MapView is inflated. */
     fun configure(context: Context) {
         val cfg = Configuration.getInstance()
