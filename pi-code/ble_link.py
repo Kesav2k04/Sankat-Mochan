@@ -108,6 +108,21 @@ class BleLink(nodemod.Link):
     def mark_subscribed(self) -> None:
         self._subscribed = True
 
+    def retarget(self, address: str) -> None:
+        """Follow the phone to a new Bluetooth address after Android rotated its MAC.
+
+        Without this, the reconnect loop keeps dialling the phone's OLD address forever
+        (BleakDeviceNotFoundError / InProgress) while the phone is really advertising on a
+        fresh one — every delivery to it is then LOST. `_keep_connected` reads `self.address`
+        afresh each cycle, so updating it here makes the next reconnect land on the live
+        address. No-op when the address has not changed."""
+        if not address or address == self.address:
+            return
+        self._log.info("[%s] phone moved to a new Bluetooth address (%s -> %s); Android "
+                       "rotates it — reconnecting there", self._node, self.address, address)
+        self.address = address
+        self.name = f"ble:{address}"
+
     def detach(self) -> None:
         self._client = None
         self._max_write = 0

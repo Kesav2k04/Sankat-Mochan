@@ -207,8 +207,11 @@ async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
 
 
 def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog,
-                 edge: EdgeUplink | None = None) -> None:
-    """Attach one discovered phone to the correct side of the physical radio hop."""
+                 edge: EdgeUplink | None = None):
+    """Attach one discovered phone to the correct side of the physical radio hop.
+
+    Returns the created BleLink (so the caller can retarget it when Android rotates the
+    phone's address), or None when the phone belongs to the other board."""
     name = "gateway" if phone.role == "responder" else "field"
     # On a split board only one node runs. A phone whose role belongs to the OTHER board
     # (e.g. a responder that wandered near the field UNO Q) is not ours to carry — it
@@ -216,7 +219,7 @@ def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog,
     if name not in nodes:
         logger.info("ignoring phone %s — its role belongs to the '%s' node, which runs on "
                     "the other board", phone.describe(), name)
-        return
+        return None
     bl = ble_link.BleLink(phone.address, cfg["ble"]["char_uuid"], logger, chain, name)
     nodes[name].add_link(bl)
     node = nodes[name]
@@ -229,17 +232,19 @@ def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog,
         bl, lambda raw, node=node, bl=bl: node.submit_ble(bl, raw), on_state=on_state
     )
     logger.info("attached phone %s to radio '%s'", phone.describe(), name)
+    return bl
 
 
 async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
                              stop: asyncio.Event,
-                             attached_node_ids: set[str],
+                             attached: "dict[str, ble_link.BleLink]",
                              edge: EdgeUplink | None = None) -> None:
     """Keep accepting phones after startup, notably responders arriving later.
 
     Node ids are stable while Android BLE addresses rotate, so they are the identity
-    key. Existing links own their reconnect loop; this scanner only creates links for
-    phones that have not been attached during this gateway run.
+    key. A phone already attached under this node id but now advertising a NEW address has
+    rotated its MAC — we retarget its existing link to the live address so its reconnect
+    loop stops dialling the dead one. Genuinely new phones get a fresh link.
     """
     retry = float(cfg["ble"]["peer_retry_s"])
     while not stop.is_set():
@@ -261,10 +266,14 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
 
         for name in nodes:
             for phone in roster[name]:
-                if phone.node_id in attached_node_ids:
+                existing = attached.get(phone.node_id)
+                if existing is not None:
+                    existing.retarget(phone.address)   # follow a rotated Bluetooth address
                     continue
-                attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
-                attached_node_ids.add(phone.node_id)
+                bl = attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
+                if bl is None:
+                    continue
+                attached[phone.node_id] = bl
                 if phone.role == "responder":
                     logger.info("responder %s joined — acceptance updates can now travel "
                                 "back across 433 MHz", phone.node_id)
@@ -486,14 +495,15 @@ async def run() -> int:
             if peers is None:          # operator hit Ctrl-C while we were waiting
                 logger.info("stopped before any phone appeared")
                 return 0
-            attached_node_ids: set[str] = set()
+            attached: "dict[str, ble_link.BleLink]" = {}
             for name in node_names:
                 for phone in peers[name]:
-                    attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
-                    attached_node_ids.add(phone.node_id)
+                    bl = attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
+                    if bl is not None:
+                        attached[phone.node_id] = bl
             peer_discovery_task = asyncio.create_task(
                 discover_new_peers(manager, nodes, cfg, logger, chain, stop,
-                                   attached_node_ids, edge),
+                                   attached, edge),
                 name="ble-peer-discovery",
             )
             logger.info("READY. SOS messages are accepted immediately; no responder phone "

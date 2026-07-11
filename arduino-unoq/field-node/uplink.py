@@ -516,10 +516,10 @@ class EdgeUplink:
         mesh-transmission.md C1/B1. No voice work here by design."""
         while not stop.is_set():
             self._beat("sender")      # stamp even while idle — a quiet link is not wedged
-            try:
+            # Wake on new work OR every _HEARTBEAT_S; either way fall through and flush, so
+            # anything still pending (unacked) is retried on the timer, not only on a new wake.
+            with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), timeout=self._HEARTBEAT_S)
-            except asyncio.TimeoutError:
-                continue
             self._wake.clear()
             await self._flush(ws)
             await self._flush_peer_states(ws)
@@ -533,10 +533,12 @@ class EdgeUplink:
         path or the radio thread pool."""
         while not stop.is_set():
             self._beat("uploader")    # stamp even while idle so a quiet link never alarms
-            try:
+            # Wake on a new clip OR every _HEARTBEAT_S, then always flush. The timer is what
+            # RETRIES a clip that got 409 'awaiting_sos': once the victim's SOS reaches the
+            # command post, the next tick re-uploads and the audio attaches. Without this a
+            # clip that arrived before its SOS would sit in the outbox forever.
+            with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._voice_wake.wait(), timeout=self._HEARTBEAT_S)
-            except asyncio.TimeoutError:
-                continue
             self._voice_wake.clear()
             await self._flush_voices()
 
