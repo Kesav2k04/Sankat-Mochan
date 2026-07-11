@@ -1,0 +1,76 @@
+/**
+ * The opening story, told ON the map: each beat aims the camera, sets the
+ * weather, and reveals what the disaster does to the ground below. The last
+ * beat hands the victim their phone — pressing SOS is what starts the sim.
+ */
+export const BEATS = [
+  {
+    key: 'rain',
+    hour: '02:00 · WAYANAD, KERALA',
+    title: 'The rain will not stop',
+    text: 'Forty-eight hours of monsoon rain has soaked the hills above the villages.',
+    dur: 4.5,
+    cam: { center: [76.132, 11.685], zoom: 10.7 },
+    fx: { rain: true, tint: 0.34 },
+  },
+  {
+    key: 'slide',
+    hour: 'HOUR 1 · 03:10',
+    title: 'The hillside gives way',
+    text: 'A landslide tears through the valley above Achilakkadu. Roads vanish. Houses are buried where they stood.',
+    dur: 5.5,
+    cam: { center: [76.0605, 11.6995], zoom: 12.2 },
+    fx: { rain: true, tint: 0.42, shake: true },
+    zone: true,
+    scar: true,
+  },
+  {
+    key: 'dark',
+    hour: 'HOUR 2 · 03:25',
+    title: 'The power goes out',
+    text: 'Transmission lines snap under the mud. Every village for ten kilometres goes dark.',
+    dur: 5,
+    cam: { center: [76.11, 11.687], zoom: 11.3 },
+    fx: { rain: true, tint: 0.58 },
+    zone: true,
+    scar: true,
+  },
+  {
+    key: 'tower',
+    hour: '03:40',
+    title: 'Towers down. No signal.',
+    text: 'The cell tower is damaged and its backup drains. No calls, no internet — no way to ask for help.',
+    dur: 4.8,
+    cam: { center: [76.155, 11.679], zoom: 12.3 },
+    fx: { rain: true, tint: 0.5 },
+    zone: true,
+    scar: true,
+    tower: true,
+  },
+  {
+    key: 'mesh',
+    hour: '03:41',
+    title: 'The mesh wakes up',
+    text: 'Solar-charged LoRa modules across the zone switch to battery and find each other. They need no tower.',
+    dur: 6.2,
+    cam: { center: [76.13, 11.678], zoom: 10.9 },
+    fx: { rain: false, tint: 0.22 },
+    zone: true,
+    scar: true,
+    tower: true,
+    mesh: true,
+  },
+  {
+    key: 'phone',
+    hour: '04:05 · THE DANGER SPOT',
+    title: 'Trapped — but not silent',
+    text: 'Someone stuck near the slide opens Sankat-Mochan. No bars on the phone, but the mesh is listening. Press SOS.',
+    dur: null, // waits for the tap
+    cam: { center: [76.082, 11.6995], zoom: 11.9 },
+    fx: { rain: false, tint: 0.18 },
+    zone: true,
+    scar: true,
+    tower: true,
+    phone: true,
+  },
+]
