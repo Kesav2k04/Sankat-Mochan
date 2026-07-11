@@ -40,7 +40,7 @@
 
   "radios": {
     "field": {
-      "_comment": "Radio A. Each radio has a 'transport': \"spi\" (wired to THIS board's SPI, the original single-Pi bench) or \"serial\" (reached over a serial link to the Arduino UNO Q LoRa modem, arduino-unoq/). On the UNO Q field board set transport=\"serial\" and serial_port in config.json — see config.field.example.json. cs/rst_gpio/dio0_gpio are used only by the \"spi\" transport and ignored for \"serial\"; they stay here so the old two-radio Pi bench still runs unchanged.",
+      "_comment": "Radio A. Each radio has a 'transport': \"spi\" (wired to THIS board's SPI, the original single-Pi bench), \"serial\" (a separate Arduino LoRa modem on USB, /dev/ttyACM*), or \"bridge\" (the Arduino UNO Q's OWN on-board MCU, reached over the Router Bridge socket — the single-board field node, see arduino-unoq/). On the UNO Q field board set transport=\"bridge\" in config.json (no serial_port needed). cs/rst_gpio/dio0_gpio are used only by the \"spi\" transport and ignored for serial/bridge; they stay here so the old two-radio Pi bench still runs unchanged.",
       "transport": "spi",
       "serial_port": "/dev/ttyACM0",
       "serial_baud": 115200,

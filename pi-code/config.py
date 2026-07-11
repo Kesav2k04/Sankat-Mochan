@@ -108,9 +108,17 @@ def _validate(cfg: Dict[str, Any]) -> None:
         if not r:
             raise ConfigError(f"run.nodes lists '{node}' but there is no radios.{node} block")
         transport = r.get("transport", "spi")
-        if transport not in ("spi", "serial"):
-            raise ConfigError(f'radios.{node}.transport must be "spi" or "serial"')
-        if transport == "serial":
+        if transport not in ("spi", "serial", "bridge"):
+            raise ConfigError(f'radios.{node}.transport must be "spi", "serial" or "bridge"')
+        if transport == "bridge":
+            # A bridge radio is the UNO Q's own MCU, reached over the Router Bridge unix
+            # socket — no device path, no SPI chip-select or GPIO pins. socket_path is
+            # optional (defaults to /var/run/arduino-router.sock).
+            if "socket_path" in r and (
+                not isinstance(r["socket_path"], str) or not r["socket_path"]
+            ):
+                raise ConfigError(f"radios.{node}.socket_path must be a non-empty string")
+        elif transport == "serial":
             # A serial radio (the UNO Q field modem) is reached over a device path and
             # needs no SPI chip-select or GPIO pins.
             if not isinstance(r.get("serial_port"), str) or not r["serial_port"]:

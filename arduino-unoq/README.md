@@ -5,9 +5,9 @@ ways to run it — pick by whether you can install Python packages on the UNO Q'
 
 ## Which one do I use?
 
-| | **A · Field beacon** (`field_beacon/`) | **B · Serial bridge** (`lora_modem/` + `field-node/`) |
+| | **A · Field beacon** (`field_beacon/`) | **B · On-board bridge** (`sketch/` + `field-node/`) |
 | --- | --- | --- |
-| Install anything on the UNO Q? | **No** — flash the `.ino` and done | Yes — Python + `bleak`/`pyserial` on the Linux side |
+| Install anything on the UNO Q? | **No** — flash the `.ino` and done | Yes — Python + `bleak`/`msgpack` on the Linux side |
 | Victim's phone → UNO Q over Bluetooth? | No (UNO Q originates the SOS itself) | **Yes** — full parity with the old Pi |
 | UNO Q → LoRa → Pi → dashboard? | **Yes** | **Yes** |
 | Responder ACCEPT → back over LoRa? | **Yes** (lights the LED) | **Yes** (reaches the phone) |
@@ -24,8 +24,10 @@ identical.
 | Path | Runs on | What it is |
 | --- | --- | --- |
 | `field_beacon/field_beacon.ino` | UNO Q **STM32** | **Option A.** Self-contained: builds real SOS envelopes and transmits them over LoRa; shows the ACCEPT that comes back. No Python. |
-| `lora_modem/lora_modem.ino` | UNO Q **STM32** | Option B. Thin LoRa modem — drives the Ra-02 (the wiring you tested) for the Linux side to use. |
-| `field-node/` | UNO Q **Linux** (via SSH) | Option B. The same mesh code the Pi runs — BLE to phones + envelope/dedup/forwarding — talking to the modem over serial. |
+| `sketch/sketch.ino` | UNO Q **STM32** | **Option B.** The LoRa modem — drives the Ra-02 and exposes it over the **Router Bridge** (RPC), so the board's own Linux side can use it. Flashed by App Lab / `arduino-app-cli`. |
+| `app.yaml`, `python/` | UNO Q (App Lab) | **Option B.** The Arduino App wrapper that flashes `sketch/` onto the MCU and keeps it alive. `python/main.py` is just a keepalive — the mesh runs in `field-node/`. |
+| `field-node/` | UNO Q **Linux** | **Option B.** The same mesh code the Pi runs — BLE to phones + envelope/dedup/forwarding — talking to the modem over the Router Bridge. |
+| `lora_modem/lora_modem.ino` | a *separate* Arduino | Legacy: the old serial-line modem for when the LoRa radio is on a **second** board plugged into USB (the Raspberry-Pi layout). Not used in the single-board bridge flow. |
 | `sync-from-pi-code.sh` | your dev machine | refreshes `field-node/` from the canonical `pi-code/` |
 
 ---
@@ -61,75 +63,77 @@ Wiring is your verified `SS=D10, RST=D9, DIO0=D2`; full pin list is in the sketc
 
 ---
 
-# Option B — Serial bridge (full phone-Bluetooth parity)
+# Option B — On-board bridge (full phone-Bluetooth parity, one board)
 
-Everything the UNO Q needs is in this folder; upload *only* `arduino-unoq/` to the board.
+Everything runs on a **single UNO Q**: the STM32 is the LoRa modem, the Linux side runs the
+field node, and the two talk over the board's **Router Bridge**.
 
 ```
-victim phone ──BLE──► [UNO Q Linux: field-node (Python)] ──serial──► [UNO Q STM32: lora_modem] ~~433 MHz~~► [Pi: gateway] ──► dashboard
-victim phone ◄──BLE── [UNO Q Linux: field-node (Python)] ◄──serial── [UNO Q STM32: lora_modem] ◄~~433 MHz~~ [Pi: gateway] ◄── dashboard
+victim phone ──BLE──► [UNO Q Linux: field-node (Python)] ──Router Bridge──► [UNO Q STM32: sketch.ino] ~~433 MHz~~► [Pi: gateway] ──► dashboard
+victim phone ◄──BLE── [UNO Q Linux: field-node (Python)] ◄──Router Bridge── [UNO Q STM32: sketch.ino] ◄~~433 MHz~~ [Pi: gateway] ◄── dashboard
 ```
 
 The UNO Q has **two brains**: the STM32 runs Arduino sketches but has **no Bluetooth**; the
-Qualcomm Linux side has Bluetooth and runs Python. The victim's phone talks Bluetooth, so
-the field logic runs on the Linux side while the radio stays on the STM32 — bridged over
-the board's internal serial link. Same code as the Pi ran, same behaviour. This needs
-`bleak` + `pyserial` on the Linux side (a venv, or the system python — see `field-node/`).
+Qualcomm Linux side has Bluetooth and runs Python. Crucially, the STM32 is **not** exposed
+to Linux as a serial port (`/dev/ttyACM*`) — it is reached only through the always-running
+`arduino-router` service on the unix socket `/var/run/arduino-router.sock`. So the modem
+is an **RPC** endpoint (transport `"bridge"`), not a serial device. Same mesh code, same
+behaviour as the Pi; this needs `bleak` + `requests` + `msgpack` on the Linux side.
 
-## 1. Flash the modem (STM32 / Arduino side)
+> Have the LoRa radio on a **separate** Arduino plugged into USB instead? Then it *does*
+> appear as `/dev/ttyACM0`: flash `lora_modem/lora_modem.ino` to that board and set
+> `transport: "serial"` + `serial_port` in `field-node/config.json`. Everything else below
+> is identical. The single-board bridge flow is the default and needs no second board.
 
-1. Open `lora_modem/lora_modem.ino` in the Arduino IDE.
-2. Install the LoRa library: **Tools → Manage Libraries → search "LoRa" by Sandeep
-   Mistry → Install** (MIT-licensed — the same `<LoRa.h>` your bring-up sketch used).
-3. Select the UNO Q board/port and **Upload**.
-4. Open the Serial Monitor at **115200** baud. You should see:
-   ```
-   # LoRa modem ready
-   I 433000000 7 125000 5 12
-   ```
-   Then **close the Serial Monitor** — only one program can hold the port, and the field
-   node needs it.
+## 1. Flash the modem (STM32) via App Lab
 
-Wiring is unchanged from your test — `SS=D10, RST=D9, DIO0=D2`, radio on 3V3, antenna
-attached. Full pin list is in the sketch header.
+The modem sketch is flashed by the App framework, not the Arduino IDE (that is how Linux
+reaches the on-board MCU). Copy this whole `arduino-unoq/` folder to the UNO Q
+(e.g. `scp -r arduino-unoq unoq:~/`), then, on the board:
+
+```bash
+arduino-app-cli app start ~/arduino-unoq     # builds sketch/ + flashes the MCU + keeps it alive
+arduino-app-cli monitor                      # optional: you should see "# LoRa modem ready"
+```
+
+Leave the App running — it keeps the MCU flashed with the modem. `python/main.py` is only a
+keepalive; the mesh itself runs in the next step. Wiring is unchanged from your test —
+`SS=D10, RST=D9, DIO0=D2`, radio on 3V3, antenna attached (pin list in the sketch header).
 
 > ⚠️ The radio settings in the sketch (**433 MHz, SF7, BW 125 kHz, CR 4/5, sync 0x12,
 > preamble 8, CRC on**) must match the Pi's config. They already do; if you change one,
 > change it in both places or the two radios go deaf to each other.
 
-## 2. Run the field node (Linux side, over SSH)
-
-Copy this whole `arduino-unoq/` folder to the UNO Q (e.g. `scp -r arduino-unoq
-unoq:~/`), then:
+## 2. Run the field node (Linux side)
 
 ```bash
-cd arduino-unoq/field-node
-nano config.json          # set serial_port to the modem's device (ls /dev/ttyACM* /dev/ttyUSB*)
-./run.sh check            # pre-flight: deps, Bluetooth, and the serial modem
+cd ~/arduino-unoq/field-node
+./run.sh check            # pre-flight: deps, Bluetooth, and the bridge modem
 ./run.sh                  # start the field node (waits for phones, then relays over LoRa)
+./run.sh radios           # LoRa tier only, no BLE, no phones (bench check)
 ```
 
+`config.json` is already set for the bridge modem — **there is no `serial_port` to edit**.
 `run.sh` creates a venv in `arduino-unoq/.venv`, installs `bleak` + `requests` + `pyserial`
-(all permissive), unblocks Bluetooth, pre-flights the modem, and starts the field node.
-That's the only command you run on the UNO Q. (The Pi still runs `./server.sh` as before.)
++ `msgpack` (all permissive), unblocks Bluetooth (needs `sudo`), pre-flights the modem, and
+starts the field node. (The Pi still runs `./server.sh` as before.)
 
-## 3. The serial protocol (for debugging)
+## 3. The RPC contract (for debugging)
 
-The Linux side and the STM32 speak a tiny ASCII line protocol; payloads are hex so a line
-can never contain a stray newline. Watch it in any serial monitor:
+The Linux side and the STM32 speak MessagePack-RPC over the Router Bridge. Payloads are raw
+bytes (no hex doubling). The Python side is `field-node/bridge_radio.py` (a drop-in for the
+SPI radio driver), using the vendored `field-node/bridge_client.py`.
 
-| Direction | Line | Meaning |
+| Direction | Method | Meaning |
 | --- | --- | --- |
-| host → modem | `T <hex>` | transmit these bytes over 433 MHz |
-| host → modem | `P` | ping / health check |
-| modem → host | `R <hex> <rssi> <snr>` | a frame arrived (CRC already verified) |
-| modem → host | `K <airtime_ms>` | the last `T` finished transmitting |
-| modem → host | `E <reason>` | the last `T` failed |
-| modem → host | `Y` | pong |
-| modem → host | `I <freq> <sf> <bw> <cr> <sync>` | boot banner |
-| modem → host | `# <text>` | human log line (ignored by the parser) |
+| host → MCU (call) | `lora_tx(bytes)` → `int` | transmit these bytes; returns airtime ms, or a negative error code |
+| host → MCU (call) | `lora_ping()` → `str` | `"<freq> <sf> <bw> <cr> <sync-hex> <ok\|down>"` liveness + settings banner |
+| MCU → host (notify) | `lora_rx(bytes, rssi, snr)` | a frame arrived (CRC already verified on the STM32) |
 
-The Python side is `field-node/serial_radio.py`, a drop-in for the SPI radio driver.
+> Size limit: the MCU's RPC buffer is 256 B, so one `lora_tx` frame is capped at ~234 B
+> (`BRIDGE_TX_SAFE_MAX` in `bridge_radio.py`). Voice chunks (217 B) and normal SOS text
+> fit; oversized frames fail loud instead of corrupting. Add fragmentation if you ever
+> need the full 244-byte envelope over LoRa.
 
 ## Keeping field-node/ in sync
 
@@ -141,13 +145,14 @@ the mesh code in `pi-code/`, refresh this copy before re-deploying:
 ```
 
 `config.json` is never overwritten by the sync — it's this board's own, preconfigured for
-the serial modem.
+the on-board bridge modem.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 | --- | --- |
-| pre-flight: `/dev/ttyACM0 not found` | `ls /dev/ttyACM* /dev/ttyUSB*` and set `radios.field.serial_port` in `field-node/config.json` |
-| pre-flight: `modem did not respond` | is the sketch flashed? is the Arduino IDE Serial Monitor still open (it holds the port)? |
-| modem banner shows different SF/sync | the sketch `#define`s and the config disagree — the Pi won't hear this radio; reconcile them |
-| `# LoRa init FAILED` on boot | check the Ra-02 wiring (SS/RST/DIO0), 3V3 power, and the antenna |
+| pre-flight: `/var/run/arduino-router.sock not found` | the `arduino-router` service isn't up — is this an UNO Q with App Lab? `systemctl status arduino-router` |
+| pre-flight: `modem did not answer over the Router Bridge` | flash + start the App: `arduino-app-cli app start ~/arduino-unoq`, then check the MCU with `arduino-app-cli monitor` |
+| monitor banner ends `down` (not `ok`) | the Ra-02 didn't init — check SS/RST/DIO0 wiring, 3V3 power, and the antenna |
+| banner shows different SF/sync | the sketch `#define`s and the config disagree — the Pi won't hear this radio; reconcile them |
+| `frame NNN B exceeds the Router-Bridge single-call limit` | the envelope is larger than ~234 B — shorten it, or add fragmentation to the modem protocol |

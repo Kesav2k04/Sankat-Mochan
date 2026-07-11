@@ -80,6 +80,8 @@ def check_deps(cfg) -> bool:
         needed.append("spidev")
     if _has(cfg, "serial"):
         needed.append("serial")   # pyserial imports as `serial`
+    if _has(cfg, "bridge"):
+        needed.append("msgpack")  # the vendored Router-Bridge client speaks MessagePack-RPC
     missing = []
     for mod in needed:
         try:
@@ -96,7 +98,7 @@ def check_deps(cfg) -> bool:
     # GPIO is only needed to drive a radio over SPI. A serial-only field board never
     # touches GPIO, so don't fail it for a missing backend.
     if not _has(cfg, "spi"):
-        gpio_ok = record("gpio backend", True, "not required (serial transport)")
+        gpio_ok = record("gpio backend", True, "not required (radio is off-SPI: serial/bridge)")
     else:
         try:
             import gpio_compat
@@ -110,7 +112,7 @@ def check_deps(cfg) -> bool:
 def check_spi_nodes(cfg) -> bool:
     spi_nodes = [n for n in _active_nodes(cfg) if _transport(cfg, n) == "spi"]
     if not spi_nodes:
-        return record("SPI device nodes present", True, "no SPI radios (serial transport)")
+        return record("SPI device nodes present", True, "no SPI radios (radio reached off-board)")
     bus = cfg["lora"]["spi"]["bus"]
     needed = [f"/dev/spidev{bus}.{cfg['radios'][n]['cs']}" for n in spi_nodes]
     missing = [p for p in needed if not Path(p).exists()]
@@ -148,19 +150,30 @@ def check_groups(cfg) -> bool:
 def check_bluetooth(cfg) -> bool:
     if not cfg["ble"]["enabled"]:
         return record("bluetooth adapter", True, "ble.enabled=false, skipped")
+    adapter = Path("/sys/class/bluetooth/hci0").exists()
+    disable_hint = ("run the LoRa tier alone with SANKAT_BLE__ENABLED=false, or use the "
+                    "field_beacon sketch (no BLE needed at all)")
+    # rfkill is the nicest way to read the block state, but it is not installed on every
+    # board (e.g. the UNO Q). If it is missing, fall back to just checking the adapter
+    # exists — bleak will surface any real Bluetooth problem when it actually scans.
     try:
         out = subprocess.run(["rfkill", "list", "bluetooth"], capture_output=True, text=True, timeout=5).stdout
+    except FileNotFoundError:
+        return record("bluetooth adapter", adapter,
+                      "hci0 present (rfkill not installed — could not check block state)"
+                      if adapter else "no hci0 and no rfkill",
+                      "" if adapter else disable_hint)
     except Exception as e:
         return record("bluetooth adapter", False, str(e), "is `rfkill` installed?")
     if not out.strip():
-        return record("bluetooth adapter", False, "no adapter found", "check the board's onboard BT")
+        return record("bluetooth adapter", adapter, "hci0 present" if adapter else "no adapter found",
+                      "" if adapter else "check the board's onboard BT, or " + disable_hint)
     if "Soft blocked: yes" in out:
         return record("bluetooth adapter", False, "soft-blocked",
                       "sudo rfkill unblock bluetooth   (run.sh does this for you)")
     if "Hard blocked: yes" in out:
         return record("bluetooth adapter", False, "hard-blocked", "check a physical switch / firmware")
-    up = Path("/sys/class/bluetooth/hci0").exists()
-    return record("bluetooth adapter", up, "hci0 unblocked" if up else "hci0 absent",
+    return record("bluetooth adapter", adapter, "hci0 unblocked" if adapter else "hci0 absent",
                   "sudo hciconfig hci0 up")
 
 
@@ -186,6 +199,31 @@ def check_serial_modem(cfg, name) -> bool:
                       "is the sketch flashed, and is the port free (close the Arduino "
                       "IDE Serial Monitor)?")
     return record(label, True, "modem responding")
+
+
+def check_bridge_modem(cfg, name) -> bool:
+    """Confirm the UNO Q's on-board LoRa modem answers over the Router Bridge."""
+    import config as c
+    r = cfg["radios"][name]
+    sock = r.get("socket_path", "/var/run/arduino-router.sock")
+    label = f"radio {name} (bridge modem on {sock})"
+    if not Path(sock).exists():
+        return record(
+            label, False, f"{sock} not found",
+            "the arduino-router service is not running — is this an Arduino UNO Q with "
+            "the app framework up? (systemctl status arduino-router)")
+    try:
+        from bridge_radio import BridgeRadio
+        radio = BridgeRadio(name, c.lora_config(cfg), logging.getLogger("preflight"),
+                            socket_path=sock, boot_timeout_s=8.0)
+        radio.open()
+        radio.close()
+    except Exception as e:
+        return record(label, False, str(e),
+                      "flash the modem sketch and start the app: "
+                      "arduino-app-cli app start ~/ArduinoApps/sankat  (then re-run). "
+                      "Check the MCU with: arduino-app-cli monitor")
+    return record(label, True, "modem responding over the bridge")
 
 
 def check_radios(cfg) -> bool:
@@ -226,8 +264,11 @@ def check_radios(cfg) -> bool:
             gpio_cleanup()
 
     for name in active:
-        if _transport(cfg, name) == "serial":
+        t = _transport(cfg, name)
+        if t == "serial":
             all_ok &= check_serial_modem(cfg, name)
+        elif t == "bridge":
+            all_ok &= check_bridge_modem(cfg, name)
     return all_ok
 
 

@@ -5,7 +5,7 @@
 # The UNO Q ships as a self-contained folder (only arduino-unoq/ goes to the board), so
 # it carries its own copy of the mesh code. pi-code/ stays canonical; run this after
 # changing anything there to keep the two in step. config.json is deliberately NOT copied
-# (it is the field board's own, preconfigured for the serial modem).
+# (it is the field board's own, preconfigured for the on-board bridge modem).
 #
 # Run from anywhere:  arduino-unoq/sync-from-pi-code.sh
 set -euo pipefail
@@ -16,8 +16,8 @@ DST="$HERE/field-node"
 
 FILES=(
   ble_link.py chainlog.py config.py envelope.py gateway.py gpio_compat.py
-  node.py preflight.py run.sh serial_radio.py sx127x.py uplink.py
-  config.example.json
+  node.py preflight.py run.sh serial_radio.py bridge_radio.py bridge_client.py
+  sx127x.py uplink.py config.example.json
 )
 
 mkdir -p "$DST"

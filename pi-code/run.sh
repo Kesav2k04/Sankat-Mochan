@@ -90,11 +90,11 @@ pip_into_py() {
       || "$PY" -m pip install --quiet --user --break-system-packages "$@"
   fi
 }
-if ! "$PY" -c 'import bleak, requests, serial' >/dev/null 2>&1; then
-  echo "installing dependencies (bleak, requests, pyserial)"
+if ! "$PY" -c 'import bleak, requests, serial, msgpack' >/dev/null 2>&1; then
+  echo "installing dependencies (bleak, requests, pyserial, msgpack)"
   (( USING_VENV )) && "$PY" -m pip install --quiet --upgrade pip >/dev/null 2>&1
-  pip_into_py bleak requests pyserial || die "pip install failed. Try it directly:
-  python3 -m pip install --user --break-system-packages bleak requests pyserial
+  pip_into_py bleak requests pyserial msgpack || die "pip install failed. Try it directly:
+  python3 -m pip install --user --break-system-packages bleak requests pyserial msgpack
   (is there network access on this board?)"
 fi
 echo "  $("$PY" -V) at $PY"

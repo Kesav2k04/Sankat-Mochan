@@ -336,7 +336,21 @@ async def run() -> int:
             # A node's radio is either wired to THIS board's SPI (the Pi gateway) or
             # reached over serial through the UNO Q's LoRa modem (the field board). Both
             # present the same Radio surface, so everything below this point is identical.
-            if r.get("transport", "spi") == "serial":
+            transport = r.get("transport", "spi")
+            if transport == "bridge":
+                # The field radio is the UNO Q's OWN MCU, reached over the Router Bridge
+                # (no serial port — see bridge_radio.py). Single-board field node.
+                from bridge_radio import BridgeRadio, DEFAULT_ROUTER_SOCKET
+                sock = r.get("socket_path", DEFAULT_ROUTER_SOCKET)
+                radio = BridgeRadio(name, lora_cfg, logger, socket_path=sock)
+                radio.open()
+                radios[name] = radio
+                logger.info("radio '%s' is the UNO Q on-board LoRa modem over the Router "
+                            "Bridge (%s)", name, sock)
+                chain.emit(clog.START, name, radio=name, transport="bridge",
+                           socket=sock, freq_hz=lora_cfg.frequency_hz,
+                           sf=lora_cfg.spreading_factor, tx_power_dbm=lora_cfg.tx_power_dbm)
+            elif transport == "serial":
                 from serial_radio import SerialRadio
                 radio = SerialRadio(name, lora_cfg, r["serial_port"],
                                     r.get("serial_baud", 115200), logger)
