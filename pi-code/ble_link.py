@@ -20,6 +20,8 @@ oversized frames rather than corrupt them silently.
 from __future__ import annotations
 
 import asyncio
+import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
@@ -39,6 +41,14 @@ GATT_OP_TIMEOUT_S = 10.0
 # Must stay in step with MeshRole's ordinals in BleMeshService.kt.
 ROLE_NAMES = {0: "victim", 1: "responder", 2: "relay"}
 MAX_NODE_ID = 8
+
+# Frames that could not be delivered because the phone's BLE link was down are held and
+# replayed on reconnect (Android drops the link routinely — MAC rotation, duty cycling).
+# Bounded so a long outage can't hoard memory; stale frames are skipped at replay time
+# (the phone's own NACK loop covers anything older). 128 comfortably holds a whole
+# voice clip (<= 45 chunks) plus interleaved status traffic.
+REPLAY_MAX_FRAMES = 128
+REPLAY_MAX_AGE_S = 90.0
 
 
 async def negotiated_mtu(client: BleakClient, logger, name: str) -> int:
@@ -78,6 +88,8 @@ class BleLink(nodemod.Link):
         self._client: Optional[BleakClient] = None
         self._max_write = 0
         self._subscribed = False
+        # Store-and-forward for BLE outages: (raw, msg_id, t_mono) awaiting reconnect.
+        self._replay: "deque[tuple[bytes, str, float]]" = deque(maxlen=REPLAY_MAX_FRAMES)
 
     @property
     def connected(self) -> bool:
@@ -108,6 +120,32 @@ class BleLink(nodemod.Link):
     def mark_subscribed(self) -> None:
         self._subscribed = True
 
+    async def flush_replay(self) -> None:
+        """Deliver every frame that queued up while the phone was offline. Called right
+        after a (re)connect completes its subscribe. Stale frames are skipped — anything
+        older than REPLAY_MAX_AGE_S is better recovered by the phone's own NACK loop than
+        replayed out of context. The phone's dedup drops any frame it already has."""
+        if not self._replay:
+            return
+        batch, now = [], time.monotonic()
+        while self._replay:
+            raw, msg_id, t = self._replay.popleft()
+            if now - t <= REPLAY_MAX_AGE_S:
+                batch.append((raw, msg_id))
+        if not batch:
+            return
+        self._log.info("[%s] phone is back — replaying %d held frame(s)",
+                       self._node, len(batch))
+        sent = 0
+        for i, (raw, msg_id) in enumerate(batch):
+            if not self.ready:            # link dropped again mid-replay: re-hold the rest
+                self._replay.extend((r, m, now) for r, m in batch[i:])
+                break
+            if await self.send(raw, msg_id):
+                sent += 1
+        if sent:
+            self._log.info("[%s] replay done — %d frame(s) delivered", self._node, sent)
+
     def retarget(self, address: str) -> None:
         """Follow the phone to a new Bluetooth address after Android rotated its MAC.
 
@@ -135,11 +173,15 @@ class BleLink(nodemod.Link):
         # MeshNode can call every link uniformly.
         del repeats, post_delay_s
         if not self.ready:
-            # Not a debug detail: the message is now lost, and nobody is holding it.
-            self._log.warning("[%s] LOST %s — the phone is not connected right now, "
-                              "so there is nowhere to deliver it", self._node, msg_id)
+            # The phone is between BLE connections (Android drops/rotates routinely).
+            # Hold the frame and replay it the moment the link is back — this is what
+            # keeps a voice clip complete on the receiving phone instead of arriving
+            # with holes it then has to NACK for one round-trip at a time.
+            self._replay.append((raw, msg_id, time.monotonic()))
+            self._log.info("[%s] phone offline — holding %s to replay on reconnect "
+                           "(%d frame(s) waiting)", self._node, msg_id, len(self._replay))
             self._chain.emit(clog.DROP, self._node, radio=self.name, msg_id=msg_id,
-                             size=len(raw), reason="not_connected")
+                             size=len(raw), reason="queued_for_reconnect")
             return False
         if self._max_write and len(raw) > self._max_write:
             self._log.error("[%s] LOST %s — it is %d bytes, but this phone's Bluetooth only "
@@ -348,6 +390,9 @@ class BleManager:
                         on_state(True)
                         announced = True
                     self._log.info("[%s] now listening for messages from this phone", link._node)
+                    # Deliver whatever queued while the phone was away (voice chunks
+                    # especially — this is what keeps a clip complete on the phone).
+                    await link.flush_replay()
 
                     while client.is_connected:
                         await asyncio.sleep(0.5)

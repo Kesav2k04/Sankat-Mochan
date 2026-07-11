@@ -390,6 +390,13 @@ async def _transcribe_mesh_voice(*, clip_id: str, ref_id: str, origin: str,
         # File mode: persist the WAV next to the raw clip so /web_audio can serve it.
         if web and not database.enabled:
             (AUDIO_DIR / f"{clip_id}.wav").write_bytes(web_audio)
+        # Publish the playable URL NOW, before the (slow) STT below. The card was first
+        # attached with the raw .3gp — browsers cannot play AMR, so until this swap the
+        # operator's play button is dead. Transcode is fast; STT (first model load) can
+        # take minutes, and audio must never wait on it.
+        if web and ref_id in store.reports:
+            store.attach_voice(ref_id, playable_url, None, None)
+            await _broadcast_snapshot()
 
         # 2. Speech-to-text (native script).
         tr = await run_in_threadpool(stt.transcribe, data, lang)
