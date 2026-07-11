@@ -19,8 +19,14 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationSettingsRequest
+import com.google.android.gms.location.Priority
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -52,6 +58,7 @@ import com.sankatmochan.mesh.ui.LoraOnlyBanner
 import com.sankatmochan.mesh.ui.RelayScreen
 import com.sankatmochan.mesh.ui.ResponderScreen
 import com.sankatmochan.mesh.ui.RoleSettingsDialog
+import com.sankatmochan.mesh.ui.SosCountdownOverlay
 import com.sankatmochan.mesh.ui.VictimScreen
 import com.sankatmochan.mesh.ui.theme.OffNetTheme
 
@@ -96,6 +103,10 @@ class MainActivity : ComponentActivity() {
                         Toast.LENGTH_LONG
                     ).show()
                 }
+                // The moment the app is usable, make sure location is actually switched on —
+                // one tap, in place, no trip to Settings.
+                if (role == MeshRole.VICTIM) promptEnableLocationOneTap()
+                updateShakeService(role)
             } else if (role != null) {
                 Toast.makeText(
                     this,
@@ -119,6 +130,13 @@ class MainActivity : ComponentActivity() {
             suppressNextRadioCheck = true
         }
 
+    // Result of the one-tap "turn location on" system dialog. Whatever the user chose, re-sync
+    // our own location state so the indicator reflects reality immediately.
+    private val enableLocationLauncher =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+            vm.refreshLocation()
+        }
+
     // React the moment a radio changes under us while we're in the foreground: chase
     // Bluetooth back on, but for location only re-sync our own state (never force it).
     private val radioStateReceiver = object : BroadcastReceiver() {
@@ -130,26 +148,107 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Light/dark is a user choice now (the map reads better in daylight against light OSM
+    // tiles), persisted so it survives a restart. Compose snapshot state so a toggle recomposes
+    // the whole tree; defaults to the control-room dark look.
+    private val themePrefs by lazy { getSharedPreferences("offnet_prefs", Context.MODE_PRIVATE) }
+    private var darkTheme by mutableStateOf(true)
+
+    // Raised by a hard shake (ShakeSosService) — shows the full-screen 30s SOS countdown.
+    private var showSosCountdown by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        // targetSdk 35 on Android 15+ draws the app edge-to-edge with no automatic
-        // system-bar insets. Off-Net is always dark, so we force the transparent bars to
-        // carry LIGHT icons (SystemBarStyle.dark = light foreground on dark content),
-        // regardless of the phone's own light/dark setting. The layouts below pad for the
-        // bars themselves via safeDrawingPadding.
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-        )
+        // targetSdk 35 on Android 15+ draws the app edge-to-edge with no automatic system-bar
+        // insets. The bar icon colour must match the theme (light icons on the dark ground, dark
+        // icons on the light one) or they vanish. The layouts pad for the bars via
+        // safeDrawingPadding.
+        darkTheme = themePrefs.getBoolean(KEY_DARK, true)
+        applyBarStyle(darkTheme)
         super.onCreate(savedInstanceState)
         setContent {
-            OffNetTheme {
-                AppRoot(vm, onPickRole = ::onPickRole, onSosSent = ::requestBatterySaver)
+            OffNetTheme(darkTheme = darkTheme) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AppRoot(
+                        vm,
+                        onPickRole = ::onPickRole,
+                        onSosSent = ::requestBatterySaver,
+                        darkTheme = darkTheme,
+                        onToggleTheme = ::toggleTheme,
+                    )
+                    // Full-screen shake-triggered countdown, drawn over everything.
+                    if (showSosCountdown) {
+                        SosCountdownOverlay(
+                            totalSeconds = 30,
+                            onSend = {
+                                showSosCountdown = false
+                                sendAutoSos()
+                            },
+                            onCancel = {
+                                // "No" on the countdown means the user is safe — leave the app.
+                                showSosCountdown = false
+                                finish()
+                            },
+                        )
+                    }
+                }
             }
         }
         // No role picker anymore — the phone is a victim's SOS console the moment it opens.
         // A retained ViewModel keeps its role across configuration changes, so only ask on a
         // genuinely cold start.
         if (vm.role == null) onPickRole(MeshRole.VICTIM)
+        handleShakeIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShakeIntent(intent)
+    }
+
+    /** A shake fired while we were backgrounded routes back here via a full-screen intent. */
+    private fun handleShakeIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(ShakeSosService.EXTRA_SHOW_SOS_COUNTDOWN, false) == true) {
+            showSosCountdown = true
+        }
+    }
+
+    /**
+     * Fire an SOS with safe emergency defaults — used when the shake countdown elapses or the
+     * user taps "Send now". A person who triggered a panic gesture may be unable to fill in
+     * details, so this sends the highest urgency with the live GPS fix the ViewModel already
+     * holds, then nudges Battery saver like any other send.
+     */
+    private fun sendAutoSos() {
+        vm.sendSos(
+            category = "trapped",
+            urgency = 5,
+            gist = "Auto-SOS — triggered by shake",
+            lang = "en",
+            locationHint = "",
+        )
+        requestBatterySaver()
+    }
+
+    private fun applyBarStyle(dark: Boolean) {
+        val transparent = android.graphics.Color.TRANSPARENT
+        if (dark) {
+            enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.dark(transparent),
+                navigationBarStyle = SystemBarStyle.dark(transparent),
+            )
+        } else {
+            enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.light(transparent, transparent),
+                navigationBarStyle = SystemBarStyle.light(transparent, transparent),
+            )
+        }
+    }
+
+    private fun toggleTheme() {
+        darkTheme = !darkTheme
+        themePrefs.edit().putBoolean(KEY_DARK, darkTheme).apply()
+        applyBarStyle(darkTheme)
     }
 
     override fun onResume() {
@@ -190,7 +289,49 @@ class MainActivity : ComponentActivity() {
             permissionLauncher.launch(requestedPermissions)
         } else {
             vm.selectRole(role)
+            if (role == MeshRole.VICTIM) promptEnableLocationOneTap()
+            updateShakeService(role)
         }
+    }
+
+    /** Shake-to-SOS only makes sense for the person who might need help. Run the detector while
+     *  this phone is a victim console; stop it if it becomes a responder. */
+    private fun updateShakeService(role: MeshRole) {
+        if (role == MeshRole.VICTIM) ShakeSosService.start(this) else ShakeSosService.stop(this)
+    }
+
+    /**
+     * One-tap location enable. When location is off, Play services can pop a system dialog that
+     * switches it on in place — no trip to Settings (the redirect the app used to rely on). If
+     * the dialog can't be shown (already on, or no GMS on this device) we do nothing: an SOS
+     * still sends without a fix, so this is a nudge, never a gate.
+     */
+    private fun promptEnableLocationOneTap() {
+        val hasLocationPermission =
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        if (!hasLocationPermission) return
+
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000L).build()
+        val settingsRequest = LocationSettingsRequest.Builder()
+            .addLocationRequest(request)
+            .setAlwaysShow(true)
+            .build()
+        LocationServices.getSettingsClient(this)
+            .checkLocationSettings(settingsRequest)
+            .addOnFailureListener { e ->
+                if (e is ResolvableApiException) {
+                    try {
+                        enableLocationLauncher.launch(
+                            IntentSenderRequest.Builder(e.resolution).build()
+                        )
+                    } catch (_: Exception) {
+                        // The pending intent was already consumed/cancelled — nothing to do.
+                    }
+                }
+            }
     }
 
     // --- Radio enforcement -------------------------------------------------
@@ -259,6 +400,8 @@ private fun AppRoot(
     vm: MeshViewModel,
     onPickRole: (MeshRole) -> Unit,
     onSosSent: () -> Unit,
+    darkTheme: Boolean,
+    onToggleTheme: () -> Unit,
 ) {
     // The role picker is gone: the app is the victim's SOS console by default, and the
     // settings gear swaps in the responder. Until the first role actually starts (while the
@@ -326,6 +469,8 @@ private fun AppRoot(
     if (settingsOpen) {
         RoleSettingsDialog(
             current = role,
+            darkTheme = darkTheme,
+            onToggleTheme = onToggleTheme,
             onSelect = {
                 settingsOpen = false
                 onPickRole(it)
@@ -334,3 +479,5 @@ private fun AppRoot(
         )
     }
 }
+
+private const val KEY_DARK = "dark_theme"

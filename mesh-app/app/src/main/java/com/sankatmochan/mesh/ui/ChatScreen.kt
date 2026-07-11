@@ -39,9 +39,11 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -62,6 +64,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -222,6 +226,9 @@ private fun SetupPanel(vm: ChatViewModel, onPickLocal: () -> Unit) {
 @Composable
 private fun ChooseModelCard(vm: ChatViewModel, onPickLocal: () -> Unit) {
     val selected = vm.selectedModel
+    // A local model the user tapped the trash on, awaiting confirmation. Deleting weights is
+    // easy to fumble one-handed in an emergency, so it always asks first.
+    var pendingDelete by remember { mutableStateOf<AssistantModel?>(null) }
     Tile(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -256,10 +263,12 @@ private fun ChooseModelCard(vm: ChatViewModel, onPickLocal: () -> Unit) {
                     ) { vm.selectModel(model) }
                 }
                 vm.localModels.forEach { model ->
-                    OptionChip(
-                        label = "📁 ${model.displayName}",
+                    LocalModelChip(
+                        model = model,
                         selected = model.id == selected.id,
-                    ) { vm.selectModel(model) }
+                        onSelect = { vm.selectModel(model) },
+                        onDelete = { pendingDelete = model },
+                    )
                 }
                 AddModelChip(isImporting = vm.isImporting, onClick = onPickLocal)
             }
@@ -300,6 +309,84 @@ private fun ChooseModelCard(vm: ChatViewModel, onPickLocal: () -> Unit) {
                 },
                 icon = if (selected.isLocal) Icons.Rounded.AutoAwesome else Icons.Rounded.CloudDownload,
                 onClick = { if (loadFailed) vm.retryLoad() else vm.download() },
+            )
+        }
+    }
+
+    pendingDelete?.let { model ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = { Text("Delete ${model.displayName}?") },
+            text = {
+                Text(
+                    "This removes the model file (${model.approxSize}) from your phone. You can " +
+                        "add it again later. Nothing else is affected.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteLocalModel(model)
+                    pendingDelete = null
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Keep") }
+            },
+        )
+    }
+}
+
+/**
+ * A side-loaded model shown in the picker: a selectable label plus a trash button so the user
+ * can free the space when they no longer need it. Mirrors [OptionChip]'s look so the row stays
+ * visually consistent, and keeps the two tap targets separate (select vs. delete).
+ */
+@Composable
+private fun LocalModelChip(
+    model: AssistantModel,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(12.dp)
+    val bg = if (selected) scheme.primary else scheme.surfaceContainerHigh
+    val fg = if (selected) scheme.onPrimary else scheme.onSurfaceVariant
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(shape)
+            .background(bg)
+            .border(1.dp, if (selected) Color.Transparent else scheme.outline, shape),
+    ) {
+        Text(
+            text = "📁 ${model.displayName}",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = fg,
+            modifier = Modifier
+                .bounceClick(pressedScale = 0.93f, onClick = onSelect)
+                .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
+        )
+        Box(
+            Modifier
+                .padding(end = 6.dp)
+                .size(30.dp)
+                .clip(CircleShape)
+                .bounceClick(pressedScale = 0.85f, onClick = onDelete)
+                .semantics { contentDescription = "Delete ${model.displayName}" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.DeleteOutline,
+                contentDescription = null,
+                tint = if (selected) scheme.onPrimary.copy(alpha = 0.85f) else scheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
             )
         }
     }

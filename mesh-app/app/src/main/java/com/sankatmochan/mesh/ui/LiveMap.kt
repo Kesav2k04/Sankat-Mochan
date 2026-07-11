@@ -1,8 +1,5 @@
 package com.sankatmochan.mesh.ui
 
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.ShapeDrawable
-import android.graphics.drawable.shapes.OvalShape
 import android.util.Log
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -113,6 +110,8 @@ fun LiveLocationMap(
     }
 
     val mine = MaterialTheme.colorScheme.secondary.toArgb()
+    val safeArgb = urgencyColors.low.toArgb()
+    val landmarkArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val ready = archives
 
     Box(modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
@@ -149,12 +148,19 @@ fun LiveLocationMap(
                 },
                 update = { map ->
                     map.overlays.clear()
+                    // Safe reunion points + landmarks first, so the live "you" dot draws on top.
+                    map.addSafePoints(
+                        context = context,
+                        greenArgb = safeArgb,
+                        landmarkArgb = landmarkArgb,
+                        showLandmarks = true,
+                    )
                     val here = if (meLat != null && meLng != null) GeoPoint(meLat, meLng) else BENGALURU
                     map.overlays.add(
                         Marker(map).apply {
                             position = here
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                            icon = dot(mine, 30)
+                            icon = dotMarker(mine, 34)
                             title = if (meLat != null) "You are here" else "Bengaluru"
                         }
                     )
@@ -196,11 +202,4 @@ private fun LiveCoordinateChip(meLat: Double?, meLng: Double?, modifier: Modifie
             )
         }
     }
-}
-
-private fun dot(argb: Int, sizePx: Int): Drawable = ShapeDrawable(OvalShape()).apply {
-    paint.color = argb
-    intrinsicWidth = sizePx
-    intrinsicHeight = sizePx
-    setBounds(0, 0, sizePx, sizePx)
 }

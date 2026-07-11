@@ -16,7 +16,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Hearing
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Sos
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +42,8 @@ import com.sankatmochan.mesh.mesh.MeshRole
 @Composable
 fun RoleSettingsDialog(
     current: MeshRole,
+    darkTheme: Boolean,
+    onToggleTheme: () -> Unit,
     onSelect: (MeshRole) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -67,7 +71,52 @@ fun RoleSettingsDialog(
                     desc = "See incoming calls and accept them",
                     selected = current == MeshRole.RESPONDER,
                 ) { onSelect(MeshRole.RESPONDER) }
+
+                Spacer(Modifier.size(20.dp))
+                SectionLabel("appearance")
+                Spacer(Modifier.size(14.dp))
+                ThemeToggleRow(darkTheme = darkTheme, onToggle = onToggleTheme)
             }
+        }
+    }
+}
+
+/** Light/dark switch. Dark is the control-room default; light makes the offline map read
+ *  clearly in daylight against its light OSM tiles. */
+@Composable
+private fun ThemeToggleRow(darkTheme: Boolean, onToggle: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Tile(
+        modifier = Modifier
+            .fillMaxWidth()
+            .bounceClick { onToggle() },
+        shape = TileShapeSmall,
+        container = scheme.surfaceContainerHighest,
+        stroke = scheme.outlineVariant,
+    ) {
+        Row(
+            Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            IconBadge(
+                if (darkTheme) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
+                tint = if (darkTheme) scheme.secondary else MaterialTheme.colorScheme.primary,
+                size = 40.dp,
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (darkTheme) "Dark" else "Light",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = scheme.onSurface,
+                )
+                Text(
+                    "Switch the map and app to a light theme for daylight",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+            GlassSwitch(checked = !darkTheme, onChange = { onToggle() }, label = "Light theme")
         }
     }
 }

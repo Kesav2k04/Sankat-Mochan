@@ -3,6 +3,7 @@ package com.sankatmochan.mesh.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -69,6 +70,52 @@ private val OffNetColors = darkColorScheme(
     surfaceContainerHighest = Tile3,
 )
 
+// ── Light ground ──────────────────────────────────────────────────────────────
+// A daylight companion to the dark control-room scheme, added so the offline map (light
+// OSM tiles) reads with high contrast against the chrome instead of fighting a near-black
+// ground. Same signal red and state colours; only the neutrals invert. The saturated SOS
+// surfaces keep white ink in both modes, so nothing on the hero path changes meaning.
+private val BgL = Color(0xFFF5F6F9)
+private val Tile1L = Color(0xFFFFFFFF)
+private val Tile2L = Color(0xFFF0F2F5)
+private val Tile3L = Color(0xFFE6E9EF)
+private val HairlineL = Color(0xFFDCE0E7)
+private val TextHiL = Color(0xFF14171C)
+private val TextLoL = Color(0xFF5A616E)
+
+private val OffNetColorsLight = lightColorScheme(
+    primary = Signal,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFFFDBDA),
+    onPrimaryContainer = Color(0xFF410004),
+    secondary = Color(0xFF2F6FD0),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFD6E4FA),
+    onSecondaryContainer = Color(0xFF06264A),
+    tertiary = Color(0xFF12A06A),
+    onTertiary = Color.White,
+    background = BgL,
+    onBackground = TextHiL,
+    surface = BgL,
+    onSurface = TextHiL,
+    surfaceVariant = Tile2L,
+    onSurfaceVariant = TextLoL,
+    outline = Color(0xFFC4C9D2),
+    outlineVariant = HairlineL,
+    error = Color(0xFFC0353A),
+    onError = Color.White,
+    errorContainer = Color(0xFFFFDBDA),
+    onErrorContainer = Color(0xFF410004),
+    scrim = Color(0x99202226),
+    surfaceBright = Tile1L,
+    surfaceDim = Tile3L,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Tile1L,
+    surfaceContainer = Tile1L,
+    surfaceContainerHigh = Tile2L,
+    surfaceContainerHighest = Tile3L,
+)
+
 /**
  * The urgency ramp. A rescuer reads colour before words, so these are semantic and
  * deliberately outside the M3 roles — saturated enough to separate at a glance on the
@@ -129,6 +176,12 @@ private val OffNetGradients = BrandGradients(
     page = Brush.verticalGradient(listOf(Color(0xFF0D0F12), Bg)),
 )
 
+// The hero SOS/safe gradients are identical in light mode (they carry white ink either way);
+// only the page wash flips to a daylight tint.
+private val OffNetGradientsLight = OffNetGradients.copy(
+    page = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), BgL)),
+)
+
 private val LocalUrgencyPalette = staticCompositionLocalOf { OffNetUrgency }
 private val LocalBrandGradients = staticCompositionLocalOf { OffNetGradients }
 
@@ -156,14 +209,17 @@ private val OffNetTypography = Typography().run {
 
 @Composable
 fun OffNetTheme(
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    // The urgency ramp stays identical in both modes — a rescuer must read "critical red" the
+    // same way in daylight and at night. Only the neutral chrome and page wash switch.
     CompositionLocalProvider(
         LocalUrgencyPalette provides OffNetUrgency,
-        LocalBrandGradients provides OffNetGradients,
+        LocalBrandGradients provides if (darkTheme) OffNetGradients else OffNetGradientsLight,
     ) {
         MaterialTheme(
-            colorScheme = OffNetColors,
+            colorScheme = if (darkTheme) OffNetColors else OffNetColorsLight,
             typography = OffNetTypography,
             content = content
         )

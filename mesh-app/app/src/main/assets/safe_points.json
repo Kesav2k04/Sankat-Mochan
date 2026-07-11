@@ -1,0 +1,20 @@
+{
+  "_comment": "Bundled offline points for the demo map region (Bengaluru, matching the bundled tile archive). Coordinates are approximate, drawn from public OpenStreetMap landmarks; reunion points are illustrative muster/assembly locations for the disaster-relief scenario. Shipped in-repo (no network fetch) so the map works fully offline. Apache-2.0 with the rest of the project.",
+  "landmarks": [
+    {"name": "Kempegowda Bus Station (Majestic)", "lat": 12.9776, "lng": 77.5713, "detail": "Major transport hub"},
+    {"name": "Bengaluru City Railway Station", "lat": 12.9782, "lng": 77.5680, "detail": "Rail terminus"},
+    {"name": "Vidhana Soudha", "lat": 12.9794, "lng": 77.5907, "detail": "State secretariat"},
+    {"name": "Cubbon Park", "lat": 12.9763, "lng": 77.5929, "detail": "Central open green space"},
+    {"name": "Lalbagh Botanical Garden", "lat": 12.9507, "lng": 77.5848, "detail": "Large park, multiple gates"},
+    {"name": "Victoria Hospital", "lat": 12.9611, "lng": 77.5741, "detail": "Public hospital"},
+    {"name": "KR Market", "lat": 12.9616, "lng": 77.5806, "detail": "Central market"},
+    {"name": "MG Road Metro", "lat": 12.9757, "lng": 77.6068, "detail": "Metro interchange"}
+  ],
+  "reunionPoints": [
+    {"name": "Freedom Park", "lat": 12.9724, "lng": 77.5806, "detail": "Open ground · large capacity"},
+    {"name": "Sree Kanteerava Stadium", "lat": 12.9686, "lng": 77.5959, "detail": "Stadium · sheltered muster"},
+    {"name": "Palace Grounds", "lat": 13.0007, "lng": 77.5905, "detail": "Open grounds · vehicle access"},
+    {"name": "National College Grounds", "lat": 12.9420, "lng": 77.5730, "detail": "Open field · Basavanagudi"},
+    {"name": "Cubbon Park Lawn", "lat": 12.9750, "lng": 77.5938, "detail": "Central open lawn"}
+  ]
+}

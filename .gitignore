@@ -32,6 +32,9 @@ node_modules/
 # logs / temp
 *.log
 
+# JVM heap dumps (e.g. a crashed Gradle/Studio daemon leaves these behind)
+*.hprof
+
 # Transient test data / benchmark artifacts (not source)
 command-post/fleurs/
 command-post/audio/

@@ -1,0 +1,19 @@
+# Sahayak fine-tuning dependencies. All Apache-2.0 (CLAUDE.md #1).
+#
+# torch: install the build matching your platform/accelerator FIRST, from https://pytorch.org
+#   - CUDA (recommended for real training)         e.g. pip install torch --index-url .../cu121
+#   - CPU / Windows-ARM / Surface (pipeline test)  pip install torch
+#   - Apple Silicon (MPS)                          pip install torch
+#
+# Fast path (needs an NVIDIA CUDA GPU). Unsloth pulls transformers/trl/peft/datasets/bitsandbytes:
+unsloth>=2024.8
+
+# Fallback path deps (CPU/MPS, no CUDA). Also satisfied by the unsloth install above; listed so
+# `pip install -r requirements.txt` gives a working transformers+PEFT trainer without a GPU.
+transformers>=4.44
+datasets>=2.20
+peft>=0.12
+trl>=0.9
+accelerate>=0.33
+
+# bitsandbytes (4-bit QLoRA) is CUDA-only — installed with unsloth on CUDA; skip on CPU/ARM.
