@@ -63,3 +63,17 @@ Notes:
   On the CPU fallback, convert the merged model with llama.cpp's `convert_hf_to_gguf.py`.
 
 Run `python sahayak_finetune.py --help` for every knob (epochs, lr, LoRA rank, batch size, …).
+
+## Train E4B on Kaggle (recommended — free GPU T4 ×2)
+
+E4B QLoRA needs ~10 GB VRAM, which a Kaggle **T4** (16 GB, compute capability 7.5) fits but an
+8 GB laptop card does not. Use the ready-to-run notebook:
+
+**[`kaggle_gemma4_e4b_finetune.ipynb`](kaggle_gemma4_e4b_finetune.ipynb)**
+
+It installs the stack, **guards the GPU** (hard-fails on a P100 — cc 6.0 < 7.0, where Unsloth
+silently drops to the maskless fallback), reads `HF_TOKEN` from **Kaggle Secrets** (never a cell),
+runs the validator as a **hard gate**, trains E4B with the best-accuracy settings
+(r=32 / α=32, lr 2e-4, 3 epochs, seq-len 1024), exports merged-fp16 + GGUF, and uploads the
+artifacts to a private HF repo. Set the accelerator to **`GPU T4 x2`** and attach your dataset
+(`train.jsonl` + `val.jsonl`) as an input.
