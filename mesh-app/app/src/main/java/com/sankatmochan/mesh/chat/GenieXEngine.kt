@@ -400,12 +400,28 @@ class GenieXEngine(context: Context) {
         // formatted prompt back via NewStringUTF (Modified UTF-8) and hard-aborts (SIGABRT) on lone
         // surrogates, 4-byte chars (emoji), or split multibyte fragments - which is what crashed the
         // app on mixed Tamil/Hindi chats.
+        // The window is bounded by UTF-8 BYTES, not message count alone: Indic scripts are
+        // 3 bytes/char, so "8 messages" of Hindi is ~3x the bytes of the English chats that
+        // worked - and once the formatted prompt outgrows Genie's native buffer, its byte-level
+        // trim splits a multibyte char and the next NewStringUTF aborts (the 0xa2/0xa4/0xbf
+        // "illegal start byte" crashes). Newest-first, keep whole messages only; the latest
+        // user message always survives (truncated to the budget if it alone exceeds it).
         val window = ArrayList<ChatMessage>(MAX_WINDOW_MESSAGES + 1)
         window.add(ChatMessage(role = history[0].role, sanitizeForSdk(history[0].content)))
-        val tailStart = maxOf(1, history.size - MAX_WINDOW_MESSAGES)
-        for (m in history.subList(tailStart, history.size)) {
-            window.add(ChatMessage(role = m.role, sanitizeForSdk(m.content)))
+        val tail = ArrayList<ChatMessage>(MAX_WINDOW_MESSAGES)
+        var budget = MAX_WINDOW_BYTES
+        for (i in history.indices.reversed()) {
+            if (i == 0 || tail.size == MAX_WINDOW_MESSAGES) break
+            var content = sanitizeForSdk(history[i].content)
+            val bytes = content.toByteArray(Charsets.UTF_8).size
+            if (bytes > budget) {
+                if (tail.isNotEmpty()) break            // older turn doesn't fit: stop here
+                content = truncateUtf8(content, budget) // lone newest message: cut, don't drop
+            }
+            budget -= content.toByteArray(Charsets.UTF_8).size
+            tail.add(ChatMessage(role = history[i].role, content))
         }
+        for (i in tail.indices.reversed()) window.add(tail[i])
 
         // We already know the input language (from on-device LID), so tell the model outright and
         // override any earlier-language turns still in the window.
@@ -509,12 +525,43 @@ class GenieXEngine(context: Context) {
         return sb.toString()
     }
 
+    /**
+     * Cut [s] down to at most [maxBytes] of UTF-8, always at a code-point boundary, so the
+     * result can never start or end mid-character. Keeps the head of the message (questions
+     * are front-loaded); only ever applied to a lone over-budget message, never mid-history.
+     */
+    private fun truncateUtf8(s: String, maxBytes: Int): String {
+        var bytes = 0
+        var i = 0
+        while (i < s.length) {
+            val cp = s.codePointAt(i)
+            val cpBytes = when {
+                cp <= 0x7F -> 1
+                cp <= 0x7FF -> 2
+                else -> 3 // sanitizeForSdk already dropped everything above the BMP
+            }
+            if (bytes + cpBytes > maxBytes) break
+            bytes += cpBytes
+            i += Character.charCount(cp)
+        }
+        return s.substring(0, i)
+    }
+
     private companion object {
         const val TAG = "GenieXEngine"
 
         /** Most recent user/assistant messages replayed per turn (8 = 4 exchanges). Together
          *  with the 512-token output cap this keeps a turn comfortably inside nCtx = 2048. */
         const val MAX_WINDOW_MESSAGES = 8
+
+        /**
+         * UTF-8 byte budget for the replayed user/assistant turns (system prompt and the ~90-byte
+         * LID tag are on top; both are pure ASCII). Sized so system prompt + window + 512 output
+         * tokens stay inside nCtx = 2048 even for Devanagari/Tamil text (~3 bytes and roughly a
+         * token per character), and well below whatever byte limit Genie's native templater trims
+         * at - it must be the app, not Genie, that decides where text gets cut.
+         */
+        const val MAX_WINDOW_BYTES = 3_072
 
         /**
          * The assistant's brief. Kept deliberately short and factual for a small on-device
