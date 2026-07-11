@@ -201,13 +201,15 @@ def run_unsloth(args, env):
     )
 
     # ── Fix the "expected mat1 and mat2 to have the same dtype, but got: float != c10::Half" crash.
-    # Unsloth upcasts Gemma 4 to float32 on a T4 but its cast MISSES per_layer_model_projection
-    # (and can miss sibling non-quantized Linears), leaving them fp16 while the embeddings feeding
-    # them are fp32 -> the matmul in project_per_layer_inputs blows up on step 0. We align every
-    # stray floating tensor to the token-embedding dtype so the whole forward path is consistent.
-    # No-op on a native-bf16 GPU (nothing is stray there). 4-bit weights are uint8-backed, so the
+    # On the force_fp32 path (Gemma 4 on a T4) Unsloth trains in PURE float32, but its own upcast
+    # leaves stray fp16 tensors behind (per_layer_model_projection, sometimes the embeddings too).
+    # Aligning to the *embedding* dtype is NOT safe here — when the embeddings themselves are one
+    # of the strays (fp16), that downcasts the whole model to fp16 and the trainer's later
+    # "Switching to float32 training" re-cast of the inputs recreates the exact float!=Half crash.
+    # So on force_fp32 the target is torch.float32, hard-coded — embeddings included. Elsewhere
+    # the embedding dtype stays the ground truth. 4-bit weights are uint8-backed, so the
     # float-only guard skips them and bitsandbytes' own compute-dtype handling is left untouched.
-    _align_model_dtype(model)
+    _align_model_dtype(model, target=torch.float32 if force_fp32 else None)
 
     tokenizer = apply_chat_template(tokenizer, template)
 
@@ -281,26 +283,29 @@ def run_unsloth(args, env):
     print("[unsloth] done.")
 
 
-def _align_model_dtype(model) -> None:
-    """Force every non-quantized floating parameter/buffer to the token-embedding dtype.
+def _align_model_dtype(model, target=None) -> None:
+    """Force every non-quantized floating parameter/buffer to one consistent dtype.
 
-    Root cause this fixes (Gemma 4 on a non-bf16 GPU, e.g. Kaggle T4): Unsloth upcasts the model
-    to float32 because fp16 is numerically unsafe for Gemma 4, but the upcast leaves a few small
-    non-quantized Linears — notably `per_layer_model_projection` in the text model — in float16.
-    On step 0, project_per_layer_inputs does `per_layer_model_projection(inputs_embeds)` with fp32
-    embeds against an fp16 weight and raises:
+    Root cause this fixes (Gemma 4 on a non-bf16 GPU, e.g. Kaggle T4): Unsloth trains Gemma 4 in
+    pure float32 there ("float16 won't work -> float32"), but its upcast leaves stray fp16
+    tensors — `per_layer_model_projection`, and on some Unsloth versions the token embeddings
+    themselves. On step 0, project_per_layer_inputs matmuls fp32 hidden states against an fp16
+    weight and raises:
         RuntimeError: expected mat1 and mat2 to have the same dtype, but got: float != c10::Half
 
-    We take the token-embedding weight's dtype as ground truth for "what flows through the net"
-    (fp32 on T4-Gemma4, bf16 on Ampere+) and cast any mismatched float tensor to it. 4-bit weights
-    are uint8-backed and float-typed norms/scales already match, so this is a no-op on the happy
-    path and only rescues the stray-fp16 case.
+    `target` is the caller's ground truth for "what flows through the net". Pass torch.float32
+    on the Gemma-4/T4 force_fp32 path (the trainer WILL run fp32 there, so the embedding dtype
+    cannot be trusted — it may itself be a stray fp16). When None, the token-embedding dtype is
+    used (bf16 on Ampere+, where nothing is stray and this is a no-op). 4-bit weights are
+    uint8-backed and skipped by the float-only guard, leaving bitsandbytes' compute-dtype
+    handling untouched.
     """
     import torch
 
-    emb = model.get_input_embeddings()
-    target = getattr(getattr(emb, "weight", None), "dtype", None)
     _floats = (torch.float16, torch.bfloat16, torch.float32)
+    if target is None:
+        emb = model.get_input_embeddings()
+        target = getattr(getattr(emb, "weight", None), "dtype", None)
     if target not in _floats:
         return  # embeddings themselves quantized/exotic — don't second-guess Unsloth.
 
