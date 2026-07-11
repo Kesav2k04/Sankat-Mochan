@@ -602,7 +602,7 @@ private fun MessageBubble(msg: ChatViewModel.UiMessage) {
             if (thinking) {
                 ThinkingDots(color = textColor.copy(alpha = 0.7f))
             } else {
-                // Model output is rendered as PLAIN TEXT — never as HTML (CLAUDE.md #9).
+                // Model output is rendered as PLAIN TEXT - never as HTML (CLAUDE.md #9).
                 Text(
                     text = msg.text,
                     style = MaterialTheme.typography.bodyMedium,

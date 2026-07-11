@@ -41,7 +41,7 @@ import kotlin.coroutines.resume
  *   init → ModelManagerWrapper.pullFlow (download) → getPaths → LlmWrapper.build (load) →
  *   applyChatTemplate → generateStreamFlow (stream tokens).
  *
- * Every method is safe to call from a coroutine on any dispatcher — the heavy work is moved
+ * Every method is safe to call from a coroutine on any dispatcher - the heavy work is moved
  * onto [Dispatchers.IO] internally. Instances are cheap; hold one per assistant session.
  */
 class GenieXEngine(context: Context) {
@@ -50,7 +50,7 @@ class GenieXEngine(context: Context) {
 
     /**
      * Where side-loaded models live. App-scoped external storage needs no runtime permission
-     * and is reachable over adb — you can `adb push model.gguf` into
+     * and is reachable over adb - you can `adb push model.gguf` into
      * `Android/data/<pkg>/files/models/` and it shows up in the picker (plug-and-play).
      */
     val localModelsDir: File = File(appContext.getExternalFilesDir(null), "models")
@@ -79,7 +79,7 @@ class GenieXEngine(context: Context) {
         data class Unsupported(val reason: String) : InitResult
     }
 
-    /** Bring the SDK up once. Idempotent — repeated calls after a success return [Ready]. */
+    /** Bring the SDK up once. Idempotent - repeated calls after a success return [Ready]. */
     suspend fun initialize(): InitResult = lock.withLock {
         if (initialized) return@withLock InitResult.Ready
         val ok = runCatching { awaitInit() }.getOrElse { e ->
@@ -90,7 +90,7 @@ class GenieXEngine(context: Context) {
             initialized = true
             InitResult.Ready
         } else {
-            // Generic, user-safe message — the real reason is only in Logcat (CLAUDE.md #10).
+            // Generic, user-safe message - the real reason is only in Logcat (CLAUDE.md #10).
             InitResult.Unsupported("On-device AI is not available on this device.")
         }
     }
@@ -110,7 +110,7 @@ class GenieXEngine(context: Context) {
 
     // ── Download ──────────────────────────────────────────────────────────────
 
-    /** True when the model is ready to load — a local file on disk, or a cached hub pull. */
+    /** True when the model is ready to load - a local file on disk, or a cached hub pull. */
     suspend fun isDownloaded(model: AssistantModel): Boolean = withContext(Dispatchers.IO) {
         if (model.isLocal) return@withContext File(model.localPath!!).exists()
         runCatching { ModelManagerWrapper.getPaths(model.modelName) != null }.getOrDefault(false)
@@ -125,7 +125,7 @@ class GenieXEngine(context: Context) {
      * to Hugging Face for the pull and never logged.
      */
     fun downloadFlow(model: AssistantModel): Flow<Int> = flow {
-        // Local models are already on disk — nothing to pull.
+        // Local models are already on disk - nothing to pull.
         if (model.isLocal) {
             emit(100)
             return@flow
@@ -192,9 +192,9 @@ class GenieXEngine(context: Context) {
                 modelKey = model.id
             } else {
                 val paths = runCatching { ModelManagerWrapper.getPaths(model.modelName) }.getOrNull()
-                    ?: return@withContext LoadResult.Failed("Model files are missing — download it again.")
+                    ?: return@withContext LoadResult.Failed("Model files are missing - download it again.")
                 modelPath = paths.model_path
-                    ?: return@withContext LoadResult.Failed("Model files are missing — download it again.")
+                    ?: return@withContext LoadResult.Failed("Model files are missing - download it again.")
                 tokenizerPath = paths.tokenizer_path.orEmpty()
                 // A GGUF pull writes no runtime manifest, so fall back to the llama.cpp runtime.
                 runtimeId = paths.runtime_id?.ifEmpty { GenieXSdk.PLUGIN_ID_LLAMA_CPP }
@@ -241,7 +241,7 @@ class GenieXEngine(context: Context) {
 
     /**
      * Extensions the bundled runtime can actually load locally. Only `libgeniex_plugin_llama_cpp`
-     * is wired up for side-loaded files (see [load]), and llama.cpp only reads GGUF — so this is
+     * is wired up for side-loaded files (see [load]), and llama.cpp only reads GGUF - so this is
      * the full list, not a partial one. Formats like `.litertlm`/`.tflite`/`.task` belong to a
      * different runtime plugin (LiteRT/MediaPipe) that isn't wired into this app; adding them here
      * without a real integration would just mislabel unusable files as models (CLAUDE.md #4: don't
@@ -252,7 +252,7 @@ class GenieXEngine(context: Context) {
     /**
      * The first 4 bytes of every valid GGUF file, per the format's public spec (MIT-licensed,
      * https://github.com/ggml-org/ggml/blob/master/docs/gguf.md). A name ending in `.gguf`
-     * doesn't guarantee the bytes actually are one — an older build of this app used to
+     * doesn't guarantee the bytes actually are one - an older build of this app used to
      * force-rename *any* picked file to `.gguf`, so a stale side-loaded file can still have a
      * `.gguf` name while actually being, say, a `.litertlm` bundle. Checking the extension alone
      * (CLAUDE.md #8: validate untrusted input, don't just trust its label) let those through and
@@ -268,7 +268,7 @@ class GenieXEngine(context: Context) {
     }.getOrDefault(false)
 
     /** Every supported model file sitting in [localModelsDir], newest first, ready to load.
-     *  Drops (and deletes) anything that merely has a `.gguf` name but isn't really one — e.g.
+     *  Drops (and deletes) anything that merely has a `.gguf` name but isn't really one - e.g.
      *  leftovers from before extension validation existed. */
     suspend fun scanLocalModels(): List<AssistantModel> = withContext(Dispatchers.IO) {
         val files = localModelsDir.listFiles { f ->
@@ -334,7 +334,7 @@ class GenieXEngine(context: Context) {
     suspend fun deleteLocalModel(model: AssistantModel): Boolean = withContext(Dispatchers.IO) {
         val path = model.localPath ?: return@withContext false
         val f = File(path)
-        // Refuse to follow a path that escapes the models dir — a side-loaded name is
+        // Refuse to follow a path that escapes the models dir - a side-loaded name is
         // untrusted (CLAUDE.md #8); we only ever delete inside our own folder.
         val insideModelsDir = runCatching {
             f.canonicalPath.startsWith(localModelsDir.canonicalPath + File.separator)
@@ -383,7 +383,7 @@ class GenieXEngine(context: Context) {
     /**
      * Stream a reply to [userText]. Appends the turn to [history] so context carries across
      * messages; rolls the user turn back on failure so a retry isn't polluted. Collect this
-     * once per send — the ViewModel guards against overlapping generations.
+     * once per send - the ViewModel guards against overlapping generations.
      */
     fun replyFlow(userText: String): Flow<ChatStream> = flow {
         val w = wrapper
@@ -394,7 +394,7 @@ class GenieXEngine(context: Context) {
 
         history.add(ChatMessage(role = "user", userText))
 
-        // Send the model a sliding window — system prompt + the most recent turns — so a long
+        // Send the model a sliding window - system prompt + the most recent turns - so a long
         // conversation can't overflow nCtx and kill generation mid-chat. Full history stays in
         // [history] untouched; only what the model sees is windowed.
         val window = ArrayList<ChatMessage>(MAX_WINDOW_MESSAGES + 1)

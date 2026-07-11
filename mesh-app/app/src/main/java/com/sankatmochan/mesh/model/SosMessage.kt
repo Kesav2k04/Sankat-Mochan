@@ -12,12 +12,13 @@ enum class MsgType { SOS, DELIVERED, ACCEPTED }
  *
  * Encoded as small-key JSON and kept under [MAX_BYTES] so it fits a single BLE
  * write with a 247-byte MTU (and, later, a 255-byte LoRa frame). This is the
- * ONE thing that travels between devices — everything else is UI.
+ * ONE thing that travels between devices - everything else is UI.
  */
 data class SosMessage(
     val id: String,            // globally-unique: "<origin>-<seq>"
     val type: MsgType,
-    val origin: String,        // short id of the originating node
+    val origin: String,        // short id of the originating node (per-session, for routing)
+    val deviceId: String = "", // stable id of the originating device (persists across sessions)
     val refId: String? = null, // for DELIVERED/ACCEPTED: the SOS id being answered
     val urgency: Int = 3,      // 1 (low) .. 5 (critical)
     val category: String = "", // e.g. "flood", "trapped", "medical"
@@ -35,7 +36,7 @@ data class SosMessage(
     fun encode(): ByteArray {
         var trimmedGist = gist
         var bytes = toBytes(trimmedGist)
-        // Only the free-text gist is trimmed to fit — never the structured fields.
+        // Only the free-text gist is trimmed to fit - never the structured fields.
         while (bytes.size > MAX_BYTES && trimmedGist.isNotEmpty()) {
             trimmedGist = trimmedGist.dropLast((bytes.size - MAX_BYTES).coerceAtLeast(1))
             bytes = toBytes(trimmedGist)
@@ -51,6 +52,7 @@ data class SosMessage(
         o.put("i", id)
         o.put("t", type.name)
         o.put("o", origin)
+        if (deviceId.isNotEmpty()) o.put("d", deviceId)
         refId?.let { o.put("r", it) }
         o.put("u", urgency)
         o.put("c", category)
@@ -58,7 +60,7 @@ data class SosMessage(
         o.put("g", g)
         o.put("ln", lang)
         if (lat != null && lng != null) {
-            // A raw Double serialises as "12.959670000000001" — 18 bytes of a 244-byte
+            // A raw Double serialises as "12.959670000000001" - 18 bytes of a 244-byte
             // envelope, all but six of them below the noise floor of any phone's GNSS.
             o.put("la", round6(lat))
             o.put("lo", round6(lng))
@@ -68,7 +70,7 @@ data class SosMessage(
         return o.toString().toByteArray(StandardCharsets.UTF_8)
     }
 
-    /** Six decimal places ≈ 0.11 m — well inside GNSS accuracy, and it keeps the
+    /** Six decimal places ≈ 0.11 m - well inside GNSS accuracy, and it keeps the
      *  envelope a predictable size so gist trimming behaves the same every time. */
     private fun round6(v: Double): Double = Math.round(v * 1_000_000.0) / 1_000_000.0
 
@@ -78,13 +80,13 @@ data class SosMessage(
         /** ATT payload budget for a 247-byte MTU (247 - 3 bytes ATT header). */
         const val MAX_BYTES = 244
 
-        // Field caps — all incoming mesh data is untrusted (CLAUDE.md #8).
+        // Field caps - all incoming mesh data is untrusted (CLAUDE.md #8).
         private const val MAX_ID = 32
         private const val MAX_TEXT = 200
 
         /**
          * Parse + validate an incoming envelope. Returns null if the bytes are
-         * malformed, oversized, or fail range/type checks — the caller drops it.
+         * malformed, oversized, or fail range/type checks - the caller drops it.
          * Untrusted input is treated as data only; nothing here is executed.
          */
         fun decode(bytes: ByteArray): SosMessage? {
@@ -100,6 +102,7 @@ data class SosMessage(
                     id = id,
                     type = type,
                     origin = origin,
+                    deviceId = if (o.has("d")) clean(o.optString("d")).take(MAX_ID) else "",
                     refId = if (o.has("r")) clean(o.optString("r")).take(MAX_ID) else null,
                     urgency = o.optInt("u", 3).coerceIn(1, 5),
                     category = clean(o.optString("c")).take(48),
@@ -124,7 +127,7 @@ data class SosMessage(
          *    crafted SOS inject fake log lines a reader can't distinguish from real ones;
          *  - the text is later shown on-screen; keeping it to printable characters means what a
          *    responder reads is exactly what was sent, with no hidden or spoofing control codes.
-         * This is data cleaning only — the content is never interpreted as commands.
+         * This is data cleaning only - the content is never interpreted as commands.
          */
         private fun clean(s: String): String =
             buildString(s.length) { for (ch in s) append(if (ch.isISOControl()) ' ' else ch) }.trim()

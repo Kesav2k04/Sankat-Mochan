@@ -181,14 +181,14 @@ class GattScannerController(
      * Re-apply [peerPolicy] to links we already hold. Refusing *new* connections is
      * not enough: when the policy tightens mid-session (the operator flips LoRa-only
      * on), any phone we already dialled would keep relaying and quietly bypass the
-     * radio hop. Drop those links now. Peers that connected *to us* are unaffected —
+     * radio hop. Drop those links now. Peers that connected *to us* are unaffected -
      * they live in GattServerController, which is exactly what the gateway uses.
      */
     fun enforcePolicy() {
         val policy = peerPolicy()
         connections.forEach { (address, conn) ->
             if (policy.allows(address)) return@forEach
-            Log.d(TAG, "policy now forbids $address — disconnecting")
+            Log.d(TAG, "policy now forbids $address - disconnecting")
             try { conn.gatt.disconnect() } catch (_: Exception) {}
             try { conn.gatt.close() } catch (_: Exception) {}
             connections.remove(address)
@@ -235,7 +235,7 @@ class GattScannerController(
             false
         }
         if (!accepted) {
-            // Rejected synchronously (usually transient congestion — onCharacteristicWrite
+            // Rejected synchronously (usually transient congestion - onCharacteristicWrite
             // won't fire). Re-queue at the head and retry after a short delay so relayed
             // writes (not in the sender's outbox) aren't permanently dropped. Bounded so
             // a persistently-failing link can never stall the queue forever.

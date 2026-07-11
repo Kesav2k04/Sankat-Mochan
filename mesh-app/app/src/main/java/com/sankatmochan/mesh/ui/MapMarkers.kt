@@ -18,7 +18,7 @@ import org.osmdroid.views.overlay.Polygon
 
 /*
  * Map marker kit, drawn entirely in code (no bitmap assets, no network). Crisp, ringed pins so
- * a position reads as an intentional marker rather than a blurry blob against busy OSM tiles —
+ * a position reads as an intentional marker rather than a blurry blob against busy OSM tiles -
  * this is the fix for the "half-cut / unclear icons on the map" report as well as the base for
  * the green safe-reunion beacons.
  */
@@ -49,7 +49,7 @@ fun reunionMarker(res: Resources, greenArgb: Int, sizePx: Int): Drawable {
     val b = Color.blue(greenArgb)
     fun green(a: Int) = Color.argb(a, r, g, b)
 
-    // Soft halo, then two rings leaving the centre — a frozen green radar wave.
+    // Soft halo, then two rings leaving the centre - a frozen green radar wave.
     c.drawCircle(cx, cy, maxR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = green(46) })
     val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE

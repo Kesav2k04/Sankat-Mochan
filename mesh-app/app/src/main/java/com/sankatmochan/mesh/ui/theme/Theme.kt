@@ -13,7 +13,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 /*
- * Off-Net design language v2 — "control room".
+ * Off-Net design language v2 - "control room".
  *
  * One near-black neutral ground, one signal red, and a small set of state colours
  * (green = safe, amber = pending, blue = you). Everything else is greys. The discipline
@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.sp
  */
 
 // ── Signal ──────────────────────────────────────────────────────────────────
-internal val Signal = Color(0xFFE8484D)      // the red — SOS, critical, recording
+internal val Signal = Color(0xFFE8484D)      // the red - SOS, critical, recording
 internal val SignalHot = Color(0xFFFF6257)   // gradient tail
 internal val Safe = Color(0xFF2ED48A)        // connected · locked · accepted
 internal val Amber = Color(0xFFF5B03E)       // pending · searching
@@ -118,7 +118,7 @@ private val OffNetColorsLight = lightColorScheme(
 
 /**
  * The urgency ramp. A rescuer reads colour before words, so these are semantic and
- * deliberately outside the M3 roles — saturated enough to separate at a glance on the
+ * deliberately outside the M3 roles - saturated enough to separate at a glance on the
  * dark ground, never neon.
  */
 data class UrgencyPalette(
@@ -192,7 +192,7 @@ val brandGradients: BrandGradients
     @Composable get() = LocalBrandGradients.current
 
 // Editorial ramp: heavy, tight display for the few headline moments; wide-tracked
-// micro-labels for tile captions; calm body. Platform font — nothing to ship.
+// micro-labels for tile captions; calm body. Platform font - nothing to ship.
 private val OffNetTypography = Typography().run {
     copy(
         displayMedium = displayMedium.copy(fontWeight = FontWeight.Black, letterSpacing = (-1).sp, lineHeight = 52.sp),
@@ -212,7 +212,7 @@ fun OffNetTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    // The urgency ramp stays identical in both modes — a rescuer must read "critical red" the
+    // The urgency ramp stays identical in both modes - a rescuer must read "critical red" the
     // same way in daylight and at night. Only the neutral chrome and page wash switch.
     CompositionLocalProvider(
         LocalUrgencyPalette provides OffNetUrgency,

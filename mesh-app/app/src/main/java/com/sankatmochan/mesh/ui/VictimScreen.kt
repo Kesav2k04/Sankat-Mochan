@@ -16,7 +16,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
@@ -92,7 +93,7 @@ private val CATEGORIES = listOf(
     "supplies" to "Food / Water",
 )
 
-// Native script — the person choosing is choosing their own language.
+// Native script - the person choosing is choosing their own language.
 private val LANGUAGES = listOf(
     "ta" to "தமிழ்",
     "hi" to "हिंदी",
@@ -109,8 +110,8 @@ private val URGENCIES = listOf(
 
 /**
  * The SOS console. One tap on the hero tile sends; the bento underneath answers the two
- * questions a person in trouble actually has — "can anyone hear me?" and "do they know
- * where I am?" — without a word of jargon. Everything optional lives behind Details.
+ * questions a person in trouble actually has - "can anyone hear me?" and "do they know
+ * where I am?" - without a word of jargon. Everything optional lives behind Details.
  */
 @OptIn(ExperimentalFoundationApi::class) // BringIntoViewRequester is still experimental
 @Composable
@@ -169,7 +170,7 @@ fun VictimScreen(
     }
 
     // Task 3: the back gesture unwinds the screen a step at a time instead of dropping the
-    // user out of the app — it closes the details drawer, lowers the map, or ends the radar.
+    // user out of the app - it closes the details drawer, lowers the map, or ends the radar.
     BackHandler(enabled = sending || sosActive || detailsOpen) {
         when {
             sending -> sending = false
@@ -201,7 +202,7 @@ fun VictimScreen(
                             onClick = { prepOpen = true },
                         )
                         Spacer(Modifier.size(8.dp))
-                        // Offline AI assistant — answers first-aid / safety questions on-device.
+                        // Offline AI assistant - answers first-aid / safety questions on-device.
                         TopBarChip(
                             icon = Icons.Rounded.AutoAwesome,
                             description = "Open the offline AI assistant",
@@ -213,7 +214,7 @@ fun VictimScreen(
                 )
 
                 // Swiggy move: the live map grows down from the top, the rest of the screen
-                // stays below it — the major, actionable part remains where the thumb rests.
+                // stays below it - the major, actionable part remains where the thumb rests.
                 AnimatedVisibility(
                     visible = sosActive,
                     enter = expandVertically(tween(Motion.Mid), expandFrom = Alignment.Top) +
@@ -250,6 +251,7 @@ fun VictimScreen(
                             )
                         }
                         ReassuranceNote()
+                        DeviceIdNote(vm.deviceId)
                         TextButton(onClick = { sosActive = false }) {
                             Text("Add details or send again")
                         }
@@ -310,7 +312,7 @@ fun VictimScreen(
     }
 }
 
-/** The steadying preamble above the button — names the moment and lowers the pulse. */
+/** The steadying preamble above the button - names the moment and lowers the pulse. */
 @Composable
 private fun EmergencyIntro() {
     Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
@@ -321,7 +323,7 @@ private fun EmergencyIntro() {
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            "Take a slow breath — you are not alone. One tap on SOS quietly shares your live " +
+            "Take a slow breath - you are not alone. One tap on SOS quietly shares your live " +
                 "location with every responder nearby. No signal is needed; the mesh carries it " +
                 "for you.",
             style = MaterialTheme.typography.bodyMedium,
@@ -331,7 +333,7 @@ private fun EmergencyIntro() {
     }
 }
 
-/** The word after the send — keeps the panicked hand still and the person hopeful. */
+/** The word after the send - keeps the panicked hand still and the person hopeful. */
 @Composable
 private fun ReassuranceNote() {
     Tile(Modifier.fillMaxWidth()) {
@@ -345,12 +347,35 @@ private fun ReassuranceNote() {
             Text(
                 "Your live location is going out to nearby responders and keeps updating as you " +
                     "move. If it is safe, stay where you are and keep your phone with you. " +
-                    "Breathe — you have done the hard part.",
+                    "Breathe - you have done the hard part.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 20.sp
             )
         }
+    }
+}
+
+/**
+ * The device fingerprint that went out with the call. Stable per handset and sent inside every
+ * SOS, so a control room can recognise repeat calls from the same phone. Plain text only
+ * (CLAUDE.md #9).
+ */
+@Composable
+private fun DeviceIdNote(deviceId: String) {
+    if (deviceId.isBlank()) return
+    Row(
+        Modifier.fillMaxWidth().padding(start = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SectionLabel("device id")
+        Spacer(Modifier.size(8.dp))
+        Text(
+            deviceId,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -373,7 +398,7 @@ private fun SendingRadar() {
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Reaching every responder nearby. Stay calm — help is being alerted right now.",
+                "Reaching every responder nearby. Stay calm - help is being alerted right now.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -384,7 +409,7 @@ private fun SendingRadar() {
 }
 
 /**
- * The hero — a full-width rounded SOS surface in the signal red, white icon-circle top
+ * The hero - a full-width rounded SOS surface in the signal red, white icon-circle top
  * left (the reference-2 signature), the word doing the rest. Press compresses on a
  * spring; a slow glow breathes behind it; SENT flips it green with a tick.
  */
@@ -470,7 +495,7 @@ private fun SosTile(
                     justSent -> "Your call is on the mesh"
                     withVoice -> "Tap to send with your voice message"
                     repeat -> "Tap to send again"
-                    else -> "Tap once — location goes with it"
+                    else -> "Tap once - location goes with it"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.88f)
@@ -482,7 +507,7 @@ private fun SosTile(
 /**
  * The single location tell in the top bar: a GPS pin, green once we hold a fix and red
  * while we don't. Tapping it drops a small overlay with the exact coordinates (or the
- * current search status when there is no fix yet) — the full picture on demand, without a
+ * current search status when there is no fix yet) - the full picture on demand, without a
  * tile taking up the console.
  */
 @Composable
@@ -503,8 +528,8 @@ private fun LocationIndicator(vm: MeshViewModel) {
                 .bounceClick(pressedScale = 0.9f) { open = true }
                 .semantics {
                     contentDescription =
-                        if (hasFix) "Location locked — show coordinates"
-                        else "No location fix — show status"
+                        if (hasFix) "Location locked - show coordinates"
+                        else "No location fix - show status"
                 },
             contentAlignment = Alignment.Center
         ) {
@@ -599,13 +624,31 @@ private fun VoiceTile(vm: MeshViewModel, modifier: Modifier = Modifier) {
                 Modifier
                     .fillMaxWidth()
                     .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                vm.startRecording()
-                                val completed = tryAwaitRelease()
-                                if (completed) vm.stopRecording() else vm.cancelRecording()
+                        // Hold-to-record, done by hand rather than with detectTapGestures.
+                        // The tile lives inside a vertical scroll, and detectTapGestures let
+                        // the scroll claim the tiniest finger wobble: the press was cancelled,
+                        // so the clip attached (or the record state closed) before the user
+                        // meant to let go. Here we consume every pointer change while the
+                        // finger is down, so the scroll can never steal the gesture, and only
+                        // a genuine lift stops the recording. A stray cancel (e.g. leaving the
+                        // screen) drops the clip instead of attaching a half-recording.
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false).consume()
+                            vm.startRecording()
+                            var released = false
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    event.changes.forEach { it.consume() }
+                                    if (event.changes.none { it.pressed }) {
+                                        released = true
+                                        break
+                                    }
+                                }
+                            } finally {
+                                if (released) vm.stopRecording() else vm.cancelRecording()
                             }
-                        )
+                        }
                     }
                     .padding(14.dp)
                     .semantics { contentDescription = "Hold to record a voice message" },
@@ -710,7 +753,7 @@ private fun DetailsTile(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        "Optional — category, language, landmark",
+                        "Optional - category, language, landmark",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -762,7 +805,7 @@ private fun DetailField(value: String, onValueChange: (String) -> Unit, placehol
     )
 }
 
-/** The raw fix — the audit trail, tucked at the bottom of Details. */
+/** The raw fix - the audit trail, tucked at the bottom of Details. */
 @Composable
 private fun CoordinatesRow(vm: MeshViewModel) {
     val la = vm.lat

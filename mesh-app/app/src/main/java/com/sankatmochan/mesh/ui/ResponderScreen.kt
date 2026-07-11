@@ -218,7 +218,7 @@ private fun SosCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            // gist is untrusted incoming text — rendered as plain text only (CLAUDE.md #9).
+            // gist is untrusted incoming text - rendered as plain text only (CLAUDE.md #9).
             if (sos.gist.isNotBlank()) {
                 Text(
                     sos.gist,
@@ -297,7 +297,7 @@ private fun SosCard(
                     )
                     Spacer(Modifier.size(8.dp))
                     Text(
-                        "Accepted — en route",
+                        "Accepted - en route",
                         color = Color.White,
                         style = MaterialTheme.typography.titleSmall
                     )

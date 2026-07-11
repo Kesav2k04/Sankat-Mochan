@@ -24,7 +24,7 @@ enum class MeshRole { VICTIM, RESPONDER, RELAY }
  * owns the message logic: dedup, loop-free store-and-forward, and the honest
  * victim status ladder (Sending → reached control room → help on the way).
  *
- * Every node both advertises/serves AND scans/connects, so any node can relay —
+ * Every node both advertises/serves AND scans/connects, so any node can relay -
  * a 3rd phone dropped in between victim and responder needs zero code changes.
  */
 @SuppressLint("MissingPermission")
@@ -35,6 +35,10 @@ class BleMeshService(context: Context) {
 
     /** Short per-session node id, e.g. "a3f9". Prefixes every message id. */
     val nodeId: String = "%04x".format(Random.nextInt(0x10000))
+
+    /** Stable id of THIS physical device, persisted across sessions. Rides in every SOS we
+     *  originate so a control room can tie repeat calls back to the same handset. */
+    val deviceId: String = DeviceId.get(context)
 
     var role: MeshRole = MeshRole.RELAY
         private set
@@ -69,7 +73,7 @@ class BleMeshService(context: Context) {
 
     /**
      * When true, this phone stops dialling out to other phones. It keeps advertising,
-     * so the Pi's LoRa gateway (a BLE central) still connects inbound — which makes the
+     * so the Pi's LoRa gateway (a BLE central) still connects inbound - which makes the
      * gateway's radio the only way a message can leave this device. Turn it on for the
      * phone-to-phone-over-LoRa demo; leave it off for the pure BLE mesh demo.
      *
@@ -97,8 +101,8 @@ class BleMeshService(context: Context) {
         _loraOnly.value = enabled
         scanner.enforcePolicy()
         store.log(
-            if (enabled) "LoRa-only ON — ignoring nearby phones; traffic must cross the gateway radio"
-            else "LoRa-only OFF — peering directly with nearby phones again"
+            if (enabled) "LoRa-only ON - ignoring nearby phones; traffic must cross the gateway radio"
+            else "LoRa-only OFF - peering directly with nearby phones again"
         )
     }
 
@@ -145,7 +149,7 @@ class BleMeshService(context: Context) {
         }
     }
 
-    /** Re-broadcast everything we've originated — called when a new peer appears. */
+    /** Re-broadcast everything we've originated - called when a new peer appears. */
     private fun flushOutbox() {
         val snapshot = synchronized(outbox) { outbox.toList() }
         if (snapshot.isEmpty()) return
@@ -168,6 +172,7 @@ class BleMeshService(context: Context) {
             id = nextId(),
             type = MsgType.SOS,
             origin = nodeId,
+            deviceId = deviceId,
             urgency = urgency.coerceIn(1, 5),
             category = category,
             locationHint = locationHint,
@@ -192,13 +197,14 @@ class BleMeshService(context: Context) {
             id = nextId(),
             type = MsgType.ACCEPTED,
             origin = nodeId,
+            deviceId = deviceId,
             refId = sos.id,
             gist = "Help is on the way",
             lang = sos.lang,
             ts = System.currentTimeMillis()
         )
         store.markSeen(ack.id)
-        store.log("Accepted ${sos.id} — responder en route")
+        store.log("Accepted ${sos.id} - responder en route")
         rememberOutbound(ack)
         broadcast(ack, exceptAddress = null)
     }
@@ -209,7 +215,7 @@ class BleMeshService(context: Context) {
     private fun onBytes(bytes: ByteArray, fromAddress: String) {
         // Rate-limit per peer BEFORE any decode or re-broadcast. A flood dropped here costs one
         // token check; accepted, each packet would cost a parse plus a fan-out to every other
-        // peer. Dropped packets are intentionally NOT written to the event log — logging every
+        // peer. Dropped packets are intentionally NOT written to the event log - logging every
         // one would just move the DoS from memory to the log/UI (CLAUDE.md #8/#10).
         if (!rateLimiter.allow(fromAddress)) {
             Log.d(TAG, "rate-limited packet from $fromAddress")
@@ -226,7 +232,7 @@ class BleMeshService(context: Context) {
             store.log("Dropped malformed packet from $fromAddress")
             return
         }
-        if (!store.markSeen(msg.id)) return // dedup — also the store-and-forward loop guard
+        if (!store.markSeen(msg.id)) return // dedup - also the store-and-forward loop guard
         handle(msg, fromAddress)
     }
 
@@ -236,7 +242,7 @@ class BleMeshService(context: Context) {
             store.log("Dropped malformed voice packet from $fromAddress")
             return
         }
-        // Dedup on the frame id, not the clip id — otherwise the first chunk to arrive
+        // Dedup on the frame id, not the clip id - otherwise the first chunk to arrive
         // would suppress all its siblings. The id carries `attempt`, so a retransmission
         // is a new id and survives dedup; only a looping copy is dropped.
         if (!store.markSeen(frame.id)) return
@@ -261,7 +267,7 @@ class BleMeshService(context: Context) {
      * Ask for the pieces that never arrived.
      *
      * Armed on every chunk and pushed back each time, so it fires only once the clip has
-     * gone quiet — a NACK sent mid-transfer would ask for chunks that are still on air and
+     * gone quiet - a NACK sent mid-transfer would ask for chunks that are still on air and
      * waste the channel repeating them.
      */
     private fun scheduleNack(clipId: String, clipOrigin: String, seq: Int, total: Int) {
@@ -293,7 +299,7 @@ class BleMeshService(context: Context) {
     private fun resendMissing(nack: VoiceNack) {
         val chunks = synchronized(sentClips) { sentClips[nack.seq] }
         if (chunks == null) {
-            store.log("Cannot honour resend request for ${nack.clipId} — clip no longer held")
+            store.log("Cannot honour resend request for ${nack.clipId} - clip no longer held")
             return
         }
         val attempt = minOf(nack.attempt + 1, VoiceChunk.MAX_ATTEMPTS - 1)

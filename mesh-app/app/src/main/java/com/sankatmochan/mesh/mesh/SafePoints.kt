@@ -9,7 +9,7 @@ import org.json.JSONObject
  * A single fixed point on the offline map: either a general landmark for orientation, or a
  * designated **reunion / muster point** where people are directed to gather and be safe.
  *
- * These are read from a bundled asset ([SafePoints]) rather than fetched over the network —
+ * These are read from a bundled asset ([SafePoints]) rather than fetched over the network -
  * the whole app is offline-first, so map context has to travel inside the APK. Every field is
  * treated as untrusted data even though it ships with the build (CLAUDE.md #8): coordinates
  * are range-checked and the human-readable strings are only ever rendered as plain text
@@ -32,7 +32,7 @@ object SafePoints {
     @Volatile
     private var cache: List<MapPoint>? = null
 
-    /** All points, parsed once and cached. Empty list if the asset is missing or unreadable —
+    /** All points, parsed once and cached. Empty list if the asset is missing or unreadable -
      *  a missing dataset must never take the map down. */
     fun all(context: Context): List<MapPoint> {
         cache?.let { return it }

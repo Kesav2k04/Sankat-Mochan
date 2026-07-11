@@ -8,7 +8,7 @@ import java.io.File
 /**
  * Finds the map tiles this phone can draw from, with no network involved.
  *
- * osmdroid renders from a local archive — an .mbtiles / .sqlite / .zip / .gemf file
+ * osmdroid renders from a local archive - an .mbtiles / .sqlite / .zip / .gemf file
  * generated ahead of time for the operating region. Two places are searched, in order:
  *
  *  1. `assets/tiles/` inside the APK, copied once into app-private storage. Ship the
@@ -20,7 +20,7 @@ import java.io.File
  *
  * Everything lives under `filesDir`, which needs no storage permission on API 31+.
  * If nothing is found the responder screen falls back to bearing-and-distance, which
- * needs no map data at all — a blank grey map would be worse than no map.
+ * needs no map data at all - a blank grey map would be worse than no map.
  */
 object OfflineTiles {
 
@@ -30,7 +30,7 @@ object OfflineTiles {
     /** osmdroid insists on being told where to live before a MapView is inflated. */
     fun configure(context: Context) {
         val cfg = Configuration.getInstance()
-        // Deliberately NOT androidx.preference — that would pull in another dependency
+        // Deliberately NOT androidx.preference - that would pull in another dependency
         // for a handful of keys osmdroid only writes.
         cfg.load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
         cfg.userAgentValue = context.packageName
@@ -43,7 +43,7 @@ object OfflineTiles {
 
     /**
      * Copy any bundled archives out of assets (once), then list everything usable.
-     * Returns an empty list when this build ships no map — that is a supported state.
+     * Returns an empty list when this build ships no map - that is a supported state.
      */
     fun archives(context: Context): List<File> {
         val dest = tileDir(context)

@@ -41,7 +41,7 @@ import com.sankatmochan.mesh.ui.theme.urgencyColors
 /**
  * Shared header: optional circular back chip, screen title over a quiet caption, custom
  * [actions], the live peer pill, and an optional settings gear on the far right. No bar
- * fill — the page is one sheet.
+ * fill - the page is one sheet.
  */
 @Composable
 fun MeshTopBar(
@@ -96,7 +96,7 @@ fun MeshTopBar(
     }
 }
 
-/** The header's circular action chip — a hairline circle over the sheet. */
+/** The header's circular action chip - a hairline circle over the sheet. */
 @Composable
 fun TopBarChip(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -124,7 +124,7 @@ fun TopBarChip(
 /**
  * Operator switch for the LoRa-only demo, as a bridge tile. When on, this phone stops
  * connecting to other phones, so the only route out is the Pi gateway's 433 MHz radio.
- * Both endpoint phones must have it on — one left off will dial into the other.
+ * Both endpoint phones must have it on - one left off will dial into the other.
  */
 @Composable
 fun LoraOnlyBanner(enabled: Boolean, onChange: (Boolean) -> Unit) {
@@ -165,9 +165,9 @@ fun LoraOnlyBanner(enabled: Boolean, onChange: (Boolean) -> Unit) {
                 )
                 Text(
                     text = if (enabled)
-                        "Phones ignored — everything crosses the 433 MHz radio"
+                        "Phones ignored - everything crosses the 433 MHz radio"
                     else
-                        "Off — relaying phone-to-phone over Bluetooth",
+                        "Off - relaying phone-to-phone over Bluetooth",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant
                 )
@@ -235,7 +235,7 @@ fun UrgencyChip(urgency: Int) {
 }
 
 /**
- * A tappable pill sized for the field — Material's own FilterChip is a fixed 32dp tall,
+ * A tappable pill sized for the field - Material's own FilterChip is a fixed 32dp tall,
  * hard to hit with wet or shaking hands. Selected fills red; the press bounces.
  */
 @Composable

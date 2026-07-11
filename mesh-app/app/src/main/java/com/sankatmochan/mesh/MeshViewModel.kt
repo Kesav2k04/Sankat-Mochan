@@ -26,12 +26,15 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
 
     val nodeId: String get() = service.nodeId
 
+    /** Stable id of this device, sent with every SOS. Shown on the sent confirmation. */
+    val deviceId: String get() = service.deviceId
+
     // Which stage we've already raised a banner for, per SOS id, so each step notifies once.
     private val notifiedStage = HashMap<String, Int>()
 
     init {
         // When the mesh bumps one of *our* SOS messages to "reached control room" (1) or
-        // "help on the way" (2), surface it as a real notification — the person may not be
+        // "help on the way" (2), surface it as a real notification - the person may not be
         // watching the screen. Only the origin phone holds the SOS in `sent`, so this only
         // ever fires for the victim who sent it.
         service.store.sent
@@ -47,7 +50,7 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Latest GNSS fix, or null if we don't have one yet. Optional — an SOS
+    /** Latest GNSS fix, or null if we don't have one yet. Optional - an SOS
      *  sends fine without it, and is never blocked waiting for one. */
     var lat by mutableStateOf<Double?>(null)
         private set
@@ -67,7 +70,7 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Keep the GNSS receiver warm. Called as soon as the victim role starts, so a fix
-     * is already in hand when the SOS button is pressed — a request made at send time
+     * is already in hand when the SOS button is pressed - a request made at send time
      * would usually return nothing, because a cold fix without A-GPS takes a minute.
      * Safe to call only after ACCESS_FINE_LOCATION is granted.
      */
@@ -77,23 +80,23 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
             // claiming we're located. An SOS still sends fine without coordinates.
             clearFix()
             needsPreciseLocation = false
-            locationStatus = "Location is switched off — turn it on in Settings. It works in aeroplane mode."
+            locationStatus = "Location is switched off - turn it on in Settings. It works in aeroplane mode."
             return
         }
         if (!locationProvider.hasFineLocation() && !locationProvider.hasCoarseLocation()) {
             clearFix()
             needsPreciseLocation = false
-            locationStatus = "Location permission was denied — grant it to send coordinates"
+            locationStatus = "Location permission was denied - grant it to send coordinates"
             return
         }
         // Granting "Approximate" instead of "Precise" leaves GPS_PROVIDER off-limits, which
         // used to fail silently behind a status line that claimed we were searching.
         if (!locationProvider.hasFineLocation()) {
             needsPreciseLocation = true
-            locationStatus = "Only approximate location was allowed — switch to Precise for GPS coordinates"
+            locationStatus = "Only approximate location was allowed - switch to Precise for GPS coordinates"
         } else {
             needsPreciseLocation = false
-            locationStatus = "Searching for satellites — the first fix can take a minute outdoors"
+            locationStatus = "Searching for satellites - the first fix can take a minute outdoors"
         }
 
         val started = locationProvider.start(
@@ -165,11 +168,11 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
         isRecording = false
         val clip = recorder.stop()
         if (clip == null) {
-            voiceStatus = "Nothing recorded — hold the button while you speak"
+            voiceStatus = "Nothing recorded - hold the button while you speak"
             return
         }
         pendingVoice = clip
-        voiceStatus = "Voice attached — it will be sent with your SOS"
+        voiceStatus = "Voice attached - it will be sent with your SOS"
     }
 
     fun discardVoice() {
@@ -220,8 +223,8 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Send the SOS, then the attached recording if there is one.
      *
-     * Order matters. The text envelope is one 104-byte frame — under a fifth of a second
-     * on air — and carries the urgency and the coordinates. The audio is ~16 frames and
+     * Order matters. The text envelope is one 104-byte frame - under a fifth of a second
+     * on air - and carries the urgency and the coordinates. The audio is ~16 frames and
      * several seconds. The rescuer must have the actionable part before the channel
      * disappears under the clip.
      */

@@ -1,5 +1,5 @@
 <!-- Status-bar icon: a broadcast glyph. Status icons must be a flat white silhouette on
-     transparency — the system tints it. -->
+     transparency - the system tints it. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

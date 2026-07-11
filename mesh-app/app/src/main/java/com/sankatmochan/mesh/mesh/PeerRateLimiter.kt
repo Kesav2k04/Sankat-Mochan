@@ -1,10 +1,10 @@
 package com.sankatmochan.mesh.mesh
 
 /**
- * A per-peer token-bucket rate limiter — a DoS backstop on the mesh ingress path.
+ * A per-peer token-bucket rate limiter - a DoS backstop on the mesh ingress path.
  *
  * Every byte arriving from a peer is untrusted (CLAUDE.md #8). Each accepted packet costs a
- * decode plus, for a fresh id, a re-broadcast to every *other* peer — so one flooding peer is
+ * decode plus, for a fresh id, a re-broadcast to every *other* peer - so one flooding peer is
  * amplified across the whole mesh and can burn the channel, CPU and battery of every node it
  * reaches. This limiter caps the *sustained* rate any single peer can push through, while a
  * generous burst still lets legitimate bursty traffic (a voice clip is a dozen-plus frames
@@ -31,7 +31,7 @@ class PeerRateLimiter(
     private class Bucket(var tokens: Double, var lastRefillMs: Long)
 
     // Bounded so a peer churning through many (possibly spoofed) addresses can't grow this map
-    // without limit — the same unbounded-memory concern [BoundedIdSet] guards. Eldest peer's
+    // without limit - the same unbounded-memory concern [BoundedIdSet] guards. Eldest peer's
     // bucket is evicted; it simply starts fresh (full) if it comes back.
     private val buckets = object : LinkedHashMap<String, Bucket>(64, 0.75f, false) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bucket>): Boolean =

@@ -54,7 +54,7 @@ import com.sankatmochan.mesh.chat.ModelPrepViewModel.Phase
 /**
  * "Prepare for offline" helper, reached from the info button on the home console. It coaxes the
  * user to download a safety-assistant model *now, while there's still signal*, so it's ready when
- * an emergency takes them offline — the whole point of an offline-first app. Recommends a model
+ * an emergency takes them offline - the whole point of an offline-first app. Recommends a model
  * for the device, then downloads it with a live progress bar and a rolling activity log.
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -112,7 +112,7 @@ fun ModelPrepSheet(onDismiss: () -> Unit) {
                         Phase.CHECKING -> CenteredMini("Preparing…")
 
                         Phase.UNSUPPORTED -> Text(
-                            "On-device AI needs a Snapdragon phone with the NPU runtime — it won't " +
+                            "On-device AI needs a Snapdragon phone with the NPU runtime - it won't " +
                                 "run here. Everything else in the app still works offline.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -157,13 +157,13 @@ fun ModelPrepSheet(onDismiss: () -> Unit) {
                         }
 
                         Phase.ALREADY_READY, Phase.DONE -> ReadyRow(
-                            if (phase == Phase.DONE) "Downloaded — ready offline"
-                            else "Already downloaded — ready offline"
+                            if (phase == Phase.DONE) "Downloaded - ready offline"
+                            else "Already downloaded - ready offline"
                         )
                     }
                 }
 
-                // Alternatives — only worth showing when a download hasn't started.
+                // Alternatives - only worth showing when a download hasn't started.
                 if (vm.phase == Phase.READY_TO_DOWNLOAD || vm.phase == Phase.FAILED) {
                     Spacer(Modifier.height(16.dp))
                     SectionLabel("or pick another")
@@ -263,7 +263,7 @@ private fun CenteredMini(text: String) {
     }
 }
 
-/** The rolling backend activity feed — shows what's happening in plain language (CLAUDE.md #10:
+/** The rolling backend activity feed - shows what's happening in plain language (CLAUDE.md #10:
  *  status, not stack traces). Newest lines at the bottom, older ones dimmed. */
 @Composable
 private fun ActivityLog(lines: List<String>) {

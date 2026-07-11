@@ -37,7 +37,7 @@
         service (API 34+ requires the typed permission; justification in the <service> property).
       - USE_FULL_SCREEN_INTENT: pop the SOS countdown full-screen from the background. On
         Android 14+ a non-calling app may be downgraded to a heads-up notification the user taps.
-      SECURITY-SENSITIVE (CLAUDE.md #6): this is user-safety code — reviewer, confirm the flip
+      SECURITY-SENSITIVE (CLAUDE.md #6): this is user-safety code - reviewer, confirm the flip
       thresholds and that no SOS is sent without either the countdown elapsing or an explicit tap.
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -46,7 +46,7 @@
 
     <!--
       SECURITY-SENSITIVE (CLAUDE.md #6): network access.
-      The mesh itself never touches the internet — it is BLE/LoRa only. INTERNET is used
+      The mesh itself never touches the internet - it is BLE/LoRa only. INTERNET is used
       ONLY by the on-device AI assistant to download its LLM weights once from the model
       hub; after that, inference runs fully offline on the Snapdragon NPU. No SOS content,
       location, or mesh traffic is ever sent over the network. Reviewer: confirm no other

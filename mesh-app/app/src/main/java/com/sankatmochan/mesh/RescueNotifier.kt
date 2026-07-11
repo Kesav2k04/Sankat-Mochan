@@ -11,7 +11,7 @@ import com.sankatmochan.mesh.mesh.SentSos
  * Turns the mesh's own "help is on the way" acknowledgement into a real system notification
  * on the victim's phone. This is not a mock: the trigger is the [SentSos] stage that
  * [com.sankatmochan.mesh.mesh.MessageStore.updateSentStatus] sets when a DELIVERED or
- * ACCEPTED envelope for this device's own SOS comes back over the mesh — so the alert only
+ * ACCEPTED envelope for this device's own SOS comes back over the mesh - so the alert only
  * ever fires on the origin phone, the moment a responder actually accepts.
  *
  * A person who has fired an SOS may well put the phone down; a banner is how they learn a
@@ -30,7 +30,7 @@ object RescueNotifier {
                     "Rescue status",
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
-                    description = "Updates on your SOS — delivered, and help on the way."
+                    description = "Updates on your SOS - delivered, and help on the way."
                 }
             )
         }
@@ -39,14 +39,14 @@ object RescueNotifier {
     /**
      * Post (or replace) the status banner for one SOS. Keyed by the SOS id so a later stage
      * updates the same notification rather than stacking. Safe to call without the
-     * POST_NOTIFICATIONS permission — it simply does not show.
+     * POST_NOTIFICATIONS permission - it simply does not show.
      */
     fun notifyStatus(context: Context, sos: SentSos) {
         val (title, body) = when (sos.stage) {
             2 -> "Help is on the way" to
                 "A responder is coming for you. If it's safe, stay where you are and keep your phone with you."
             1 -> "Your SOS reached the control room" to
-                "Responders can see your call now. Hold on — help is being arranged."
+                "Responders can see your call now. Hold on - help is being arranged."
             else -> return
         }
         ensureChannel(context)

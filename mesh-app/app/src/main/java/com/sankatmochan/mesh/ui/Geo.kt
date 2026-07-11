@@ -23,7 +23,7 @@ object Geo {
         return (out[1] + 360f) % 360f
     }
 
-    /** "NE", "SSW" — a direction a person can act on without reading a number. */
+    /** "NE", "SSW" - a direction a person can act on without reading a number. */
     fun compassPoint(bearing: Float): String {
         val points = arrayOf(
             "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -33,7 +33,7 @@ object Geo {
         return points[i]
     }
 
-    /** "420 m" / "1.4 km" — metres below a kilometre, where precision still matters. */
+    /** "420 m" / "1.4 km" - metres below a kilometre, where precision still matters. */
     fun formatDistance(meters: Float): String =
         if (meters < 1000f) "${Math.round(meters)} m"
         else "%.1f km".format(meters / 1000f)

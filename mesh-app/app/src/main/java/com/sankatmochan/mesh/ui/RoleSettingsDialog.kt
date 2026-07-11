@@ -36,7 +36,7 @@ import com.sankatmochan.mesh.mesh.MeshRole
 
 /**
  * The role switch, as a modal. The phone is a victim's SOS console by default; this is the
- * one place to hand it to a responder instead. Relay is intentionally absent — this build
+ * one place to hand it to a responder instead. Relay is intentionally absent - this build
  * only offers the two jobs a person in the field actually chooses between.
  */
 @Composable
