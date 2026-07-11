@@ -9,6 +9,11 @@
     "console": true
   },
 
+  "run": {
+    "_comment": "Which radio node(s) THIS board runs. A single Pi holding both radios lists both (the original bench setup). Once radio A moves to the UNO Q, that board lists only 'field' and the Pi lists only 'gateway' — same code, two boxes, still bridged only by 433 MHz. Each name here must have a matching block under 'radios'. The RF startup probe (which needs both radios on one board) auto-disables when only one node runs.",
+    "nodes": ["field", "gateway"]
+  },
+
   "lora": {
     "frequency_hz": 433000000,
     "spreading_factor": 7,
@@ -19,6 +24,8 @@
     "preamble_len": 8,
     "crc": true,
     "tx_repeats": 2,
+    "voice_tx_repeats": 3,
+    "_voice_tx_repeats_comment": "How many times each VOICE chunk is sent on the air (text/SOS use tx_repeats). A voice clip is all-or-nothing — every one of its ~16-45 chunks must arrive or it is unplayable — so a single shot per chunk loses whole clips on a lossy hop. 3 gets most chunks across on the first pass; the NACK repair loop recovers the rest. Raise to 4-5 on a poor RF link (costs proportionally more airtime); SOS is unaffected (exempt critical lane + mid-clip yield).",
     "max_payload": 255,
     "startup_probe": true,
     "csma": {
@@ -35,13 +42,17 @@
 
   "radios": {
     "field": {
-      "_comment": "Radio A — moves to the UNO Q in the disaster zone later. Verified wiring.",
+      "_comment": "Radio A. Each radio has a 'transport': \"spi\" (wired to THIS board's SPI, the original single-Pi bench), \"serial\" (a separate Arduino LoRa modem on USB, /dev/ttyACM*), or \"bridge\" (the Arduino UNO Q's OWN on-board MCU, reached over the Router Bridge socket — the single-board field node, see arduino-unoq/). On the UNO Q field board set transport=\"bridge\" in config.json (no serial_port needed). cs/rst_gpio/dio0_gpio are used only by the \"spi\" transport and ignored for serial/bridge; they stay here so the old two-radio Pi bench still runs unchanged.",
+      "transport": "spi",
+      "serial_port": "/dev/ttyACM0",
+      "serial_baud": 115200,
       "cs": 0,
       "rst_gpio": 25,
       "dio0_gpio": 24
     },
     "gateway": {
-      "_comment": "Radio B — stays at the relief camp with the Pi. Verified wiring.",
+      "_comment": "Radio B — stays at the relief camp with the Pi, wired to its SPI. Verified wiring.",
+      "transport": "spi",
       "cs": 1,
       "rst_gpio": 17,
       "dio0_gpio": 27

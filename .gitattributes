@@ -1,0 +1,7 @@
+# Keep scripts and code that run on Linux (Pi / UNO Q) as LF, even when edited or copied
+# on Windows. Without this, Windows' autocrlf rewrites them with CRLF and bash fails with
+# "$'\r': command not found" / "invalid option name pipefail" on the target board.
+*.sh   text eol=lf
+*.py   text eol=lf
+*.ino  text eol=lf
+*.json text eol=lf

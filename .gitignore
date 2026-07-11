@@ -43,7 +43,7 @@ command-post/.postgres.env
 audio/
 command-post/backends.json
 *.output
-
+/Lottie-icons/
 # Durable outbox / local DBs (runtime state, e.g. the Pi edge-link outbox)
 *.sqlite
 *.db

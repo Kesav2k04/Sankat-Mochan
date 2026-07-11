@@ -89,6 +89,28 @@ Radio pins live in `radios.field` / `radios.gateway`. When the UNO Q arrives, ra
 and only its transport changes — the envelope, dedup and forwarding rules are identical on both
 tiers, which is the whole point of CONTRACT 1.
 
+## Split deployment: Pi (gateway) + UNO Q (field)
+
+Originally both Ra-02 radios sat on one Pi (`run.nodes: ["field", "gateway"]`). The field radio has
+now moved to the **Arduino UNO Q**. Each board runs the same code but only its own node:
+
+| Board | `run.nodes` | Radio transport | Setup |
+| --- | --- | --- | --- |
+| Raspberry Pi (relief camp) | `["gateway"]` | `spi` (radio wired to the Pi) | `cp config.gateway.example.json config.json`, then `../server.sh` as before |
+| Arduino UNO Q (field) | `["field"]` | `serial` (radio on the STM32 modem) | ships as the self-contained `../arduino-unoq/` folder — that carries its own copy of this code; see below |
+
+Each radio's `transport` decides how it is driven: `"spi"` (wired to that board's SPI) or `"serial"`
+(reached over the UNO Q's STM32 LoRa modem — see `../arduino-unoq/`). The two boards are still bridged
+**only** by 433 MHz, so the loop-freedom guarantee above is unchanged. The RF startup probe (which needs
+both radios on one board) auto-disables when a board runs a single node; the link is then proven by live
+traffic and each board's own radio watchdog.
+
+The Pi keeps running via `../server.sh` (gateway + uplink to the dashboard). The UNO Q does **not** run
+`server.sh` and does not uplink — it relays over LoRa and the Pi does the uplinking. Because only the
+`arduino-unoq/` folder is uploaded to the UNO Q, that folder carries its own deployment copy of this code
+in `arduino-unoq/field-node/` (kept in sync with `arduino-unoq/sync-from-pi-code.sh`; this `pi-code/` stays
+the source of truth). Full UNO Q instructions: [`../arduino-unoq/README.md`](../arduino-unoq/README.md).
+
 ## Proving it went over LoRa
 
 `logs/chain.jsonl` is append-only, one JSON row per hop event, `fsync`'d so a crash mid-demo can't
@@ -143,4 +165,7 @@ non-finite coords dropped) and strings are length-capped. No field is ever inter
 
 ## Dependencies
 
-`spidev` (MIT), `RPi.GPIO` (MIT), `bleak` (MIT), `requests` (Apache-2.0). All permissive, per rule 1.
+`bleak` (MIT), `requests` (Apache-2.0) on every board. Then per transport: the Pi's SPI radios use
+`spidev` (MIT) + `RPi.GPIO` (MIT) — from the system packages, hence the `--system-site-packages` venv;
+the UNO Q's serial modem uses `pyserial` (BSD-3-Clause). `gpio_compat.py` selects `RPi.GPIO`/`lgpio`
+(Unlicense) as available. All permissive, per rule 1.

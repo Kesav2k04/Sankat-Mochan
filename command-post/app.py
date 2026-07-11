@@ -328,9 +328,16 @@ async def mesh_voice(
             or codec not in (1, 2)):
         return JSONResponse({"status": "rejected"}, status_code=400)
     if ref_id not in store.reports:
-        # The Pi retains this clip in its durable voice outbox and retries after the
-        # corresponding SOS has been ACKed and ingested.
-        return JSONResponse({"status": "awaiting_sos"}, status_code=409)
+        # The voice ref_id is `{origin}-{voiceSeq}`, but the SOS report is keyed by the
+        # SOS envelope id `{origin}-{seq}` — two INDEPENDENT counters on the phone, so an
+        # exact match is the exception, not the rule. Fall back to the most recent report
+        # from the SAME origin, so a victim's recording still enriches their own card.
+        # This never fabricates a card: if that origin has no report yet, the Pi keeps the
+        # clip in its durable voice outbox (409) and retries once the SOS lands.
+        same_origin = [r for r in store.reports.values() if r.get("origin") == origin]
+        if not same_origin:
+            return JSONResponse({"status": "awaiting_sos"}, status_code=409)
+        ref_id = max(same_origin, key=lambda r: r.get("received_at", 0))["id"]
 
     data = await audio.read(MAX_MESH_AUDIO_BYTES + 1)
     if not data or len(data) > MAX_MESH_AUDIO_BYTES:

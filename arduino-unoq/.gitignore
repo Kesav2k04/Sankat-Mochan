@@ -1,0 +1,5 @@
+# App Lab / arduino-app-cli build + runtime state
+.cache/
+field-node/.venv/
+field-node/logs/
+field-node/__pycache__/
