@@ -79,15 +79,36 @@ def _apply_env(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return cfg
 
 
+def _read_json(path: Path) -> Any:
+    """Parse one config file, naming it on failure. A bare JSONDecodeError ('Expecting
+    value: line 1 column 1') hides WHICH file is empty/corrupt — typically a truncated
+    write or leftover merge-conflict markers after a git pull on the board."""
+    text = path.read_text()
+    if not text.strip():
+        raise ConfigError(
+            f"{path} is EMPTY. Restore it: git checkout -- {path.name} "
+            "(or re-copy it from the example config)."
+        )
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        hint = ("it starts with merge-conflict markers — resolve the git conflict"
+                if text.lstrip().startswith("<<<<<<<") else str(e))
+        raise ConfigError(
+            f"{path} is not valid JSON: {hint}. "
+            f"Check it with: python3 -m json.tool {path}"
+        ) from e
+
+
 def load(path: str | os.PathLike | None = None) -> Dict[str, Any]:
     defaults_path = HERE / "config.example.json"
     if not defaults_path.exists():
         raise ConfigError(f"missing {defaults_path}")
-    cfg = _strip_comments(json.loads(defaults_path.read_text()))
+    cfg = _strip_comments(_read_json(defaults_path))
 
     local = Path(path) if path else Path(os.environ.get("SANKAT_CONFIG", HERE / "config.json"))
     if local.exists():
-        cfg = _deep_merge(cfg, _strip_comments(json.loads(local.read_text())))
+        cfg = _deep_merge(cfg, _strip_comments(_read_json(local)))
 
     cfg = _apply_env(cfg)
     _validate(cfg)
