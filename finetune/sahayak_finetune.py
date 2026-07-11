@@ -126,6 +126,7 @@ def build_text_mapper(tokenizer):
 def run_unsloth(args, env):
     from unsloth import FastModel
     from unsloth.chat_templates import train_on_responses_only
+    import torch
 
     max_seq = args.max_seq_len
     template = resolve_template(args.model, args.chat_template)
@@ -134,7 +135,7 @@ def run_unsloth(args, env):
     model, tokenizer = FastModel.from_pretrained(
         model_name=args.model,
         max_seq_length=max_seq,
-        dtype="float16",
+        dtype=torch.float16,
         load_in_4bit=not args.no_4bit,   # QLoRA by default (spec: prefer E4B QLoRA)
         full_finetuning=False,
         token=os.environ.get("HF_TOKEN"),
