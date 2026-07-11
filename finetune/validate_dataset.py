@@ -48,13 +48,15 @@ _PUNCT_RE = re.compile(r"[^\w\s]", flags=re.UNICODE)
 
 
 def normalize(text: str) -> str:
-    """Lowercase, strip punctuation, sort tokens — the fingerprint form for dedup."""
+    """Lowercase, strip punctuation, sort tokens — the exact fingerprint form the spec §8.2
+       writes to fingerprints.txt (id<TAB>normalized). The sort is for that on-disk format /
+       stable equality; token_overlap() below is order-independent, so it doesn't rely on it."""
     cleaned = _PUNCT_RE.sub(" ", text.lower())
     return " ".join(sorted(cleaned.split()))
 
 
 def token_overlap(a: str, b: str) -> float:
-    """Jaccard overlap of token sets — cheap and good enough for near-dup detection."""
+    """Jaccard overlap of token sets — order-independent; cheap near-dup signal."""
     sa, sb = set(a.split()), set(b.split())
     if not sa or not sb:
         return 0.0
@@ -77,9 +79,21 @@ def load_fingerprints(path: Path) -> list[tuple[str, str]]:
     return out
 
 
-def validate(path: Path, fingerprints_path: Path | None) -> int:
+def validate(path: Path, fingerprints_path: Path | None, allow_no_prompt_check: bool) -> int:
     errors: list[str] = []
     warnings: list[str] = []
+
+    # The system-prompt byte-identity check is one of the most important gates. If we couldn't
+    # import the canonical prompt, fail loudly rather than silently pass a batch whose exit code
+    # the batch loop trusts. --allow-no-prompt-check opts out explicitly.
+    check_prompt = SYSTEM_PROMPT is not None
+    if not check_prompt and not allow_no_prompt_check:
+        errors.append(
+            "cannot verify system prompt: SYSTEM_PROMPT import from sahayak_finetune.py failed. "
+            "Run from the finetune/ dir, or pass --allow-no-prompt-check to skip on purpose."
+        )
+    elif not check_prompt:
+        warnings.append("system-prompt check skipped (--allow-no-prompt-check).")
 
     lines = path.read_text(encoding="utf-8").splitlines()
     records = []
@@ -127,17 +141,30 @@ def validate(path: Path, fingerprints_path: Path | None) -> int:
         if roles[-1] != "assistant":
             errors.append(f"{where}: last message must be role 'assistant'")
 
+        # roles must be known, and after the system turn must alternate user/assistant.
+        allowed_roles = {"system", "user", "assistant"}
+        unknown = [r for r in roles if r not in allowed_roles]
+        if unknown:
+            errors.append(f"{where}: unknown role(s) {sorted(set(unknown))}")
+        expected_tail = ["user" if i % 2 == 0 else "assistant" for i in range(len(roles) - 1)]
+        if roles[0] == "system" and roles[1:] != expected_tail:
+            errors.append(f"{where}: turns must alternate user/assistant after system, got {roles}")
+
         # system prompt byte-identical
         sys_content = messages[0].get("content", "")
-        if SYSTEM_PROMPT is not None and sys_content != SYSTEM_PROMPT:
+        if check_prompt and sys_content != SYSTEM_PROMPT:
             errors.append(f"{where}: system prompt not byte-identical to the spec prompt")
 
-        # assistant length budget (last assistant turn)
+        # assistant length budget. The 200-char cap is only for compressed relay *packets* (which
+        # start with the SOS| grammar); relay reverse-expansions (plain readouts) live in the same
+        # category but legitimately run longer, so they get the normal 600-char budget.
         assistant_turns = [m.get("content", "") for m in messages if m.get("role") == "assistant"]
-        cap = MAX_RELAY_CHARS if rec.get("category") == "relay" else MAX_ASSISTANT_CHARS
         for turn in assistant_turns:
+            is_packet = rec.get("category") == "relay" and turn.lstrip().startswith("SOS|")
+            cap = MAX_RELAY_CHARS if is_packet else MAX_ASSISTANT_CHARS
             if len(turn) > cap:
-                errors.append(f"{where}: assistant reply {len(turn)} chars > cap {cap}")
+                kind = "relay packet" if is_packet else "assistant reply"
+                errors.append(f"{where}: {kind} {len(turn)} chars > cap {cap}")
 
         # multi-turn guard: no more than 2 user turns (spec §3)
         if roles.count("user") > 2:
@@ -191,6 +218,9 @@ def parse_args(argv=None):
     p.add_argument("file", help="Path to the .jsonl file to validate.")
     p.add_argument("--fingerprints", default=None,
                    help="Optional fingerprints.txt of already-committed records (dedup index).")
+    p.add_argument("--allow-no-prompt-check", action="store_true",
+                   help="Proceed even if the canonical SYSTEM_PROMPT can't be imported (skips the "
+                        "byte-identity check). By default a failed import is a hard error.")
     return p.parse_args(argv)
 
 
@@ -201,7 +231,7 @@ def main(argv=None) -> int:
         print(f"[error] file not found: {path}", file=sys.stderr)
         return 2
     fp = Path(args.fingerprints) if args.fingerprints else None
-    return validate(path, fp)
+    return validate(path, fp, args.allow_no_prompt_check)
 
 
 if __name__ == "__main__":
