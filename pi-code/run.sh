@@ -40,8 +40,10 @@ case "$MODE" in
     exit 0
     ;;
   proof)
-    # Reads a log file; needs no venv, no radios, no Bluetooth.
-    exec "${VENV}/bin/python" "$HERE/chainlog.py"
+    # Reads a log file; needs no radios, no Bluetooth. Use the venv python if present,
+    # else the system python3 (chainlog.py is stdlib-only).
+    PROOF_PY="$VENV/bin/python"; [[ -x "$PROOF_PY" ]] || PROOF_PY="$(command -v python3)"
+    exec "$PROOF_PY" "$HERE/chainlog.py"
     ;;
   logs)
     [[ -f "$HERE/logs/gateway.log" ]] || die "no log yet — run ./run.sh test first"
@@ -54,21 +56,46 @@ case "$MODE" in
 esac
 
 # --- 1. Python environment -------------------------------------------------
+# Prefer an isolated venv (the Pi), but the UNO Q ships without python3-venv, so fall back
+# to the system python3 and install into it with pip. SANKAT_SYSTEM_PYTHON=1 forces that.
 step "Python environment"
-if [[ ! -x "$PY" ]]; then
+USING_VENV=0
+if [[ "${SANKAT_SYSTEM_PYTHON:-0}" == "1" ]]; then
+  PY="$(command -v python3 || true)"
+  echo "  SANKAT_SYSTEM_PYTHON=1 — using the system python: $PY"
+elif [[ -x "$PY" ]]; then
+  USING_VENV=1
+else
   echo "creating venv at $VENV"
   # --system-site-packages so the distro's spidev + RPi.GPIO (both MIT) are visible.
-  python3 -m venv --system-site-packages "$VENV" || die "could not create venv"
+  if python3 -m venv --system-site-packages "$VENV" 2>/dev/null; then
+    USING_VENV=1
+  else
+    warn "no python3-venv on this board — using the system python3 instead"
+    PY="$(command -v python3 || true)"
+  fi
 fi
-# bleak + requests are always needed; pyserial only on the UNO Q field board (serial
-# LoRa modem) but it is pure-Python and harmless on the Pi, so install it everywhere.
-# spidev + RPi.GPIO are NOT pip-installed: on the Pi they come from the system packages
-# (the venv uses --system-site-packages); a serial-only field board does not need them.
-# pre-flight verifies the right transport deps per board.
+[[ -x "$PY" ]] || die "no usable python3 found on this board"
+
+# Install bleak + requests + pyserial (all permissive-licensed) if missing. Into a venv
+# this is trivial; into a Debian system python (PEP 668 'externally managed') we install
+# under ~/.local via --user, adding --break-system-packages if the distro insists. spidev +
+# RPi.GPIO are never pip-installed — on the Pi they come from the system packages, and a
+# serial/field board does not need them.
+pip_into_py() {
+  if (( USING_VENV )); then
+    "$PY" -m pip install --quiet "$@"
+  else
+    "$PY" -m pip install --quiet --user "$@" 2>/dev/null \
+      || "$PY" -m pip install --quiet --user --break-system-packages "$@"
+  fi
+}
 if ! "$PY" -c 'import bleak, requests, serial' >/dev/null 2>&1; then
-  echo "installing dependencies (bleak, requests, pyserial — all permissive-licensed)"
-  "$PY" -m pip install --quiet --upgrade pip >/dev/null 2>&1
-  "$PY" -m pip install --quiet bleak requests pyserial || die "pip install failed (no network?)"
+  echo "installing dependencies (bleak, requests, pyserial)"
+  (( USING_VENV )) && "$PY" -m pip install --quiet --upgrade pip >/dev/null 2>&1
+  pip_into_py bleak requests pyserial || die "pip install failed. Try it directly:
+  python3 -m pip install --user --break-system-packages bleak requests pyserial
+  (is there network access on this board?)"
 fi
 echo "  $("$PY" -V) at $PY"
 

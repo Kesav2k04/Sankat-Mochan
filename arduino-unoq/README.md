@@ -1,32 +1,80 @@
-# Arduino UNO Q — field-side of the mesh (self-contained)
+# Arduino UNO Q — field-side of the mesh
 
-Everything the **Arduino UNO Q** needs is in this one folder. Upload *only* `arduino-unoq/`
-to the UNO Q — nothing else from the repo is required on the board.
+The field radio has moved off the Raspberry Pi onto the **Arduino UNO Q**. There are two
+ways to run it — pick by whether you can install Python packages on the UNO Q's Linux side.
 
-It is the second half of the split: the field radio has moved off the Raspberry Pi onto
-the UNO Q, but the app behaves exactly as before.
+## Which one do I use?
+
+| | **A · Field beacon** (`field_beacon/`) | **B · Serial bridge** (`lora_modem/` + `field-node/`) |
+| --- | --- | --- |
+| Install anything on the UNO Q? | **No** — flash the `.ino` and done | Yes — Python + `bleak`/`pyserial` on the Linux side |
+| Victim's phone → UNO Q over Bluetooth? | No (UNO Q originates the SOS itself) | **Yes** — full parity with the old Pi |
+| UNO Q → LoRa → Pi → dashboard? | **Yes** | **Yes** |
+| Responder ACCEPT → back over LoRa? | **Yes** (lights the LED) | **Yes** (reaches the phone) |
+| Use when… | you can't `pip install` on the UNO Q | the UNO Q's Linux side has the deps |
+
+**If you cannot install packages on the UNO Q, use Option A.** The only thing it gives up
+is the phone-Bluetooth-to-field hop — impossible without a BLE library, because the STM32
+has no Bluetooth radio. The UNO Q instead plays the "sensor / auto-SOS field node" role,
+and everything downstream (Pi triage, translate, map, responder ACCEPT, dashboard) is
+identical.
+
+## What's in here
+
+| Path | Runs on | What it is |
+| --- | --- | --- |
+| `field_beacon/field_beacon.ino` | UNO Q **STM32** | **Option A.** Self-contained: builds real SOS envelopes and transmits them over LoRa; shows the ACCEPT that comes back. No Python. |
+| `lora_modem/lora_modem.ino` | UNO Q **STM32** | Option B. Thin LoRa modem — drives the Ra-02 (the wiring you tested) for the Linux side to use. |
+| `field-node/` | UNO Q **Linux** (via SSH) | Option B. The same mesh code the Pi runs — BLE to phones + envelope/dedup/forwarding — talking to the modem over serial. |
+| `sync-from-pi-code.sh` | your dev machine | refreshes `field-node/` from the canonical `pi-code/` |
+
+---
+
+# Option A — Field beacon (no installs)
+
+```
+[UNO Q: field_beacon.ino]  ~~433 MHz~~►  [Pi: gateway]  ──►  dashboard
+[UNO Q: field_beacon.ino]  ◄~~433 MHz~~  [Pi: gateway]  ◄──  responder taps ACCEPT
+```
+
+1. Open `field_beacon/field_beacon.ino` in the Arduino IDE.
+2. Install the LoRa library (**Manage Libraries → "LoRa" by Sandeep Mistry**, MIT).
+3. Upload. Open the Serial Monitor at **115200** — you'll see it fire an SOS at boot:
+   ```
+   # Sankat-Mochan field beacon ready
+   TX SOS (boot, 181 bytes):
+      {"i":"UNOQ-a1b2-1","t":"SOS","o":"UNOQ","u":5,...}
+   ```
+4. Fire more SOS any time: **type a character in the Serial Monitor**, press a button
+   wired from `D3` to GND, or set `AUTO_SOS_SECONDS` in the sketch for a hands-free timer.
+5. When a responder taps ACCEPT on the dashboard, the reply comes back over LoRa and the
+   Serial Monitor prints `>>> a responder ACCEPTED <<<` and the LED flashes.
+
+Edit the SOS content (urgency, location, message, GPS) via the `#define`s near the top of
+the sketch. On the **Pi**, nothing changes — run `./server.sh` as before; it receives the
+UNO Q's SOS on its gateway radio and puts it on the dashboard.
+
+Wiring is your verified `SS=D10, RST=D9, DIO0=D2`; full pin list is in the sketch header.
+
+> ⚠️ The radio settings (**433 MHz, SF7, BW 125 kHz, CR 4/5, sync 0x12, preamble 8, CRC
+> on**) must match the Pi. They already do; change one only if you change both.
+
+---
+
+# Option B — Serial bridge (full phone-Bluetooth parity)
+
+Everything the UNO Q needs is in this folder; upload *only* `arduino-unoq/` to the board.
 
 ```
 victim phone ──BLE──► [UNO Q Linux: field-node (Python)] ──serial──► [UNO Q STM32: lora_modem] ~~433 MHz~~► [Pi: gateway] ──► dashboard
 victim phone ◄──BLE── [UNO Q Linux: field-node (Python)] ◄──serial── [UNO Q STM32: lora_modem] ◄~~433 MHz~~ [Pi: gateway] ◄── dashboard
 ```
 
-## What's in here
-
-| Path | Runs on | What it is |
-| --- | --- | --- |
-| `lora_modem/lora_modem.ino` | UNO Q **STM32** (Arduino side) | thin LoRa modem — drives the Ra-02, the wiring you already tested |
-| `field-node/` | UNO Q **Linux** side (via SSH) | the same mesh code the Pi runs — BLE to phones + envelope/dedup/forwarding — talking to the modem over serial |
-| `sync-from-pi-code.sh` | your dev machine | refreshes `field-node/` from the canonical `pi-code/` |
-
-## Why two pieces on one board
-
-The UNO Q has **two brains**. The STM32 runs Arduino sketches (what you tested) but has
-**no Bluetooth**; the Qualcomm Linux side has Bluetooth and runs Python. The victim's
-phone talks Bluetooth, so the field logic must run on the Linux side — while your radio is
-wired to the STM32. So the STM32 runs a thin **LoRa modem** and the Linux side runs the
-real field node, bridged over the board's internal serial link. Same code as the Pi ran,
-same behaviour.
+The UNO Q has **two brains**: the STM32 runs Arduino sketches but has **no Bluetooth**; the
+Qualcomm Linux side has Bluetooth and runs Python. The victim's phone talks Bluetooth, so
+the field logic runs on the Linux side while the radio stays on the STM32 — bridged over
+the board's internal serial link. Same code as the Pi ran, same behaviour. This needs
+`bleak` + `pyserial` on the Linux side (a venv, or the system python — see `field-node/`).
 
 ## 1. Flash the modem (STM32 / Arduino side)
 
