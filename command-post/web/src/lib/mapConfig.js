@@ -13,12 +13,15 @@
 import { layers, namedFlavor } from "@protomaps/basemaps";
 
 // ── Where the map looks ───────────────────────────────────────────────────
-// Bangalore (dev/testing). Real SOS from phones in the city will pin correctly;
-// city-wide zoom covers whichever neighbourhood you're in.
-export const MAP_CENTER = [77.5946, 12.9716]; // [lng, lat] (MapLibre order)
-export const MAP_ZOOM = 12;
-export const MAP_MIN_ZOOM = 8;
-export const MAP_MAX_ZOOM = 18;
+// Wayanad forward camp (Chooralmala / Mundakkai). This MUST sit inside the bundled
+// PMTiles archive (static/wayanad.pmtiles covers lng 76.05–76.22, lat 11.60–11.77) and
+// over the seeded incidents in models.py — a Bangalore dev-default here opened the map on
+// blank space 160 km from every beacon (the "map is blank / broken" report). Keep this
+// centre and the incident coordinates in the same valley.
+export const MAP_CENTER = [76.135, 11.685]; // [lng, lat] (MapLibre order)
+export const MAP_ZOOM = 13;
+export const MAP_MIN_ZOOM = 10;
+export const MAP_MAX_ZOOM = 17; // archive tops out at z15; MapLibre over-zooms vector cleanly
 
 // ── DEV basemaps: CARTO styled vector maps (no API key; need internet) ──
 // Swap the exported style below to change the look.

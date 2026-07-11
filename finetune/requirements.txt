@@ -1,4 +1,5 @@
-# Sahayak fine-tuning dependencies. All Apache-2.0 (CLAUDE.md #1).
+# Sahayak fine-tuning dependencies — pure transformers + PEFT (no Unsloth, no TRL).
+# All Apache-2.0 (CLAUDE.md #1).
 #
 # torch: install the build matching your platform/accelerator FIRST, from https://pytorch.org
 #   - CUDA (recommended for real training)         e.g. pip install torch --index-url .../cu121
@@ -6,30 +7,18 @@
 #   - Apple Silicon (MPS)                          pip install torch
 #
 # Versions are UPPER-BOUNDED, not open-ended, so an unattended `pip install` can't silently
-# resolve to a future release that breaks the TRL/Unsloth surface this code uses (that surface
-# is version-sensitive — see the make_sft_config/make_sft_trainer shims in sahayak_finetune.py,
-# which additionally tolerate the tokenizer->processing_class and max_seq_length->max_length
-# renames). These bounds are a compatibility window, NOT a GPU-smoke-tested lock — after your
-# first successful CUDA run, `pip freeze` the exact versions here to make the run reproducible.
+# resolve to a future release that breaks the API surface the trainer uses. These bounds are a
+# compatibility window, NOT a GPU-smoke-tested lock — after your first successful CUDA run,
+# `pip freeze` the exact versions here to make the run reproducible.
+#
+# Floor rationale: transformers gained the gemma4 architecture on 2026-04-02
+# (huggingface.co/blog/gemma4); 5.6.0 is the first release guaranteed to include it.
 
-# Floors are set by Gemma 4 support, verified against the release history (July 2026):
-#   - Unsloth added Gemma 4 on 2026-04-03 (changelog: unsloth.ai/docs/new/changelog), so the
-#     floor is the first 2026.4 release. Anything older hard-errors on chat_template="gemma-4".
-#   - transformers gained the gemma4 architecture on 2026-04-02 (huggingface.co/blog/gemma4);
-#     5.5.0 was cut that same day, so 5.6.0 is the first release guaranteed to include it.
-
-# Fast path (needs an NVIDIA CUDA GPU). Unsloth pulls transformers/trl/peft/datasets/bitsandbytes:
-# Floor raised 2026.4.1 -> 2026.6.7: the "Gemma 4 Fixes" release (unsloth discussion #4921)
-# fixes the T4 fp16 -1e9 audio-attention overflow, grad-accum loss explosion, and the Gemma 4
-# dtype handling this script previously worked around with a manual re-cast (now removed).
-unsloth>=2026.6.7,<2027
-
-# Fallback path deps (CPU/MPS, no CUDA). Also satisfied by the unsloth install above; listed so
-# `pip install -r requirements.txt` gives a working transformers+PEFT trainer without a GPU.
 transformers>=5.6,<6
 datasets>=3.6,<6
 peft>=0.16,<1
-trl>=1.0,<2
 accelerate>=1.6,<2
 
-# bitsandbytes (4-bit QLoRA) is CUDA-only — installed with unsloth on CUDA; skip on CPU/ARM.
+# 4-bit QLoRA + the paged 8-bit optimizer. CUDA-only — skip on CPU/MPS/ARM (the trainer
+# detects the missing GPU and falls back to an unquantized smoke-test path automatically).
+bitsandbytes>=0.46,<1; platform_system == "Linux"

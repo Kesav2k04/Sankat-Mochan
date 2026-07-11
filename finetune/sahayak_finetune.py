@@ -1,33 +1,36 @@
 #!/usr/bin/env python3
 """
-Sahayak emergency-assistant fine-tuner (Unsloth QLoRA for Gemma 4 E2B/E4B).
+Sahayak emergency-assistant fine-tuner — Gemma 4 E2B QLoRA, pure transformers + PEFT.
 
-Implements the training half of docs/SAHAYAK_DATASET_SPEC.md: it consumes the messages-format
-JSONL the spec produces, applies the Gemma chat template, trains only on assistant turns, and
-exports LoRA adapters (+ optional merged / GGUF) for the on-device runtime.
+No Unsloth, no TRL: just `transformers` + `peft` + `datasets` (+ `bitsandbytes` on CUDA),
+all Apache-2.0 (CLAUDE.md #1). Gemma 4 is native in transformers >= 5.6, so nothing here
+needs remote code or third-party kernels.
 
-Cross-platform by design (Windows / Linux / Surface, x86-64 or ARM):
-  * Detects the accelerator at runtime and picks a backend automatically:
-      - NVIDIA CUDA present  -> Unsloth QLoRA  (the fast, spec-recommended path)
-      - otherwise            -> transformers + PEFT LoRA fallback (CPU/MPS; slow but it runs,
-                                so you can smoke-test the whole pipeline on a laptop/Surface)
-  * No shell-isms, no hardcoded slashes: all paths go through pathlib, so the same command
-    line works in PowerShell, bash, or zsh.
+What it does (the training half of docs/SAHAYAK_DATASET_SPEC.md):
+  * consumes the spec's messages-format JSONL,
+  * renders each record with the model's OWN chat template (single source of truth — no
+    hand-maintained template table to drift out of sync),
+  * trains with loss on ASSISTANT turns only (spec §3), including the 2-assistant-turn
+    multi-turn records, via character-offset label masking,
+  * exports LoRA adapters (+ optional merged bf16/fp16 weights) for the on-device runtime.
 
-Licensing (CLAUDE.md #1): Unsloth is Apache-2.0, transformers/peft/trl/datasets are Apache-2.0.
-The Gemma *weights* ship under Google's Gemma Terms of Use (not OSI-approved) and are gated on
-Hugging Face — a human must accept those terms and provide an HF token (env HF_TOKEN) before the
-base model will download. The generated dataset and this script are Apache-2.0.
+Precision policy (learned the hard way on Kaggle T4s):
+  * Ampere+ (compute capability >= 8.0): bf16 everywhere — the fast path.
+  * Older CUDA (T4, cc 7.5): Gemma 4 has fp16-unsafe ops, so compute runs in float32 with
+    4-bit weights. Slower, but it converges instead of NaN-ing or dtype-crashing.
+  * CPU / Apple MPS: smoke-test fallback only — proves the pipeline, never ships a model.
 
 Usage (typical, on a CUDA box):
     python sahayak_finetune.py \
-        --train data/train/all.jsonl \
-        --eval  data/eval_holdout.jsonl \
-        --model unsloth/gemma-3n-E4B-it \
-        --out   out/sahayak-e4b \
-        --export-gguf q4_k_m
+        --train data/train.jsonl \
+        --eval  data/val.jsonl \
+        --model google/gemma-4-E2B-it \
+        --out   out/sahayak-e2b
 
-Run `python sahayak_finetune.py --help` for the full set of knobs.
+    python sahayak_finetune.py --train data/train.jsonl --validate-only   # data check, no GPU
+
+Gemma weights are gated: export HF_TOKEN (an HF token whose account accepted the Gemma
+license) before running. Run `python sahayak_finetune.py --help` for all knobs.
 """
 
 from __future__ import annotations
@@ -40,7 +43,8 @@ import sys
 from pathlib import Path
 
 # The one fixed system prompt from SAHAYAK_DATASET_SPEC.md §1.1. Training must match on-device
-# inference byte-for-byte, so it lives here as the single source of truth for validation too.
+# inference byte-for-byte; validate_dataset.py imports this as the canonical copy, so module
+# import must stay stdlib-only (all heavy imports live inside functions).
 SYSTEM_PROMPT = (
     "You are Sahayak, an offline emergency-response assistant running on a local device in a "
     "disaster zone. You help with first aid, message relay, resource allocation, and navigation. "
@@ -49,11 +53,15 @@ SYSTEM_PROMPT = (
     "information that could endanger people if intercepted."
 )
 
+VALID_ROLES = {"system", "user", "assistant"}
+MAX_RECORD_BYTES = 100_000  # CLAUDE.md #8: bound untrusted input size before processing.
+LORA_TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
+
 
 # ── Environment detection ─────────────────────────────────────────────────────
 
 def detect_device() -> dict:
-    """Figure out what we're running on, so the backend choice is automatic, not guesswork."""
+    """Figure out what we're running on so precision/backend choices are automatic."""
     info = {
         "os": platform.system(),
         "machine": platform.machine(),
@@ -64,303 +72,257 @@ def detect_device() -> dict:
         "bf16": False,
     }
     try:
-        import torch  # noqa: WPS433 (local import: torch may be heavy / absent)
+        import torch
 
         if torch.cuda.is_available():
             info["cuda"] = True
             info["device"] = "cuda"
             info["gpu_name"] = torch.cuda.get_device_name(0)
-            # Gate bf16 on NATIVE support (compute capability >= 8.0, Ampere+), NOT on
-            # torch.cuda.is_bf16_supported(): on a T4 (cc 7.5) that returns True via slow
-            # emulation, which would make the trainer run bf16 autocast the card can't do
-            # natively while the weights load in fp16. Ampere+ (A100/L4/RTX30-40) => real bf16.
-            major = torch.cuda.get_device_capability(0)[0]
-            info["compute_capability"] = major
-            info["bf16"] = major >= 8
+            # Native bf16 needs compute capability >= 8.0 (Ampere+). Do NOT trust
+            # torch.cuda.is_bf16_supported(): a T4 (cc 7.5) answers True via slow emulation.
+            info["bf16"] = torch.cuda.get_device_capability(0)[0] >= 8
         elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
             info["mps"] = True
             info["device"] = "mps"
-    except Exception as exc:  # torch not installed yet, etc.
+    except Exception as exc:  # torch absent — fine for --validate-only
         info["torch_error"] = repr(exc)
     return info
 
 
-def choose_backend(requested: str, env: dict) -> str:
-    """Resolve --backend auto into a concrete choice given the detected hardware."""
-    if requested != "auto":
-        return requested
-    if env["cuda"]:
-        try:
-            import unsloth  # noqa: F401
-            return "unsloth"
-        except Exception:
-            print("[warn] CUDA present but Unsloth not importable — falling back to transformers.")
-            return "transformers"
-    return "transformers"
+# ── Dataset validation (CLAUDE.md #8: dataset lines are untrusted input) ─────────
+
+def validate_jsonl(path: Path, label: str) -> int:
+    """Structural validation with stdlib only, so --validate-only runs anywhere.
+
+    Checks per record: size bound, messages list of {role, content} with known roles and
+    non-empty string content, an optional single leading system turn, strict user/assistant
+    alternation, and an assistant turn last (otherwise there is nothing to train on).
+    Hard-errors with the line number — a bad record must never silently skew a long run.
+    """
+    n = 0
+    with path.open("r", encoding="utf-8") as fh:
+        for lineno, line in enumerate(fh, start=1):
+            if not line.strip():
+                continue
+            where = f"{label} {path.name}:{lineno}"
+            if len(line.encode("utf-8", errors="replace")) > MAX_RECORD_BYTES:
+                sys.exit(f"[error] {where}: record exceeds {MAX_RECORD_BYTES} bytes")
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError as exc:
+                sys.exit(f"[error] {where}: invalid JSON ({exc})")
+            msgs = rec.get("messages") if isinstance(rec, dict) else None
+            if not isinstance(msgs, list) or not msgs:
+                sys.exit(f"[error] {where}: missing/empty 'messages' list")
+            for i, m in enumerate(msgs):
+                if not isinstance(m, dict) or not isinstance(m.get("content"), str) \
+                        or not m["content"].strip() or m.get("role") not in VALID_ROLES:
+                    sys.exit(f"[error] {where}: messages[{i}] must be "
+                             f"{{role: system|user|assistant, content: non-empty str}}")
+            body = msgs[1:] if msgs[0]["role"] == "system" else msgs
+            if any(m["role"] == "system" for m in body):
+                sys.exit(f"[error] {where}: system role only allowed as the first message")
+            expected = "user"
+            for i, m in enumerate(body):
+                if m["role"] != expected:
+                    sys.exit(f"[error] {where}: expected '{expected}' at turn {i}, "
+                             f"got '{m['role']}' (turns must alternate user/assistant)")
+                expected = "assistant" if expected == "user" else "user"
+            if not body or body[-1]["role"] != "assistant":
+                sys.exit(f"[error] {where}: last message must be an assistant turn")
+            n += 1
+    if n == 0:
+        sys.exit(f"[error] {label} {path}: no records")
+    print(f"[data] {label}: {n} records OK ({path})")
+    return n
 
 
-# ── Dataset loading ───────────────────────────────────────────────────────────
+# ── Rendering + assistant-only label masking ─────────────────────────────────────
 
-def load_messages_dataset(train_path: Path, eval_path: Path | None):
-    """Load the spec's messages-format JSONL directly (no ShareGPT/Alpaca conversion)."""
+def render_and_mask(messages: list, tokenizer, max_seq_len: int) -> dict | None:
+    """Tokenize one conversation with labels only on assistant turns (incl. end-of-turn).
+
+    Character-offset approach, robust to any turn delimiter the template uses:
+      1. Render the FULL conversation once.
+      2. For each assistant turn i, render messages[:i] with add_generation_prompt=True
+         (ends exactly where the assistant's content begins) and messages[:i+1] without
+         (ends just past the assistant's end-of-turn). Both must be string prefixes of the
+         full render — verified, not assumed — giving exact [start, end) character spans.
+      3. Tokenize the full render once with offset mapping; a token gets a label iff its
+         character span overlaps an assistant span.
+    This trains the end-of-turn token too (the model must learn to STOP), and handles the
+    dataset's multi-turn records without special-casing.
+
+    Returns None when truncation at max_seq_len leaves no supervised tokens (caller drops
+    and counts those — silently training on a label-less example wastes a step).
+    """
+    full = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+
+    spans = []
+    for i, msg in enumerate(messages):
+        if msg["role"] != "assistant":
+            continue
+        prefix = tokenizer.apply_chat_template(
+            messages[:i], tokenize=False, add_generation_prompt=True
+        )
+        through = tokenizer.apply_chat_template(
+            messages[: i + 1], tokenize=False, add_generation_prompt=False
+        )
+        if not (full.startswith(prefix) and full.startswith(through)):
+            raise SystemExit(
+                "[error] chat template is not prefix-stable — assistant spans can't be located "
+                "and response masking would be wrong. Check the model/template pairing."
+            )
+        spans.append((len(prefix), len(through)))
+    if not spans:
+        raise SystemExit("[error] conversation has no assistant turn (validator should catch this)")
+
+    # The rendered text already contains the BOS token text; add_special_tokens=False avoids
+    # a double-BOS, which Gemma is sensitive to.
+    enc = tokenizer(
+        full,
+        add_special_tokens=False,
+        truncation=True,
+        max_length=max_seq_len,
+        return_offsets_mapping=True,
+    )
+    offsets = enc.pop("offset_mapping")
+    labels = [
+        tok_id if any(s < c_end and c_start < e for (s, e) in spans) else -100
+        for tok_id, (c_start, c_end) in zip(enc["input_ids"], offsets)
+    ]
+    if all(l == -100 for l in labels):
+        return None
+    return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"], "labels": labels}
+
+
+def build_dataset(path: Path, tokenizer, max_seq_len: int, label: str):
+    """Load a messages-format JSONL and map it to masked token features."""
     from datasets import load_dataset
 
-    data_files = {"train": str(train_path)}
-    if eval_path and eval_path.exists():
-        data_files["eval"] = str(eval_path)
-    ds = load_dataset("json", data_files=data_files)
+    ds = load_dataset("json", data_files=str(path), split="train")
+
+    def _map(rec):
+        out = render_and_mask(rec["messages"], tokenizer, max_seq_len)
+        if out is None:
+            # Emit an empty (filtered below) row rather than crash mid-map.
+            return {"input_ids": [], "attention_mask": [], "labels": []}
+        return out
+
+    ds = ds.map(_map, remove_columns=ds.column_names, desc=f"tokenize {label}")
+    before = len(ds)
+    ds = ds.filter(lambda r: len(r["input_ids"]) > 0)
+    if len(ds) != before:
+        print(f"[data] {label}: dropped {before - len(ds)} example(s) fully truncated "
+              f"at --max-seq-len {max_seq_len}")
+    print(f"[data] {label}: {len(ds)} tokenized examples")
     return ds
 
 
-def build_text_mapper(tokenizer):
-    """Render each record's `messages` into a single training string via the chat template."""
+class PadCollator:
+    """Right-pad input_ids/attention_mask, pad labels with -100 (ignored by the loss)."""
 
-    def _map(batch):
-        texts = []
-        for messages in batch["messages"]:
-            text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=False
-            )
-            texts.append(text)
-        return {"text": texts}
+    def __init__(self, pad_token_id: int):
+        self.pad_token_id = pad_token_id
 
-    return _map
+    def __call__(self, features):
+        import torch
+
+        width = max(len(f["input_ids"]) for f in features)
+        batch = {"input_ids": [], "attention_mask": [], "labels": []}
+        for f in features:
+            pad = width - len(f["input_ids"])
+            batch["input_ids"].append(list(f["input_ids"]) + [self.pad_token_id] * pad)
+            batch["attention_mask"].append(list(f["attention_mask"]) + [0] * pad)
+            batch["labels"].append(list(f["labels"]) + [-100] * pad)
+        return {k: torch.tensor(v, dtype=torch.long) for k, v in batch.items()}
 
 
-# ── Unsloth (CUDA) backend ──────────────────────────────────────────────────────
+# ── Model loading ─────────────────────────────────────────────────────────────────
 
-def run_unsloth(args, env):
-    from unsloth import FastModel
-    from unsloth.chat_templates import train_on_responses_only
+def load_tokenizer(model_id: str):
+    from transformers import AutoTokenizer
 
-    max_seq = args.max_seq_len
-    template = resolve_template(args.model, args.chat_template)
-
-    # Precision: DON'T force a dtype, and DON'T re-cast the model afterwards. Unsloth manages a
-    # deliberately HETEROGENEOUS dtype layout per GPU. On a T4 (no native bf16) its "float16
-    # won't work -> float32" banner does NOT mean everything becomes fp32: matmul weights (incl.
-    # the multi-GB per-layer embedding table) intentionally stay fp16 for the tensor cores, while
-    # activations/norms and fp16-unsafe ops run fp32, with Unsloth inserting the casts (this is
-    # its documented Gemma-on-T4 scheme, per the Gemma 3 blog + Gemma 4 fine-tuning guide; the
-    # Gemma 4 T4 bugs — fp16 -1e9 audio overflow, grad-accum loss explosion — are fixed in
-    # unsloth >= 2026.6.7, see requirements.txt). Officially E2B trains in ~8 GB / E4B in ~10 GB,
-    # so both fit a 16 GB T4 as QLoRA. Any whole-model re-cast on top of this layout breaks it:
-    # to fp16 -> fp32 activations hit fp16 weights ("float != c10::Half"); to fp32 -> the fp16
-    # per-layer table balloons 2x and OOMs. That's why --legacy-dtype-align is OFF by default.
-    native_bf16 = env["bf16"]   # cc >= 8.0 => real bf16 tensor cores (Ampere+). False on a T4.
-    # Model parallelism (opt-in): device_map="balanced" asks accelerate to SHARD layers across
-    # GPUs. WARNING: on a T4 this collides with Unsloth's manual float32 re-cast of the vision
-    # module and dies with "CUDA illegal memory access" — it does NOT rescue the E4B fit. Kept as
-    # an option only for native-bf16 multi-GPU boxes where the float32 cast never happens.
-    # 4-bit: mirror Unsloth's official notebooks. Gemma4_(E2B)-Text loads with
-    # load_in_4bit=False — E2B 16-bit LoRA needs only ~8-10 GB (their train guide), so it fits
-    # a T4 without quantization and skips the bnb path entirely. E4B LoRA needs ~17 GB, so it
-    # stays QLoRA (4-bit) by default. --four-bit on/off overrides either way.
-    four_bit = resolve_four_bit(args)
-    load_kwargs = dict(
-        model_name=args.model,
-        max_seq_length=max_seq,
-        dtype=None,                      # let Unsloth pick (bf16 on Ampere+, fp16/fp32 mix on T4)
-        load_in_4bit=four_bit,
-        full_finetuning=False,
-        token=os.environ.get("HF_TOKEN"),
-        # Force trust_remote_code=False. Unsloth auto-ENABLES it for unsloth/* models on
-        # transformers 5.x, which bypasses its compiled path and disables fused kernels — the
-        # root cause of the Gemma 4 T4 dtype mismatch "float != c10::Half" (unsloth #4873 / PR
-        # #4878). Gemma 4 is NATIVE in transformers >= 5.5.0, so it needs no remote code; keeping
-        # this False routes through the correct compiled path where dtypes stay consistent.
-        trust_remote_code=False,
-    )
-    if args.device_map:
-        load_kwargs["device_map"] = args.device_map
-    print(f"[unsloth] model={args.model} chat_template={template}")
-    print(f"[unsloth] precision: dtype=auto, trainer precision=Unsloth-managed "
-          f"(native bf16={native_bf16})")
-    print(f"[unsloth] device_map={args.device_map or 'single-GPU'}")
-    print(f"[unsloth] loading {args.model} (4bit={four_bit}) …")
-    model, tokenizer = FastModel.from_pretrained(**load_kwargs)
-    if args.device_map:
-        dev_map = getattr(model, "hf_device_map", None)
-        gpus_used = len({v for v in dev_map.values()}) if dev_map else 1
-        print(f"[unsloth] model sharded across {gpus_used} device(s): {dev_map}")
-
-    # Text-only fine-tune — keep vision layers frozen (spec §3 notes).
-    model = FastModel.get_peft_model(
-        model,
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        lora_dropout=0.0,
-        bias="none",
-        finetune_vision_layers=False,
-        finetune_language_layers=True,
-        finetune_attention_modules=True,
-        finetune_mlp_modules=True,
-        # Unsloth's gradient-checkpointing kernel: the documented VRAM saver for Gemma 4 on a
-        # 16 GB T4 (per Unsloth's Gemma 4 fine-tuning guide it drops E4B QLoRA under ~12 GB).
-        # Without it the backward pass keeps all activations and can OOM during training even
-        # when the 4-bit weights loaded fine.
-        use_gradient_checkpointing="unsloth",
-        random_state=args.seed,
-    )
-
-    # Legacy whole-model dtype re-cast — OFF by default and deliberately so. Unsloth's dtype
-    # layout is heterogeneous BY DESIGN (fp16 matmul weights + fp32 activations on a T4), and
-    # both align targets break it: embedding-dtype alignment downcast the net to fp16 (step-0
-    # "float != c10::Half"), fp32 alignment tried to double the multi-GB fp16 per-layer table
-    # (8.75 GiB alloc -> OOM). Unsloth >= 2026.6.7 fixes the Gemma 4 dtype bugs itself; the
-    # official Gemma4_(E2B)-Text notebook does no re-cast, and neither do we. The flag remains
-    # only as a debugging aid for older Unsloth installs.
-    if args.legacy_dtype_align:
-        _align_model_dtype(model, target=None)
-
-    tokenizer = apply_chat_template(tokenizer, template)
-
-    ds = load_messages_dataset(Path(args.train), Path(args.eval) if args.eval else None)
-    mapper = build_text_mapper(tokenizer)
-    train_ds = ds["train"].map(mapper, batched=True, remove_columns=ds["train"].column_names)
-    eval_ds = None
-    if "eval" in ds:
-        eval_ds = ds["eval"].map(mapper, batched=True, remove_columns=ds["eval"].column_names)
-
-    # NOTE: this is trainer-side validation loss only. The spec's eval_holdout.jsonl is for
-    # demo/judge time — running it here is fine; *training* on it never is.
-    sft_config = make_sft_config(
-        dataset_text_field="text",
-        per_device_train_batch_size=args.batch_size,
-        gradient_accumulation_steps=args.grad_accum,
-        warmup_ratio=0.05,
-        num_train_epochs=args.epochs,
-        learning_rate=args.lr,
-        logging_steps=10,
-        optim="adamw_8bit",
-        weight_decay=0.01,
-        lr_scheduler_type="linear",
-        seed=args.seed,
-        output_dir=str(Path(args.out) / "checkpoints"),
-        report_to="none",
-        max_seq_length=max_seq,
-        # NO fp16/bf16 args — deliberately. The official Gemma4_(E2B)-Text notebook passes
-        # neither: Unsloth's patched trainer picks the training precision itself to match the
-        # dtype layout it built at load time. Every combination we forced here (fp16=True,
-        # both False via force_fp32) fought that choice and produced a step-0 dtype clash.
-        eval_strategy="epoch" if eval_ds is not None else "no",
-    )
-
-    trainer = make_sft_trainer(
-        model=model,
-        tokenizer=tokenizer,
-        train_dataset=train_ds,
-        eval_dataset=eval_ds,
-        args=sft_config,
-    )
-
-    # Loss on assistant turns only (spec §3): markers derived from the applied template so
-    # masking can't silently break on a Gemma-version delimiter change.
-    instr, resp = derive_turn_markers(tokenizer)
-    trainer = train_on_responses_only(trainer, instruction_part=instr, response_part=resp)
-
-    print("[unsloth] training …")
-    trainer.train()
-
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    print(f"[unsloth] saving LoRA adapters -> {out}")
-    model.save_pretrained(str(out))
-    tokenizer.save_pretrained(str(out))
-
-    if args.export_merged:
-        merged = out / "merged-16bit"
-        print(f"[unsloth] saving merged fp16 -> {merged}")
-        model.save_pretrained_merged(str(merged), tokenizer, save_method="merged_16bit")
-
-    if args.export_gguf:
-        print(f"[unsloth] exporting GGUF ({args.export_gguf}) -> {out / 'gguf'}")
-        model.save_pretrained_gguf(
-            str(out / "gguf"), tokenizer, quantization_method=args.export_gguf
+    tok = AutoTokenizer.from_pretrained(model_id, token=os.environ.get("HF_TOKEN"))
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token
+    if not getattr(tok, "chat_template", None):
+        raise SystemExit(
+            f"[error] tokenizer for '{model_id}' ships no chat template — this trainer relies "
+            "on the model's own template. Use an instruction-tuned (-it) checkpoint."
         )
-    print("[unsloth] done.")
+    if not getattr(tok, "is_fast", False):
+        raise SystemExit(
+            "[error] a fast tokenizer is required (offset mapping drives label masking); "
+            f"'{model_id}' returned a slow one."
+        )
+    return tok
 
 
-def _align_model_dtype(model, target=None) -> None:
-    """LEGACY (--legacy-dtype-align only): force every non-quantized floating parameter/buffer
-    to one consistent dtype. Do NOT run this on Unsloth >= 2026.6.7 — its Gemma 4 dtype layout
-    is intentionally mixed (fp16 matmul weights + fp32 activations on a T4) and homogenizing it
-    either recreates the float!=Half crash (fp16 target) or doubles the multi-GB fp16 per-layer
-    embedding table and OOMs (fp32 target). Kept only for debugging older installs.
+def _from_pretrained_compat(cls, model_id: str, dtype, **kwargs):
+    """transformers 5.x takes `dtype=`; keep a `torch_dtype=` retry so an older env in the
+    supported window still loads instead of TypeError-ing an hour into a Kaggle session."""
+    try:
+        return cls.from_pretrained(model_id, dtype=dtype, **kwargs)
+    except TypeError:
+        return cls.from_pretrained(model_id, torch_dtype=dtype, **kwargs)
 
-    Root cause this fixes (Gemma 4 on a non-bf16 GPU, e.g. Kaggle T4): Unsloth trains Gemma 4 in
-    pure float32 there ("float16 won't work -> float32"), but its upcast leaves stray fp16
-    tensors — `per_layer_model_projection`, and on some Unsloth versions the token embeddings
-    themselves. On step 0, project_per_layer_inputs matmuls fp32 hidden states against an fp16
-    weight and raises:
-        RuntimeError: expected mat1 and mat2 to have the same dtype, but got: float != c10::Half
 
-    `target` is the caller's ground truth for "what flows through the net". Pass torch.float32
-    on the Gemma-4/T4 force_fp32 path (the trainer WILL run fp32 there, so the embedding dtype
-    cannot be trusted — it may itself be a stray fp16). When None, the token-embedding dtype is
-    used (bf16 on Ampere+, where nothing is stray and this is a no-op). 4-bit weights are
-    uint8-backed and skipped by the float-only guard, leaving bitsandbytes' compute-dtype
-    handling untouched.
-    """
+def load_model(args, env):
     import torch
+    from transformers import AutoModelForCausalLM
 
-    _floats = (torch.float16, torch.bfloat16, torch.float32)
-    if target is None:
-        emb = model.get_input_embeddings()
-        target = getattr(getattr(emb, "weight", None), "dtype", None)
-    if target not in _floats:
-        return  # embeddings themselves quantized/exotic — don't second-guess Unsloth.
+    # Compute dtype: bf16 on Ampere+; float32 elsewhere. Never fp16 — Gemma 4 has
+    # fp16-unsafe ops (the source of the old "float != c10::Half" step-0 crash on T4s).
+    compute_dtype = torch.bfloat16 if env["bf16"] else torch.float32
 
-    fixed = 0
-    for _, p in model.named_parameters():
-        if p.dtype in _floats and p.dtype != target:
-            p.data = p.data.to(target)
-            fixed += 1
-    for _, b in model.named_buffers():
-        if b.dtype in _floats and b.dtype != target:
-            b.data = b.data.to(target)
-            fixed += 1
-    if fixed:
-        print(f"[unsloth] dtype-align: upcast {fixed} stray fp16/bf16 tensor(s) -> {target} "
-              f"(fixes the per_layer_model_projection float!=Half crash)")
+    kwargs = dict(
+        token=os.environ.get("HF_TOKEN"),
+        # Gemma's own docs recommend eager attention for training-quality numerics.
+        attn_implementation="eager",
+    )
+    quantized = env["cuda"] and not args.no_4bit
+    if quantized:
+        from transformers import BitsAndBytesConfig
+
+        kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=compute_dtype,
+        )
+        kwargs["device_map"] = {"": 0}
+    elif env["cuda"]:
+        kwargs["device_map"] = {"": 0}
+
+    print(f"[model] loading {args.model} (4bit={quantized}, compute dtype={compute_dtype}) …")
+    model = _from_pretrained_compat(AutoModelForCausalLM, args.model, compute_dtype, **kwargs)
+    if env["mps"]:
+        model = model.to("mps")
+    model.config.use_cache = False  # incompatible with gradient checkpointing
+    return model, quantized
+
+
+def attach_lora(model, args, quantized: bool):
+    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+    if quantized:
+        model = prepare_model_for_kbit_training(
+            model, use_gradient_checkpointing=True,
+            gradient_checkpointing_kwargs={"use_reentrant": False},
+        )
     else:
-        print(f"[unsloth] dtype-align: all float tensors already {target} (no fix needed)")
+        model.enable_input_require_grads()
 
+    # Text-only fine-tune (spec §3): if the checkpoint is multimodal, scope LoRA to the
+    # language tower by regex so vision/audio layers stay frozen; else target by name.
+    module_names = [n for n, _ in model.named_modules()]
+    if any(".language_model." in n for n in module_names):
+        targets = r".*language_model.*\.({})$".format("|".join(LORA_TARGETS))
+        print("[lora] multimodal checkpoint detected — targeting language tower only")
+    else:
+        targets = list(LORA_TARGETS)
 
-# ── transformers + PEFT fallback (CPU / MPS / no-CUDA) ────────────────────────────
-
-def run_transformers(args, env):
-    print("=" * 78)
-    print("[fallback] No CUDA/Unsloth — transformers + PEFT LoRA (SMOKE TEST ONLY).")
-    print("[fallback] WARNING: this path trains with FULL-SEQUENCE loss — NO response masking.")
-    print("[fallback] It teaches the model the user turns + system prompt too, so DO NOT ship a")
-    print("[fallback] model trained here. Use it only to prove the data/pipeline runs, then do")
-    print("[fallback] the real run on a CUDA GPU (Unsloth path). E4B in fp32 needs ~30GB+ RAM —")
-    print("[fallback] on a laptop/Surface point --model at a tiny model (e.g. sshleifer/tiny-gpt2)")
-    print("[fallback] just to exercise the loop.")
-    print("=" * 78)
-    import torch
-    from datasets import load_dataset  # noqa: F401  (kept for parity / clarity)
-    from transformers import (
-        AutoModelForCausalLM,
-        AutoTokenizer,
-        DataCollatorForLanguageModeling,
-        Trainer,
-        TrainingArguments,
-    )
-    from peft import LoraConfig, get_peft_model
-
-    tokenizer = AutoTokenizer.from_pretrained(args.model, token=os.environ.get("HF_TOKEN"))
-    tokenizer = apply_chat_template(tokenizer, resolve_template(args.model, args.chat_template))
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    dtype = torch.float32
-    if env["device"] == "mps":
-        dtype = torch.float16
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model, torch_dtype=dtype, token=os.environ.get("HF_TOKEN")
-    )
     model = get_peft_model(
         model,
         LoraConfig(
@@ -369,222 +331,131 @@ def run_transformers(args, env):
             lora_dropout=0.0,
             bias="none",
             task_type="CAUSAL_LM",
+            target_modules=targets,
         ),
     )
     model.print_trainable_parameters()
+    return model
 
-    ds = load_messages_dataset(Path(args.train), Path(args.eval) if args.eval else None)
-    mapper = build_text_mapper(tokenizer)
-    train_ds = ds["train"].map(mapper, batched=True, remove_columns=ds["train"].column_names)
 
-    def tok(batch):
-        return tokenizer(
-            batch["text"], truncation=True, max_length=args.max_seq_len
-        )
+# ── Training ─────────────────────────────────────────────────────────────────────
 
-    train_tok = train_ds.map(tok, batched=True, remove_columns=["text"])
-    collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+def run_training(args, env) -> None:
+    from transformers import Trainer, TrainingArguments
+
+    tokenizer = load_tokenizer(args.model)
+    train_ds = build_dataset(Path(args.train), tokenizer, args.max_seq_len, "train")
+    eval_ds = None
+    if args.eval and Path(args.eval).exists():
+        eval_ds = build_dataset(Path(args.eval), tokenizer, args.max_seq_len, "eval")
+
+    model, quantized = load_model(args, env)
+    model = attach_lora(model, args, quantized)
 
     out = Path(args.out)
+    training_args = TrainingArguments(
+        output_dir=str(out / "checkpoints"),
+        per_device_train_batch_size=args.batch_size,
+        gradient_accumulation_steps=args.grad_accum,
+        num_train_epochs=args.epochs,
+        learning_rate=args.lr,
+        lr_scheduler_type="linear",
+        warmup_ratio=0.05,
+        weight_decay=0.01,
+        logging_steps=10,
+        save_strategy="epoch",
+        eval_strategy="epoch" if eval_ds is not None else "no",
+        # bf16 autocast only on native-bf16 GPUs; everywhere else the model is already
+        # float32, so both flags stay off (fp16 autocast is what used to crash Gemma 4).
+        bf16=env["bf16"],
+        fp16=False,
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        optim="paged_adamw_8bit" if quantized else "adamw_torch",
+        seed=args.seed,
+        report_to="none",
+        remove_unused_columns=False,
+        use_cpu=(env["device"] == "cpu"),
+    )
+
     trainer = Trainer(
         model=model,
-        args=TrainingArguments(
-            output_dir=str(out / "checkpoints"),
-            per_device_train_batch_size=args.batch_size,
-            gradient_accumulation_steps=args.grad_accum,
-            num_train_epochs=args.epochs,
-            learning_rate=args.lr,
-            logging_steps=10,
-            save_strategy="epoch",
-            report_to="none",
-            seed=args.seed,
-            use_cpu=(env["device"] == "cpu"),
-        ),
-        train_dataset=train_tok,
-        data_collator=collator,
+        args=training_args,
+        train_dataset=train_ds,
+        eval_dataset=eval_ds,
+        data_collator=PadCollator(tokenizer.pad_token_id),
+        processing_class=tokenizer,
     )
-    print("[fallback] training …")
+
+    if env["device"] == "cpu" or env["mps"]:
+        print("=" * 78)
+        print("[warn] no CUDA — this run is a pipeline SMOKE TEST (slow, unquantized).")
+        print("[warn] do the real run on a CUDA GPU; do not ship weights trained here.")
+        print("=" * 78)
+
+    print("[train] starting …")
     trainer.train()
+
     out.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(out))
     tokenizer.save_pretrained(str(out))
-    print(f"[fallback] saved LoRA adapters -> {out}")
-    if args.export_gguf:
-        print(
-            "[fallback] GGUF export is only wired up on the Unsloth path. Convert the merged model "
-            "with llama.cpp's convert_hf_to_gguf.py, or re-run this on a CUDA box with Unsloth."
-        )
+    print(f"[train] LoRA adapters saved -> {out}")
+
+    if args.export_merged:
+        export_merged(args, env, adapter_dir=out)
 
 
-# ── Shared helpers: model / template / marker matched set ─────────────────────────
-#
-# Model, chat template, and turn markers must agree or the run silently breaks: a mismatched
-# template renders wrong tokens, and wrong turn markers make train_on_responses_only mask
-# nothing (loss lands on the user turns + the system prompt repeated ~1,800x — the exact
-# scaffold-memorization the spec §1.3 warns against). So: the template is looked up by model
-# family, an unknown one is a HARD ERROR, and the turn markers are *derived from the template
-# that's actually applied* rather than hardcoded — correct across Gemma 3 / 3n / 4 without us
-# guessing a version-specific string.
+def export_merged(args, env, adapter_dir: Path) -> None:
+    """Merge adapters into full weights. Reloads the base UNQUANTIZED on CPU — merging into
+    4-bit weights is lossy/unsupported, and CPU sidesteps GPU OOM during the merge."""
+    import torch
+    from peft import PeftModel
+    from transformers import AutoModelForCausalLM
 
-MODEL_PROFILES = {
-    # substring in the model id  ->  chat_template name for Unsloth's get_chat_template
-    "gemma-4": "gemma-4",
-    "gemma-3n": "gemma-3",
-    "gemma-3": "gemma-3",
-    "gemma-2": "gemma-2",
-}
-
-
-def resolve_four_bit(args) -> bool:
-    """Resolve --four-bit into a concrete bool, mirroring Unsloth's official notebooks.
-
-    Gemma4_(E2B)-Text loads load_in_4bit=False (E2B 16-bit LoRA ~8-10GB per the train guide —
-    fits a T4 and avoids the bitsandbytes path entirely); the E4B/larger notebooks keep 4-bit
-    (E4B LoRA ~17GB does not fit a 16GB card). --no-4bit is honoured as 'off' for backwards
-    compatibility with existing commands.
-    """
-    if args.no_4bit or args.four_bit == "off":
-        return False
-    if args.four_bit == "on":
-        return True
-    low = args.model.lower()
-    if "gemma-4" in low and "e2b" in low:
-        return False   # official E2B notebook behaviour
-    return True
-
-
-def resolve_template(model_id: str, requested: str) -> str:
-    """Pick the chat template: honour --chat-template unless 'auto', else infer from model id."""
-    if requested and requested != "auto":
-        return requested
-    low = model_id.lower()
-    for family, template in MODEL_PROFILES.items():
-        if family in low:
-            return template
-    raise SystemExit(
-        f"[error] can't infer a chat template for '{model_id}'. Pass --chat-template explicitly "
-        f"(known families: {', '.join(sorted(MODEL_PROFILES))})."
+    dtype = torch.bfloat16 if env["bf16"] else torch.float16  # storage dtype only, no compute
+    merged_dir = adapter_dir / "merged"
+    print(f"[merge] reloading base on CPU in {dtype} and merging adapters …")
+    base = _from_pretrained_compat(
+        AutoModelForCausalLM, args.model, dtype, token=os.environ.get("HF_TOKEN")
     )
+    merged = PeftModel.from_pretrained(base, str(adapter_dir)).merge_and_unload()
+    merged.save_pretrained(str(merged_dir))
+    load_tokenizer(args.model).save_pretrained(str(merged_dir))
+    print(f"[merge] merged weights saved -> {merged_dir}")
+    print("[merge] for on-device GGUF, convert with llama.cpp's convert_hf_to_gguf.py "
+          "(MIT-licensed) pointed at the merged dir.")
 
 
-def apply_chat_template(tokenizer, name: str):
-    """Apply Unsloth's chat template. Hard error if the name is unknown — never a silent
-       fallback. With plain transformers (no Unsloth) the tokenizer's own template is used."""
-    try:
-        from unsloth.chat_templates import get_chat_template
-    except Exception:
-        # transformers path: the model's tokenizer already carries its correct template.
-        return tokenizer
-    try:
-        return get_chat_template(tokenizer, chat_template=name)
-    except Exception as exc:
-        raise SystemExit(
-            f"[error] chat template '{name}' is not recognized by the installed Unsloth "
-            f"({exc}). Upgrade Unsloth or pass a supported --chat-template."
-        )
-
-
-# Zero-width-surrounded sentinels that can't collide with real template markup.
-_P_U1 = "⁣SAHAYAK_U1⁣"
-_P_A1 = "⁣SAHAYAK_A1⁣"
-_P_U2 = "⁣SAHAYAK_U2⁣"
-
-
-def derive_turn_markers(tokenizer):
-    """Extract the exact (instruction_part, response_part) delimiters from the *applied*
-       template by rendering a probe conversation and reading the literal text the template
-       inserts between turns. No system turn in the probe — Gemma folds system into the first
-       user turn, which would pollute the marker."""
-    probe = [
-        {"role": "user", "content": _P_U1},
-        {"role": "assistant", "content": _P_A1},
-        {"role": "user", "content": _P_U2},
-    ]
-    text = tokenizer.apply_chat_template(probe, tokenize=False, add_generation_prompt=False)
-    i_u1, i_a1, i_u2 = text.find(_P_U1), text.find(_P_A1), text.find(_P_U2)
-    if -1 in (i_u1, i_a1, i_u2) or not (i_u1 < i_a1 < i_u2):
-        raise SystemExit(
-            "[error] could not derive turn markers from the chat template — response masking "
-            "would be wrong. Check the template/model pairing."
-        )
-    response_part = text[i_u1 + len(_P_U1):i_a1]      # delimiter that begins the assistant turn
-    instruction_part = text[i_a1 + len(_P_A1):i_u2]   # delimiter that begins a user turn
-    # The raw spans include the PREVIOUS turn's end token (e.g. "<end_of_turn>\n<start_of_turn>
-    # user\n"). Passing that as instruction_part would mask the assistant's own end-of-turn
-    # token in multi-turn examples, so the model never gets loss on learning to STOP mid-
-    # conversation. Trim each span to its final turn-opener token — matching Unsloth's official
-    # marker style for both Gemma 3 ("<start_of_turn>user\n") and Gemma 4 ("<|turn>user\n",
-    # per the Gemma 4 fine-tuning guide) — so the end-of-turn token stays inside the loss span.
-    response_part = _trim_to_turn_opener(response_part)
-    instruction_part = _trim_to_turn_opener(instruction_part)
-    if not response_part.strip() or not instruction_part.strip():
-        raise SystemExit("[error] derived empty turn markers — aborting to avoid a broken run.")
-    print(f"[markers] instruction_part={instruction_part!r} response_part={response_part!r}")
-    return instruction_part, response_part
-
-
-def _trim_to_turn_opener(span: str) -> str:
-    """Cut a derived delimiter span down to the token that OPENS the next turn: the substring
-       starting at the last '<' (Gemma special tokens are all '<...>'-shaped). If the template
-       uses no '<' tokens, keep the full span — over-masking mid-turn stops is the safe side."""
-    i = span.rfind("<")
-    return span[i:] if i > 0 else span
-
-
-def make_sft_config(**kwargs):
-    """Build SFTConfig tolerant of TRL's rename max_seq_length -> max_length."""
-    from trl import SFTConfig
-    try:
-        return SFTConfig(**kwargs)
-    except TypeError:
-        if "max_seq_length" in kwargs:
-            kwargs["max_length"] = kwargs.pop("max_seq_length")
-            return SFTConfig(**kwargs)
-        raise
-
-
-def make_sft_trainer(**kwargs):
-    """Build SFTTrainer tolerant of TRL's rename tokenizer -> processing_class."""
-    from trl import SFTTrainer
-    try:
-        return SFTTrainer(**kwargs)
-    except TypeError:
-        if "tokenizer" in kwargs:
-            kwargs["processing_class"] = kwargs.pop("tokenizer")
-            return SFTTrainer(**kwargs)
-        raise
-
+# ── CLI ─────────────────────────────────────────────────────────────────────────
 
 def preflight(args) -> None:
     """Fail early and clearly on the mistakes that waste a long run."""
     train = Path(args.train)
     if not train.exists():
         sys.exit(f"[error] training file not found: {train}")
-    if args.eval and not Path(args.eval).exists():
-        print(f"[warn] eval file not found, training without it: {args.eval}")
+    validate_jsonl(train, "train")
+    if args.eval:
+        p = Path(args.eval)
+        if p.exists():
+            validate_jsonl(p, "eval")
+        else:
+            print(f"[warn] eval file not found, training without it: {args.eval}")
     if "HF_TOKEN" not in os.environ:
-        print(
-            "[warn] HF_TOKEN not set. Gemma weights are gated — export a Hugging Face token "
-            "(that has accepted the Gemma terms) as HF_TOKEN or the download will 401."
-        )
+        print("[warn] HF_TOKEN not set. Gemma weights are gated — export a Hugging Face "
+              "token (whose account accepted the Gemma terms) or the download will 401.")
 
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
-        description="Fine-tune Gemma 4 (E2B/E4B) for the Sahayak offline emergency assistant.",
+        description="Fine-tune Gemma 4 E2B for the Sahayak offline emergency assistant "
+                    "(pure transformers + PEFT, no Unsloth).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--train", required=True, help="Path to training .jsonl (messages format).")
+    p.add_argument("--train", required=True, help="Training .jsonl (messages format).")
     p.add_argument("--eval", default=None, help="Optional held-out eval .jsonl.")
-    p.add_argument("--model", default="unsloth/gemma-4-E4B-it",
-                   help="Base model id (Gemma 4 E4B). For E2B pass the E2B id; any Gemma id works.")
-    p.add_argument("--out", default="out/sahayak", help="Output dir for adapters/exports.")
-    p.add_argument("--backend", choices=["auto", "unsloth", "transformers"], default="auto",
-                   help="Training backend. 'auto' = Unsloth on CUDA, transformers otherwise.")
-    p.add_argument("--chat-template", default="auto",
-                   help="Chat template name. 'auto' infers it from the model family (see "
-                        "MODEL_PROFILES). An unrecognized name is a hard error, never a silent "
-                        "fallback — a wrong template silently ruins the run.")
+    p.add_argument("--model", default="google/gemma-4-E2B-it",
+                   help="Base model id. Any instruction-tuned Gemma id works.")
+    p.add_argument("--out", default="out/sahayak-e2b", help="Output dir for adapters/exports.")
     p.add_argument("--epochs", type=float, default=2.0)
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--batch-size", type=int, default=2)
@@ -593,44 +464,34 @@ def parse_args(argv=None):
     p.add_argument("--lora-r", type=int, default=16)
     p.add_argument("--lora-alpha", type=int, default=16)
     p.add_argument("--seed", type=int, default=3407)
-    p.add_argument("--four-bit", choices=["auto", "on", "off"], default="auto",
-                   help="4-bit (QLoRA) loading. 'auto' mirrors Unsloth's official notebooks: "
-                        "OFF for Gemma 4 E2B (16-bit LoRA fits ~8-10GB, skips the bnb path), "
-                        "ON for everything else (e.g. E4B LoRA needs ~17GB -> QLoRA on a T4).")
     p.add_argument("--no-4bit", action="store_true",
-                   help="Deprecated alias for --four-bit off.")
-    p.add_argument("--legacy-dtype-align", action="store_true",
-                   help="Re-enable the whole-model dtype re-cast workaround for OLD Unsloth "
-                        "installs (< 2026.6.7). Off by default: current Unsloth manages Gemma 4's "
-                        "mixed fp16/fp32 layout itself, and re-casting it causes the very "
-                        "float!=Half / OOM failures the workaround once papered over.")
-    p.add_argument("--device-map", default=None,
-                   help="Unsloth backend only. Set 'balanced' to SHARD the model's layers across "
-                        "all visible GPUs (model parallelism — e.g. Kaggle's 2xT4). Leave unset "
-                        "for single-GPU. Never use with a torchrun/accelerate launcher.")
-    p.add_argument("--export-merged", action="store_true", help="Also save merged fp16 weights.")
-    p.add_argument("--export-gguf", default=None,
-                   help="GGUF quant to export (e.g. q4_k_m, q8_0). Unsloth backend only.")
+                   help="Disable 4-bit QLoRA loading (CUDA default is 4-bit).")
+    p.add_argument("--export-merged", action="store_true",
+                   help="After training, also save merged full weights (CPU merge).")
+    p.add_argument("--validate-only", action="store_true",
+                   help="Validate the dataset files and exit — stdlib only, runs anywhere.")
     return p.parse_args(argv)
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    if args.validate_only:
+        preflight(args)
+        print("[ok] validation passed")
+        return 0
+
     env = detect_device()
-    print("── Sahayak fine-tune ─────────────────────────────────────────")
+    print("── Sahayak fine-tune (transformers + PEFT) ───────────────────")
     print(f" host      : {env['os']} / {env['machine']} / py{env['python']}")
     print(f" device    : {env['device']}"
           + (f" ({env.get('gpu_name')})" if env.get("gpu_name") else ""))
-    preflight(args)
-
-    backend = choose_backend(args.backend, env)
-    print(f" backend   : {backend}")
+    print(f" precision : {'bf16' if env['bf16'] else 'float32'}")
     print("──────────────────────────────────────────────────────────────")
-
-    if backend == "unsloth":
-        run_unsloth(args, env)
-    else:
-        run_transformers(args, env)
+    if env.get("torch_error"):
+        sys.exit(f"[error] torch not importable: {env['torch_error']} — "
+                 "install requirements.txt first (or run with --validate-only).")
+    preflight(args)
+    run_training(args, env)
     return 0
 
 

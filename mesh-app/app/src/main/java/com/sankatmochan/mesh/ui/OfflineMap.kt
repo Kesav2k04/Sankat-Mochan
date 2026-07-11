@@ -109,6 +109,13 @@ fun OfflineMapCard(
                         // No network path exists at all: the provider reads the archive only.
                         setUseDataConnection(false)
                         setMultiTouchControls(true)
+                        setTilesScaledToDpi(true)
+                        isHorizontalMapRepetitionEnabled = false
+                        isVerticalMapRepetitionEnabled = false
+                        // Stay inside the zoom levels the bundled archive actually holds, so a
+                        // pinch (or the fit-to-bounds below) never lands on a blank grey tile.
+                        setMinZoomLevel(OfflineTiles.MIN_ZOOM)
+                        setMaxZoomLevel(OfflineTiles.MAX_ZOOM)
                         // Hide osmdroid's stock grey +/- buttons; custom controls replace them.
                         zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                         try {
@@ -199,7 +206,9 @@ private fun drawPins(
     if (points.isEmpty()) return
 
     if (points.size == 1) {
-        map.controller.setZoom(17.0)
+        // Closest the archive can draw — 17 would sit two levels above the deepest tile and
+        // render blank grey. clampZoom keeps a lone pin as tight as the tiles allow.
+        map.controller.setZoom(OfflineTiles.clampZoom(17.0))
         map.controller.setCenter(points[0])
     } else {
         // zoomToBoundingBox needs a laid-out view, so defer until we have one.

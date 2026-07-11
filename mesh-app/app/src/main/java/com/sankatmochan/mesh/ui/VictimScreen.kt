@@ -83,7 +83,7 @@ import com.sankatmochan.mesh.ui.theme.urgencyColors
 import kotlinx.coroutines.delay
 
 /** Kept in step with VoiceRecorder.MAX_MILLIS. */
-private const val MAX_VOICE_SECONDS = 5
+private const val MAX_VOICE_SECONDS = 10
 
 private val CATEGORIES = listOf(
     "trapped" to "Trapped",
@@ -575,8 +575,8 @@ private fun LocationIndicator(vm: MeshViewModel) {
 }
 
 /**
- * Hold to speak, release to attach. The 5-second cap is airtime budget, not a nicety:
- * a 5 s Opus clip is ~22 LoRa frames, during which nobody else's SOS gets through.
+ * Hold to speak, release to attach. The 10-second cap is airtime budget, not a nicety:
+ * a 10 s AMR-NB clip is ~32 LoRa frames, during which nobody else's SOS gets through.
  */
 @Composable
 private fun VoiceTile(vm: MeshViewModel, modifier: Modifier = Modifier) {
@@ -681,7 +681,7 @@ private fun VoiceTile(vm: MeshViewModel, modifier: Modifier = Modifier) {
                         text = when {
                             recording -> "$remaining seconds left"
                             attached -> "${vm.pendingVoiceBytes} bytes · sends with your SOS"
-                            else -> "5 seconds · travels with the SOS"
+                            else -> "Up to $MAX_VOICE_SECONDS seconds · travels with the SOS"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = if (recording) Color.White.copy(alpha = 0.85f)
