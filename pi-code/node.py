@@ -88,7 +88,17 @@ class LoRaLink(Link):
         return False
 
     def _recover(self) -> bool:
-        """Re-initialise a radio that reset itself. Returns False if it stays broken."""
+        """Re-initialise a radio that reset itself. Returns False if it stays broken.
+
+        Throttled: reviving a modem tears its transport down and up (on the UNO Q that is
+        a router-socket close/reopen). Doing that in a tight loop is a storm that keeps the
+        radio too busy reconnecting to ever transmit — so consecutive revivals are spaced
+        out by at least a second."""
+        now = time.monotonic()
+        since = now - getattr(self, "_last_reinit_mono", 0.0)
+        if since < 1.0:
+            time.sleep(1.0 - since)
+        self._last_reinit_mono = time.monotonic()
         try:
             self.radio.reinit()
         except Exception as e:
@@ -112,6 +122,15 @@ class LoRaLink(Link):
                 try:
                     airtime = self.radio.send(raw)
                 except LoraError as e:
+                    if "busy" in str(e).lower():
+                        # TRANSIENT: the modem is still draining the previous frame's
+                        # airtime. Wait roughly one frame and try again — tearing the
+                        # radio down with reinit() here starts a storm (close -> reopen ->
+                        # still busy -> close ...) that blocks every transmission.
+                        self._log.warning("[%s] radio busy mid-transmit — waiting one "
+                                          "airtime before retrying %s", self._node, msg_id)
+                        time.sleep(self._cfg.airtime_s(len(raw)) + 0.1)
+                        continue
                     self._log.error("[%s] radio FAILED to transmit %s: %s", self._node, msg_id, e)
                     self._chain.emit(clog.DROP, self._node, radio=self.name, msg_id=msg_id,
                                      sha=sha, reason="tx_failed")
@@ -174,7 +193,7 @@ class MeshNode:
                  on_accept: Optional[Callable[[env.Envelope], Awaitable[None]]] = None,
                  *, seen_max: int = 4096, queue_max: int = 256,
                  global_frames_per_s: float = 50.0, voice_post_delay_s: float = 0.02,
-                 voice_tx_repeats: int = 3):
+                 voice_tx_repeats: int = 2):
         self.name = name
         self.links: List[Link] = []
         # Yield after each voice chunk on LoRa so an SOS can grab the air mid-clip (A6).

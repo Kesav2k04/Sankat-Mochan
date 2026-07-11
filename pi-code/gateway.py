@@ -445,7 +445,7 @@ async def run() -> int:
             global_frames_per_s=float(ing.get("global_frames_per_s", 50.0)),
             # Blind repeats per voice chunk on the air (default 3). See MeshNode._tx_policy:
             # a voice clip is all-or-nothing, so single-shot chunks lose whole clips on LoRa.
-            voice_tx_repeats=int(cfg["lora"].get("voice_tx_repeats", 3)),
+            voice_tx_repeats=int(cfg["lora"].get("voice_tx_repeats", 2)),
         )
         # Only the 'gateway' node uplinks accepted SOS traffic to the AI PC; a 'field'-only
         # board (the UNO Q) has no edge link and just relays over LoRa.
