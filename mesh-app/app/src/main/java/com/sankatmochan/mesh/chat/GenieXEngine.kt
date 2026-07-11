@@ -249,17 +249,44 @@ class GenieXEngine(context: Context) {
      */
     private val SUPPORTED_LOCAL_EXTENSIONS = setOf("gguf")
 
-    /** Every supported model file sitting in [localModelsDir], newest first, ready to load. */
+    /**
+     * The first 4 bytes of every valid GGUF file, per the format's public spec (MIT-licensed,
+     * https://github.com/ggml-org/ggml/blob/master/docs/gguf.md). A name ending in `.gguf`
+     * doesn't guarantee the bytes actually are one — an older build of this app used to
+     * force-rename *any* picked file to `.gguf`, so a stale side-loaded file can still have a
+     * `.gguf` name while actually being, say, a `.litertlm` bundle. Checking the extension alone
+     * (CLAUDE.md #8: validate untrusted input, don't just trust its label) let those through and
+     * they'd fail deep inside the native loader with an opaque "could not start" error.
+     */
+    private val GGUF_MAGIC = byteArrayOf(0x47, 0x47, 0x55, 0x46) // "GGUF"
+
+    private fun File.isRealGguf(): Boolean = runCatching {
+        inputStream().use { input ->
+            val header = ByteArray(4)
+            input.read(header) == 4 && header.contentEquals(GGUF_MAGIC)
+        }
+    }.getOrDefault(false)
+
+    /** Every supported model file sitting in [localModelsDir], newest first, ready to load.
+     *  Drops (and deletes) anything that merely has a `.gguf` name but isn't really one — e.g.
+     *  leftovers from before extension validation existed. */
     suspend fun scanLocalModels(): List<AssistantModel> = withContext(Dispatchers.IO) {
         val files = localModelsDir.listFiles { f ->
             f.isFile && f.extension.lowercase(Locale.US) in SUPPORTED_LOCAL_EXTENSIONS
         } ?: return@withContext emptyList()
-        files.sortedByDescending { it.lastModified() }.map { it.toLocalModel() }
+        files.filter { f ->
+            f.isRealGguf() || run {
+                Log.e(TAG, "dropping non-GGUF file masquerading as one: ${f.name}")
+                f.delete()
+                false
+            }
+        }.sortedByDescending { it.lastModified() }.map { it.toLocalModel() }
     }
 
     sealed interface ImportResult {
         data class Ok(val model: AssistantModel) : ImportResult
-        /** The picked file's extension isn't one [SUPPORTED_LOCAL_EXTENSIONS] can load. */
+        /** The picked file's extension isn't one [SUPPORTED_LOCAL_EXTENSIONS] can load, or it is
+         *  named `.gguf` but its contents don't start with the GGUF magic header. */
         data object UnsupportedFormat : ImportResult
         /** Right extension, but the copy itself failed (bad Uri, disk full, permission, ...). */
         data object Failed : ImportResult
@@ -289,10 +316,14 @@ class GenieXEngine(context: Context) {
             if (!ok) {
                 Log.e(TAG, "importModel failed for $safe")
                 dest.delete()
-                ImportResult.Failed
-            } else {
-                ImportResult.Ok(dest.toLocalModel())
+                return@withContext ImportResult.Failed
             }
+            if (!dest.isRealGguf()) {
+                Log.e(TAG, "importModel rejected: $safe has a .gguf name but isn't really one")
+                dest.delete()
+                return@withContext ImportResult.UnsupportedFormat
+            }
+            ImportResult.Ok(dest.toLocalModel())
         }
 
     private fun File.toLocalModel(): AssistantModel = AssistantModel(
