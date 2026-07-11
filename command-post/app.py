@@ -648,6 +648,16 @@ async def start_background() -> None:
 
     asyncio.create_task(watchdog())
 
+    # Load the STT model NOW (in a worker thread) instead of lazily on the first voice
+    # clip, so the first real recording doesn't eat the ~13 s cold model load. This
+    # never blocks startup; /health `stt_ready` flips true once the model is hot.
+    async def _warm_stt() -> None:
+        ok = await run_in_threadpool(stt.warmup)
+        print(f"[stt] startup warmup {'ready' if ok else 'FAILED'}")
+        await _broadcast_snapshot()
+
+    asyncio.create_task(_warm_stt())
+
 
 @app.on_event("shutdown")
 async def close_database() -> None:
