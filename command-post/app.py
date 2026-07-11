@@ -254,7 +254,13 @@ async def inject() -> JSONResponse:
 @app.post("/transcribe")
 async def transcribe_ep(audio: UploadFile = File(...), lang: str | None = Form(None)) -> JSONResponse:
     """Audio → text (IndicConformer). Runs off the event loop."""
-    data = await audio.read()
+    # Size-cap the upload before it lands in RAM, exactly like /voice_sos and /mesh_voice
+    # (CLAUDE.md #8). Reading without a bound let an unauthenticated multi-GB POST OOM the
+    # command post. Read one byte past the cap so an over-size body is detectable, not silently
+    # truncated into a partial (mis-transcribed) clip.
+    data = await audio.read(MAX_BROWSER_AUDIO_BYTES + 1)
+    if not data or len(data) > MAX_BROWSER_AUDIO_BYTES:
+        return JSONResponse({"status": "rejected"}, status_code=400)
     result = await run_in_threadpool(stt.transcribe, data, lang)
     return JSONResponse(result)
 
@@ -647,6 +653,16 @@ async def start_background() -> None:
                 await _broadcast_snapshot()
 
     asyncio.create_task(watchdog())
+
+    # Load the STT model NOW (in a worker thread) instead of lazily on the first voice
+    # clip, so the first real recording doesn't eat the ~13 s cold model load. This
+    # never blocks startup; /health `stt_ready` flips true once the model is hot.
+    async def _warm_stt() -> None:
+        ok = await run_in_threadpool(stt.warmup)
+        print(f"[stt] startup warmup {'ready' if ok else 'FAILED'}")
+        await _broadcast_snapshot()
+
+    asyncio.create_task(_warm_stt())
 
 
 @app.on_event("shutdown")

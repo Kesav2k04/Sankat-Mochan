@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
@@ -22,6 +23,11 @@ import kotlinx.coroutines.launch
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private val engine = GenieXEngine(app)
+
+    /** On-device speech-to-text (IndicConformer on the NPU) + mic capture for voice input.
+     *  Audio → text → the SAME [send] path the keyboard uses, so the LLM answers identically. */
+    private val stt = com.sankatmochan.mesh.stt.SttEngine(app)
+    private val voiceRecorder = com.sankatmochan.mesh.stt.PcmVoiceRecorder()
 
     /** Survives [onCleared] so we can release the native handle even as the VM scope dies. */
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -82,6 +88,42 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var isImporting by mutableStateOf(false)
         private set
 
+    // ── Voice input ─────────────────────────────────────────────────────────────
+
+    enum class VoiceState {
+        /** Mic idle. */ IDLE,
+        /** Bringing the STT model onto the NPU (first use only). */ PREPARING,
+        /** Capturing from the mic. */ RECORDING,
+        /** Running the clip through IndicConformer. */ TRANSCRIBING,
+    }
+
+    var voiceState by mutableStateOf(VoiceState.IDLE)
+        private set
+
+    /** True when the STT model files are on the phone (else the mic button is hidden/disabled). */
+    var voiceAvailable by mutableStateOf(false)
+        private set
+
+    /** Optional manual language override. null = auto-detect the language from the audio
+     *  (default) via CTC-confidence LID - 100% on our FLEURS test, no separate model. */
+    var voiceLang by mutableStateOf<String?>(null)
+        private set
+
+    /** Transient, user-safe note shown when voice input can't proceed (mic denied, no speech…). */
+    var voiceNotice by mutableStateOf<String?>(null)
+        private set
+
+    fun chooseVoiceLang(code: String?) { voiceLang = code }
+    fun clearVoiceNotice() { voiceNotice = null }
+
+    /** ISO code from IndicConformer → English language name for the LLM's reply-language hint. */
+    private fun languageName(code: String): String = when (code) {
+        "hi" -> "Hindi"; "ta" -> "Tamil"; "te" -> "Telugu"; "kn" -> "Kannada"
+        "ml" -> "Malayalam"; "bn" -> "Bengali"; "mr" -> "Marathi"; "gu" -> "Gujarati"
+        "pa" -> "Punjabi"; "or" -> "Odia"; "as" -> "Assamese"; "ur" -> "Urdu"
+        "en" -> "English"; else -> "the same language as this message"
+    }
+
     val messages = mutableStateListOf<UiMessage>()
 
     /** GGUF files the user has side-loaded onto the phone, shown alongside the hub catalogue. */
@@ -99,6 +141,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun bootstrap() {
         viewModelScope.launch {
             phase = Phase.INITIALIZING
+            voiceAvailable = stt.modelsInstalled()
+            // NOTE: we deliberately do NOT warm-load STT here. The LLM owns the Hexagon NPU; keeping
+            // the 1.2 GB STT context binary resident on the same Hexagon crashes the experimental
+            // ggml-hexagon LLM backend (session/memory contention - the DSP session caps ~3.5 GB).
+            // STT is loaded per-mic-tap (during recording) and unloaded right after transcribing.
             refreshLocalModels()
             when (val result = engine.initialize()) {
                 is GenieXEngine.InitResult.Unsupported -> {
@@ -279,7 +326,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Chat ────────────────────────────────────────────────────────────────────
 
-    fun send(rawText: String) {
+    /** @param replyLanguage English name of the language to answer in (from voice LID); null for
+     *   typed input, where the model infers from the message per the system prompt. */
+    fun send(rawText: String, replyLanguage: String? = null) {
         // Size-cap untrusted input before it reaches the model (CLAUDE.md #8) - a huge paste
         // would otherwise eat the whole context window in one turn.
         val text = rawText.trim().take(MAX_INPUT_CHARS)
@@ -291,7 +340,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
         generateJob = viewModelScope.launch {
             try {
-                engine.replyFlow(text).collect { chunk ->
+                engine.replyFlow(text, replyLanguage).collect { chunk ->
                     when (chunk) {
                         is GenieXEngine.ChatStream.Token ->
                             updateAssistant { it.copy(text = it.text + chunk.text) }
@@ -317,6 +366,79 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (!isGenerating) return
         // Ask the native runtime to wind down; the flow then completes and clears isGenerating.
         viewModelScope.launch { engine.stop() }
+    }
+
+    /** Tap the mic: if idle, start recording; if recording, stop and transcribe→send. */
+    fun toggleVoiceInput() {
+        when (voiceState) {
+            VoiceState.RECORDING -> stopVoiceInputAndSend()
+            VoiceState.IDLE -> startVoiceInput()
+            else -> Unit // PREPARING / TRANSCRIBING - ignore taps until it settles
+        }
+    }
+
+    /** STT model load, kicked off in parallel with recording so its ~1 s load hides behind the
+     *  user speaking. Awaited in [stopVoiceInputAndSend]. */
+    private var sttLoadJob: kotlinx.coroutines.Deferred<com.sankatmochan.mesh.stt.SttEngine.LoadResult>? = null
+
+    private fun startVoiceInput() {
+        // Same guards as typing: only when a model is loaded and nothing is generating.
+        if (phase != Phase.READY || isGenerating || voiceState != VoiceState.IDLE) return
+        if (!stt.modelsInstalled()) {
+            voiceAvailable = false
+            voiceNotice = "Voice model isn't installed on this phone."
+            return
+        }
+        // Start capturing immediately; load STT IN PARALLEL so the load overlaps the user speaking.
+        if (!voiceRecorder.start()) {
+            voiceNotice = "Couldn't open the microphone."
+            return
+        }
+        voiceState = VoiceState.RECORDING
+        sttLoadJob = viewModelScope.async { stt.load() }
+    }
+
+    private fun stopVoiceInputAndSend() {
+        if (voiceState != VoiceState.RECORDING) return
+        viewModelScope.launch {
+            voiceState = VoiceState.TRANSCRIBING
+            val pcm = voiceRecorder.stop()
+            val loaded = sttLoadJob?.await()
+            sttLoadJob = null
+            try {
+                if (pcm == null) {
+                    voiceNotice = "I didn't catch that - try again."
+                    return@launch
+                }
+                if (loaded is com.sankatmochan.mesh.stt.SttEngine.LoadResult.Failed) {
+                    voiceNotice = loaded.message
+                    return@launch
+                }
+                val r = stt.transcribe(pcm, voiceLang)
+                // Free the Hexagon NPU before the LLM generates - STT and the ggml-hexagon LLM
+                // backend must not both hold a Hexagon session (that co-residence crashes it).
+                stt.unload()
+                when (r) {
+                    is com.sankatmochan.mesh.stt.SttEngine.SttResult.Ok ->
+                        if (r.text.isBlank()) voiceNotice = "I didn't catch that - try again."
+                        // Same path as a typed message; pass the LID-detected language to reply in.
+                        else send(r.text, languageName(r.lang))
+                    com.sankatmochan.mesh.stt.SttEngine.SttResult.Failed ->
+                        voiceNotice = "Couldn't transcribe that. Please type instead."
+                }
+            } finally {
+                voiceState = VoiceState.IDLE
+            }
+        }
+    }
+
+    /** Discard an in-progress recording without sending (user cancels). */
+    fun cancelVoiceInput() {
+        if (voiceState != VoiceState.RECORDING) return
+        voiceRecorder.cancel()
+        voiceState = VoiceState.IDLE
+        // Release the STT model if the parallel load finished, so it never lingers on the NPU.
+        viewModelScope.launch { sttLoadJob?.await(); sttLoadJob = null; stt.unload() }
     }
 
     fun clearChat() {
@@ -357,8 +479,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         super.onCleared()
+        runCatching { voiceRecorder.cancel() }
         cleanupScope.launch {
             engine.unload()
+            stt.unload()
             cleanupScope.cancel()
         }
     }

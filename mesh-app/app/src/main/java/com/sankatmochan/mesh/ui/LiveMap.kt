@@ -147,8 +147,8 @@ fun LiveLocationMap(
                         isVerticalMapRepetitionEnabled = false
                         // Stay within the zoom levels the bundled archive actually holds, so a
                         // pinch never lands on a blank tile.
-                        setMinZoomLevel(11.0)
-                        setMaxZoomLevel(15.0)
+                        setMinZoomLevel(OfflineTiles.MIN_ZOOM)
+                        setMaxZoomLevel(OfflineTiles.MAX_ZOOM)
                         try {
                             val provider = OfflineTileProvider(
                                 SimpleRegisterReceiver(ctx), ready.toTypedArray()
@@ -160,7 +160,7 @@ fun LiveLocationMap(
                         } catch (e: Exception) {
                             Log.w(TAG, "offline tile provider failed: ${e.message}")
                         }
-                        controller.setZoom(15.0)
+                        controller.setZoom(OfflineTiles.MAX_ZOOM)
                         controller.setCenter(BENGALURU)
                         mapRef = this
                     }

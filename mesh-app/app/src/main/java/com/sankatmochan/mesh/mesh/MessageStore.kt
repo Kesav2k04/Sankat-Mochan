@@ -67,6 +67,14 @@ class MessageStore {
         _sent.update { it + SentSos(msg, stage = 0, statusText = "Sending…") }
     }
 
+    /** Drop this device's originated-SOS list, returning the console to a clean slate. Called
+     *  when the app is reopened after being left, so a previous session's SOS never greets the
+     *  user on relaunch. Received-SOS and dedup bookkeeping are deliberately untouched: those
+     *  belong to the mesh's correctness, not to one victim's screen. */
+    fun clearSent() {
+        _sent.value = emptyList()
+    }
+
     fun updateSentStatus(refSosId: String, stage: Int, text: String) {
         _sent.update { list ->
             list.map { s ->

@@ -16,3 +16,14 @@ asyncpg==0.30.0           # Apache-2.0 — PostgreSQL session/audio persistence
 
 # Optional: only the offline basemap endpoint imports this, and it does so lazily.
 pmtiles==3.4.0            # BSD-3
+
+# --- Speech-to-text: AI4Bharat IndicConformer-600M (see stt.py) --------------------
+# Heavy ML stack, previously installed out-of-band. Pinned here so a fresh command-post
+# venv transcribes without a manual `pip install`. All MIT/BSD/Apache-2.0 (project rule #1).
+# onnxruntime is REQUIRED: the model's trust_remote_code modeling file (model_onnx.py)
+# imports it — without it every transcription fails with "No module named 'onnxruntime'".
+# These are the CPU builds (STT runs on CPU by design; the NPU stays free for the triage LLM).
+torch==2.13.0            # BSD-3   — CPU build; loads the conformer weights
+transformers==5.13.1     # Apache-2.0 — AutoModel(trust_remote_code) loader
+huggingface-hub==1.23.0  # Apache-2.0 — model download/cache
+onnxruntime==1.27.0      # MIT      — CPU EP; required by the model's remote code

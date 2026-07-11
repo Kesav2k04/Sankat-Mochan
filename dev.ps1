@@ -140,6 +140,10 @@ try {
     Stop-Port $BackendPort
     Stop-Port $FrontendPort
 
+    Write-Host "==> Ensuring LLM backend (GenieX / NPU) is up"
+    Ensure-GenieX
+    Warm-LLM
+
     Write-Host "==> Starting backend (FastAPI) on :$BackendPort"
     $backend = Start-Process -FilePath $Python `
         -ArgumentList @('-m', 'uvicorn', 'app:app', '--host', '0.0.0.0', '--port', "$BackendPort", '--reload') `
@@ -161,7 +165,9 @@ try {
     Write-Host ""
     Write-Host "Backend : http://localhost:$BackendPort   (dashboard served by FastAPI)"
     Write-Host "Frontend: http://localhost:$FrontendPort  (Vite dev server, live UI)"
-    Write-Host "Press Ctrl-C to stop both."
+    Write-Host "LLM     : $GenieXBase  (GenieX / Gemma 4 E4B on the NPU)"
+    Write-Host "STT     : AI4Bharat IndicConformer-600M on CPU (loads on first voice clip)"
+    Write-Host "Press Ctrl-C to stop the backend + frontend (GenieX keeps running)."
     Write-Host ""
 
     # wait on both; if either dies, keep going until Ctrl-C

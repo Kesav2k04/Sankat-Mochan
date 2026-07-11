@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -66,12 +67,22 @@ fun MeshTopBar(
             )
             Spacer(Modifier.size(14.dp))
         }
-        Column(Modifier.weight(1f)) {
+        // weight(1f) lets the title flex, but a row of trailing chips (victim screen: prep +
+        // assistant + GPS + peer + settings) can starve it down to a couple of clipped letters
+        // ("Se" / "NO…"). Give the title a real minimum so it never collapses to a stray glyph,
+        // drop to titleMedium so "Send for help" fits the console width, and ellipsize as a
+        // last resort instead of a hard mid-character cut.
+        Column(
+            Modifier
+                .weight(1f)
+                .widthIn(min = 72.dp)
+        ) {
             Text(
                 title,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 caption.uppercase(),
@@ -201,20 +212,15 @@ fun PeerBadge(peers: Int) {
                 .clip(CircleShape)
                 .background(dot)
         )
-        Spacer(Modifier.size(8.dp))
+        Spacer(Modifier.size(7.dp))
+        // Count only - the pill + coloured dot already read as "mesh peers", and dropping the
+        // "MESH" word is what buys the title column enough room to show "Send for help" in full
+        // instead of clipping to "Se". Meaning is preserved for screen readers below.
         Text(
             text = "$peers",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1
-        )
-        Spacer(Modifier.size(6.dp))
-        Text(
-            "MESH",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            softWrap = false
         )
     }
 }

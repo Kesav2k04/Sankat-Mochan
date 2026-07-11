@@ -385,28 +385,75 @@ class GenieXEngine(context: Context) {
      * messages; rolls the user turn back on failure so a retry isn't polluted. Collect this
      * once per send - the ViewModel guards against overlapping generations.
      */
-    fun replyFlow(userText: String): Flow<ChatStream> = flow {
+    fun replyFlow(userText: String, replyLanguage: String? = null): Flow<ChatStream> = flow {
         val w = wrapper
         if (w == null) {
             emit(ChatStream.Failed("No model is loaded."))
             return@flow
         }
 
-        history.add(ChatMessage(role = "user", userText))
+        history.add(ChatMessage(role = "user", sanitizeForSdk(userText)))
 
         // Send the model a sliding window - system prompt + the most recent turns - so a long
-        // conversation can't overflow nCtx and kill generation mid-chat. Full history stays in
-        // [history] untouched; only what the model sees is windowed.
+        // conversation can't overflow nCtx and kill generation mid-chat. Every content string is
+        // sanitized to valid BMP text before it reaches GenieX: its applyChatTemplate JNI hands the
+        // formatted prompt back via NewStringUTF (Modified UTF-8) and hard-aborts (SIGABRT) on lone
+        // surrogates, 4-byte chars (emoji), or split multibyte fragments - which is what crashed the
+        // app on mixed Tamil/Hindi chats.
+        // The window is bounded by UTF-8 BYTES, not message count alone: Indic scripts are
+        // 3 bytes/char, so "8 messages" of Hindi is ~3x the bytes of the English chats that
+        // worked - and once the formatted prompt outgrows Genie's native buffer, its byte-level
+        // trim splits a multibyte char and the next NewStringUTF aborts (the 0xa2/0xa4/0xbf
+        // "illegal start byte" crashes). Newest-first, keep whole messages only; the latest
+        // user message always survives (truncated to the budget if it alone exceeds it).
         val window = ArrayList<ChatMessage>(MAX_WINDOW_MESSAGES + 1)
-        window.add(history[0])
-        val tailStart = maxOf(1, history.size - MAX_WINDOW_MESSAGES)
-        window.addAll(history.subList(tailStart, history.size))
+        window.add(ChatMessage(role = history[0].role, sanitizeForSdk(history[0].content)))
+        val tail = ArrayList<ChatMessage>(MAX_WINDOW_MESSAGES)
+        var budget = MAX_WINDOW_BYTES
+        for (i in history.indices.reversed()) {
+            if (i == 0 || tail.size == MAX_WINDOW_MESSAGES) break
+            var content = sanitizeForSdk(history[i].content)
+            val bytes = content.toByteArray(Charsets.UTF_8).size
+            if (bytes > budget) {
+                if (tail.isNotEmpty()) break            // older turn doesn't fit: stop here
+                content = truncateUtf8(content, budget) // lone newest message: cut, don't drop
+            }
+            budget -= content.toByteArray(Charsets.UTF_8).size
+            tail.add(ChatMessage(role = history[i].role, content))
+        }
+        for (i in tail.indices.reversed()) window.add(tail[i])
 
-        val templateOut = w.applyChatTemplate(window.toTypedArray(), null, false).getOrElse { e ->
+        // We already know the input language (from on-device LID), so tell the model outright and
+        // override any earlier-language turns still in the window.
+        if (replyLanguage != null && window.isNotEmpty()) {
+            val last = window.removeAt(window.lastIndex)
+            window.add(ChatMessage(role = last.role, "[This message is in $replyLanguage. Reply only " +
+                "in $replyLanguage, using its native script.]\n${last.content}"))
+        }
+
+        // Non-ASCII must NEVER reach Genie's native templater. Its applyChatTemplate JNI sizes
+        // buffers by the Java string's UTF-16 char count, not its UTF-8 byte count - equal for
+        // ASCII, but 3x off for Indic scripts - so any Devanagari/Tamil content SHEARS the
+        // assembled prompt (turns start mid-message, at raw byte offsets), and when a shear
+        // boundary splits a 3-byte char the returning NewStringUTF hard-aborts ("illegal start
+        // byte 0xa2/0xa4/0xbc..."). Verified from the tombstone hex dump on the OnePlus. So we
+        // template with pure-ASCII placeholders and substitute the real (sanitized) content into
+        // the returned string here in Kotlin, where UTF-8 handling is correct. Mechanical
+        // substitution only - user text is still data, never spliced into instructions
+        // (CLAUDE.md #7).
+        val placeholders = window.mapIndexed { i, m ->
+            ChatMessage(role = m.role, content = "@@SANKAT_MSG_$i@@")
+        }
+        val templateOut = w.applyChatTemplate(placeholders.toTypedArray(), null, false).getOrElse { e ->
             Log.e(TAG, "applyChatTemplate failed", e)
             history.removeAt(history.lastIndex)
             emit(ChatStream.Failed("The assistant could not read that message."))
             return@flow
+        }
+        var prompt = templateOut.formattedText
+        window.forEachIndexed { i, m ->
+            // Escape any literal placeholder token in user text so it can't hijack another slot.
+            prompt = prompt.replace("@@SANKAT_MSG_$i@@", m.content.replace("@@SANKAT_MSG_", "@@SANKAT-MSG-"))
         }
 
         val generation = GenerationConfig(
@@ -421,7 +468,7 @@ class GenieXEngine(context: Context) {
         )
 
         val answer = StringBuilder()
-        w.generateStreamFlow(templateOut.formattedText, generation).collect { result ->
+        w.generateStreamFlow(prompt, generation).collect { result ->
             when (result) {
                 is LlmStreamResult.Token -> {
                     answer.append(result.text)
@@ -429,7 +476,9 @@ class GenieXEngine(context: Context) {
                 }
 
                 is LlmStreamResult.Completed -> {
-                    history.add(ChatMessage(role = "assistant", answer.toString()))
+                    // Sanitize before storing: streamed tokens can leave malformed multibyte
+                    // fragments that would crash the NEXT turn's applyChatTemplate.
+                    history.add(ChatMessage(role = "assistant", sanitizeForSdk(answer.toString())))
                     emit(ChatStream.Done)
                 }
 
@@ -473,12 +522,64 @@ class GenieXEngine(context: Context) {
         history.add(ChatMessage(role = "system", SYSTEM_PROMPT))
     }
 
+    /**
+     * Make a string safe for GenieX's `applyChatTemplate`, which returns the formatted prompt to
+     * Java via JNI `NewStringUTF` - that expects *Modified UTF-8* and hard-aborts (SIGABRT, "invalid
+     * Modified UTF-8") on 4-byte characters (emoji / supplementary plane) and lone surrogates. Gemma
+     * readily emits emoji, so once one lands in the replayed history the NEXT turn crashes the app.
+     * We keep only valid BMP, non-surrogate, non-NUL code points (all Indic scripts are BMP, so
+     * transcripts and native-script replies pass through unchanged); the live streamed tokens shown
+     * in the UI are untouched - only the model-facing copy is cleaned. (The Qualcomm reference app
+     * skips this because it was only exercised in ASCII English.)
+     */
+    private fun sanitizeForSdk(s: String): String {
+        val sb = StringBuilder(s.length)
+        var i = 0
+        while (i < s.length) {
+            val cp = s.codePointAt(i)
+            i += Character.charCount(cp)
+            if (cp != 0 && cp <= 0xFFFF && cp !in 0xD800..0xDFFF) sb.appendCodePoint(cp)
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Cut [s] down to at most [maxBytes] of UTF-8, always at a code-point boundary, so the
+     * result can never start or end mid-character. Keeps the head of the message (questions
+     * are front-loaded); only ever applied to a lone over-budget message, never mid-history.
+     */
+    private fun truncateUtf8(s: String, maxBytes: Int): String {
+        var bytes = 0
+        var i = 0
+        while (i < s.length) {
+            val cp = s.codePointAt(i)
+            val cpBytes = when {
+                cp <= 0x7F -> 1
+                cp <= 0x7FF -> 2
+                else -> 3 // sanitizeForSdk already dropped everything above the BMP
+            }
+            if (bytes + cpBytes > maxBytes) break
+            bytes += cpBytes
+            i += Character.charCount(cp)
+        }
+        return s.substring(0, i)
+    }
+
     private companion object {
         const val TAG = "GenieXEngine"
 
         /** Most recent user/assistant messages replayed per turn (8 = 4 exchanges). Together
          *  with the 512-token output cap this keeps a turn comfortably inside nCtx = 2048. */
         const val MAX_WINDOW_MESSAGES = 8
+
+        /**
+         * UTF-8 byte budget for the replayed user/assistant turns (system prompt and the ~90-byte
+         * LID tag are on top; both are pure ASCII). Sized so system prompt + window + 512 output
+         * tokens stay inside nCtx = 2048 even for Devanagari/Tamil text (~3 bytes and roughly a
+         * token per character), and well below whatever byte limit Genie's native templater trims
+         * at - it must be the app, not Genie, that decides where text gets cut.
+         */
+        const val MAX_WINDOW_BYTES = 3_072
 
         /**
          * The assistant's brief. Kept deliberately short and factual for a small on-device
@@ -491,7 +592,21 @@ class GenieXEngine(context: Context) {
                 "during floods, fires, earthquakes and other emergencies. Give short, clear, " +
                 "step-by-step guidance on safety, first aid, and staying reachable. If a " +
                 "situation is life-threatening, tell them to tap the red SOS button on the home " +
-                "screen to alert nearby responders over the mesh. You cannot make phone calls " +
-                "or reach the internet. If you are unsure, say so plainly rather than guessing."
+                "screen to alert nearby responders over the mesh.\n\n" +
+                "OFFLINE & TRUSTWORTHY: You run entirely on this phone and cannot make calls, browse " +
+                "the internet, or look anything up - this is normal, not an error, so answer calmly " +
+                "from your own general safety and first-aid knowledge. NEVER invent specific facts " +
+                "you can't be sure of: do not make up helpline numbers, phone numbers, addresses, " +
+                "names, dates, statistics, or current events. If you don't know something or it " +
+                "needs local/live information you don't have, say so plainly and give the best " +
+                "general safety guidance instead. It is better to admit uncertainty than to guess.\n\n" +
+                "LANGUAGE: The user speaks in many different Indian languages (such as Hindi, " +
+                "Tamil, Telugu, Kannada, Malayalam, Bengali, Marathi, Gujarati, Punjabi) or " +
+                "English. Their message may be tagged with the language it is in. ALWAYS reply " +
+                "in the SAME language and native script as the user's most recent message - if " +
+                "they write in Tamil, reply only in Tamil; if in Hindi, reply only in Hindi. " +
+                "Never switch to a different language than the user's latest message, and never " +
+                "reply in English unless the user wrote in English. Reply in plain text only - " +
+                "do NOT use emojis or pictographs."
     }
 }

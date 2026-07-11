@@ -13,12 +13,14 @@ import java.io.File
  * the device vendor already licensed, not shipping one - flagged for review per #6.)
  *
  * Why not Opus: MediaRecorder ignores setAudioEncodingBitRate for OPUS on most devices.
- * A 5-second clip measured ~9 kB (≈14 kbps) - 45 LoRa frames, over 15 seconds of airtime
- * at SF7, during which nobody else's SOS can get through. AMR-NB honours 4.75 kbps, so the
- * same 5 seconds is ~3 kB: about 16 frames and 5.5 seconds of air.
+ * At AMR-NB's 4.75 kbps a clip is ~600 bytes/second, so the 10-second cap below is ~6 kB:
+ * about 32 LoRa frames and ~11 seconds of airtime at SF7, during which nobody else's SOS
+ * can get through. (Opus at ~14 kbps would be ~2.5x that on air, which is why we take the
+ * OS AMR-NB encoder instead.)
  *
  * Every bit here crosses a channel that carries roughly 5 kbps, so the length is capped
- * hard. Double the clip and you double the time the channel is unavailable to everyone.
+ * hard. Longer clips give the panicked caller room to explain, but each extra second is
+ * another second the shared channel is unavailable to everyone - [MAX_MILLIS] is the budget.
  */
 class VoiceRecorder(context: Context) {
 
@@ -101,7 +103,8 @@ class VoiceRecorder(context: Context) {
         private const val TAG = "VoiceRecorder"
         /** AMR-NB's lowest mode. Anything higher buys quality nobody can afford on air. */
         const val BITRATE_BPS = 4_750
-        const val MAX_MILLIS = 5_000
+        /** Hard cap on a voice clip, in ms. Kept in step with VictimScreen.MAX_VOICE_SECONDS. */
+        const val MAX_MILLIS = 10_000
         /** Wire codec id these clips carry. */
         const val CODEC = VoiceChunk.CODEC_3GPP_AMR
     }
