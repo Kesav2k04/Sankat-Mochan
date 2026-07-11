@@ -144,6 +144,12 @@ def run_unsloth(args, env):
     # So pass None and let Unsloth decide. NOTE: this float32 path is why E4B does NOT fit on a
     # single 16 GB T4 — use E2B there, or a native-bf16 GPU (L4/A100, cc >= 8) for E4B.
     native_bf16 = env["bf16"]   # cc >= 8.0 => real bf16 tensor cores (Ampere+). False on a T4.
+    # Gemma 4 has fp16-unsafe ops (vision/audio + the per-layer-input projection), so on a
+    # non-native-bf16 GPU (e.g. a Kaggle T4, cc 7.5) Unsloth prints "float16 won't work -> float32"
+    # and trains the whole model in PURE float32 with mixed-precision autocast OFF. We MUST mirror
+    # that in the trainer: handing SFTConfig fp16=True there is silently overridden by Unsloth and,
+    # worse, invites a half/float dtype clash. force_fp32 makes our config match Unsloth's reality.
+    force_fp32 = ("gemma-4" in args.model.lower()) and not native_bf16
     # Model parallelism (opt-in): device_map="balanced" asks accelerate to SHARD layers across
     # GPUs. WARNING: on a T4 this collides with Unsloth's manual float32 re-cast of the vision
     # module and dies with "CUDA illegal memory access" — it does NOT rescue the E4B fit. Kept as
@@ -194,6 +200,15 @@ def run_unsloth(args, env):
         random_state=args.seed,
     )
 
+    # ── Fix the "expected mat1 and mat2 to have the same dtype, but got: float != c10::Half" crash.
+    # Unsloth upcasts Gemma 4 to float32 on a T4 but its cast MISSES per_layer_model_projection
+    # (and can miss sibling non-quantized Linears), leaving them fp16 while the embeddings feeding
+    # them are fp32 -> the matmul in project_per_layer_inputs blows up on step 0. We align every
+    # stray floating tensor to the token-embedding dtype so the whole forward path is consistent.
+    # No-op on a native-bf16 GPU (nothing is stray there). 4-bit weights are uint8-backed, so the
+    # float-only guard skips them and bitsandbytes' own compute-dtype handling is left untouched.
+    _align_model_dtype(model)
+
     tokenizer = apply_chat_template(tokenizer, template)
 
     ds = load_messages_dataset(Path(args.train), Path(args.eval) if args.eval else None)
@@ -223,8 +238,11 @@ def run_unsloth(args, env):
         # Mixed-precision training: bf16 only on native-bf16 GPUs (Ampere+); fp16 on a T4, where
         # Unsloth's selective upcasting makes fp16 training numerically safe. Matches Unsloth's
         # own gate (its banner prints "Bfloat16 = FALSE" on a T4 and trains in fp16 there).
+        # bf16 only on native-bf16 GPUs (Ampere+). Otherwise fp16 on a T4 — EXCEPT for Gemma 4,
+        # which Unsloth forces to pure float32 (force_fp32): there both must be False so the
+        # trainer doesn't try fp16 autocast against a float32 model (the source of the dtype clash).
         bf16=native_bf16,
-        fp16=not native_bf16,
+        fp16=(not native_bf16) and not force_fp32,
         eval_strategy="epoch" if eval_ds is not None else "no",
     )
 
@@ -261,6 +279,45 @@ def run_unsloth(args, env):
             str(out / "gguf"), tokenizer, quantization_method=args.export_gguf
         )
     print("[unsloth] done.")
+
+
+def _align_model_dtype(model) -> None:
+    """Force every non-quantized floating parameter/buffer to the token-embedding dtype.
+
+    Root cause this fixes (Gemma 4 on a non-bf16 GPU, e.g. Kaggle T4): Unsloth upcasts the model
+    to float32 because fp16 is numerically unsafe for Gemma 4, but the upcast leaves a few small
+    non-quantized Linears — notably `per_layer_model_projection` in the text model — in float16.
+    On step 0, project_per_layer_inputs does `per_layer_model_projection(inputs_embeds)` with fp32
+    embeds against an fp16 weight and raises:
+        RuntimeError: expected mat1 and mat2 to have the same dtype, but got: float != c10::Half
+
+    We take the token-embedding weight's dtype as ground truth for "what flows through the net"
+    (fp32 on T4-Gemma4, bf16 on Ampere+) and cast any mismatched float tensor to it. 4-bit weights
+    are uint8-backed and float-typed norms/scales already match, so this is a no-op on the happy
+    path and only rescues the stray-fp16 case.
+    """
+    import torch
+
+    emb = model.get_input_embeddings()
+    target = getattr(getattr(emb, "weight", None), "dtype", None)
+    _floats = (torch.float16, torch.bfloat16, torch.float32)
+    if target not in _floats:
+        return  # embeddings themselves quantized/exotic — don't second-guess Unsloth.
+
+    fixed = 0
+    for _, p in model.named_parameters():
+        if p.dtype in _floats and p.dtype != target:
+            p.data = p.data.to(target)
+            fixed += 1
+    for _, b in model.named_buffers():
+        if b.dtype in _floats and b.dtype != target:
+            b.data = b.data.to(target)
+            fixed += 1
+    if fixed:
+        print(f"[unsloth] dtype-align: upcast {fixed} stray fp16/bf16 tensor(s) -> {target} "
+              f"(fixes the per_layer_model_projection float!=Half crash)")
+    else:
+        print(f"[unsloth] dtype-align: all float tensors already {target} (no fix needed)")
 
 
 # ── transformers + PEFT fallback (CPU / MPS / no-CUDA) ────────────────────────────
