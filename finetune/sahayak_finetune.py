@@ -155,6 +155,12 @@ def run_unsloth(args, env):
         load_in_4bit=not args.no_4bit,   # QLoRA by default (spec: prefer E4B QLoRA)
         full_finetuning=False,
         token=os.environ.get("HF_TOKEN"),
+        # Force trust_remote_code=False. Unsloth auto-ENABLES it for unsloth/* models on
+        # transformers 5.x, which bypasses its compiled path and disables fused kernels — the
+        # root cause of the Gemma 4 T4 dtype mismatch "float != c10::Half" (unsloth #4873 / PR
+        # #4878). Gemma 4 is NATIVE in transformers >= 5.5.0, so it needs no remote code; keeping
+        # this False routes through the correct compiled path where dtypes stay consistent.
+        trust_remote_code=False,
     )
     if args.device_map:
         load_kwargs["device_map"] = args.device_map
