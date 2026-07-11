@@ -137,25 +137,21 @@ def run_unsloth(args, env):
     max_seq = args.max_seq_len
     template = resolve_template(args.model, args.chat_template)
 
-    # Precision: prefer bfloat16 whenever the card supports it AT ALL (native on Ampere+, or
-    # emulated on Turing/T4 where torch.cuda.is_bf16_supported() is still True). Why not fp16 on
-    # a T4: Gemma 4's vision/audio conv path overflows fp16 (values > 65504), so Unsloth refuses
-    # fp16 ("Using float16 precision for gemma4 won't work! Using float32.") and upcasts that
-    # module to float32 = 4 bytes, which spikes ~5 GB and OOMs the load on a 16 GB T4. bf16 has
-    # fp32's dynamic range in only 2 bytes, so the module stays 2 bytes and fits. Load and train
-    # in the SAME dtype so nothing silently re-casts. (env["bf16"] = NATIVE bf16, kept for logs.)
-    use_bf16 = torch.cuda.is_bf16_supported()
-    load_dtype = torch.bfloat16 if use_bf16 else torch.float16
-    # Model parallelism (opt-in): device_map="balanced" tells Unsloth/accelerate to SHARD one
-    # model's layers across every visible GPU (per Unsloth's multi-GPU docs: "we will split the
-    # model for you on each GPU"). This is naive model-parallel — NOT DDP (which replicates the
-    # whole model per GPU and so can't relieve an OOM). It only works in a SINGLE process; never
-    # combine it with torchrun/accelerate launchers. On Kaggle's 2×T4 (~29 GB total) this gives
-    # E4B wide headroom. Default None = single-GPU (unchanged behaviour).
+    # Precision: DON'T force a dtype. Unsloth auto-selects the best per GPU and OVERRIDES what we
+    # pass — on a T4 (no native bf16) it refuses bf16 and, for Gemma 4's numerically-unsafe
+    # vision/audio ops, deliberately keeps them in float32 while doing matmuls in fp16 on tensor
+    # cores. Passing dtype=bfloat16 did nothing (it still logged "float16 won't work -> float32").
+    # So pass None and let Unsloth decide. NOTE: this float32 path is why E4B does NOT fit on a
+    # single 16 GB T4 — use E2B there, or a native-bf16 GPU (L4/A100, cc >= 8) for E4B.
+    native_bf16 = env["bf16"]   # cc >= 8.0 => real bf16 tensor cores (Ampere+). False on a T4.
+    # Model parallelism (opt-in): device_map="balanced" asks accelerate to SHARD layers across
+    # GPUs. WARNING: on a T4 this collides with Unsloth's manual float32 re-cast of the vision
+    # module and dies with "CUDA illegal memory access" — it does NOT rescue the E4B fit. Kept as
+    # an option only for native-bf16 multi-GPU boxes where the float32 cast never happens.
     load_kwargs = dict(
         model_name=args.model,
         max_seq_length=max_seq,
-        dtype=load_dtype,
+        dtype=None,                      # let Unsloth pick (bf16 on Ampere+, fp16/fp32 mix on T4)
         load_in_4bit=not args.no_4bit,   # QLoRA by default (spec: prefer E4B QLoRA)
         full_finetuning=False,
         token=os.environ.get("HF_TOKEN"),
@@ -163,8 +159,8 @@ def run_unsloth(args, env):
     if args.device_map:
         load_kwargs["device_map"] = args.device_map
     print(f"[unsloth] model={args.model} chat_template={template}")
-    print(f"[unsloth] precision: dtype={load_dtype} "
-          f"(native bf16={env['bf16']}, bf16 usable={use_bf16})")
+    print(f"[unsloth] precision: dtype=auto (native bf16={native_bf16}); "
+          f"train mixed-precision -> {'bf16' if native_bf16 else 'fp16'}")
     print(f"[unsloth] device_map={args.device_map or 'single-GPU'}")
     print(f"[unsloth] loading {args.model} (4bit={not args.no_4bit}) …")
     model, tokenizer = FastModel.from_pretrained(**load_kwargs)
@@ -218,11 +214,11 @@ def run_unsloth(args, env):
         output_dir=str(Path(args.out) / "checkpoints"),
         report_to="none",
         max_seq_length=max_seq,
-        # Train in the SAME precision the weights loaded in (see load_dtype above). On a T4 this
-        # is emulated bf16 — slower than fp16 but the only 2-byte path Gemma 4 accepts, and it
-        # fits. On Ampere+ it's native bf16 (fast). fp16 only if the card has no bf16 at all.
-        bf16=use_bf16,
-        fp16=not use_bf16,
+        # Mixed-precision training: bf16 only on native-bf16 GPUs (Ampere+); fp16 on a T4, where
+        # Unsloth's selective upcasting makes fp16 training numerically safe. Matches Unsloth's
+        # own gate (its banner prints "Bfloat16 = FALSE" on a T4 and trains in fp16 there).
+        bf16=native_bf16,
+        fp16=not native_bf16,
         eval_strategy="epoch" if eval_ds is not None else "no",
     )
 
