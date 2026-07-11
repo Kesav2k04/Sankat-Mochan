@@ -431,11 +431,29 @@ class GenieXEngine(context: Context) {
                 "in $replyLanguage, using its native script.]\n${last.content}"))
         }
 
-        val templateOut = w.applyChatTemplate(window.toTypedArray(), null, false).getOrElse { e ->
+        // Non-ASCII must NEVER reach Genie's native templater. Its applyChatTemplate JNI sizes
+        // buffers by the Java string's UTF-16 char count, not its UTF-8 byte count - equal for
+        // ASCII, but 3x off for Indic scripts - so any Devanagari/Tamil content SHEARS the
+        // assembled prompt (turns start mid-message, at raw byte offsets), and when a shear
+        // boundary splits a 3-byte char the returning NewStringUTF hard-aborts ("illegal start
+        // byte 0xa2/0xa4/0xbc..."). Verified from the tombstone hex dump on the OnePlus. So we
+        // template with pure-ASCII placeholders and substitute the real (sanitized) content into
+        // the returned string here in Kotlin, where UTF-8 handling is correct. Mechanical
+        // substitution only - user text is still data, never spliced into instructions
+        // (CLAUDE.md #7).
+        val placeholders = window.mapIndexed { i, m ->
+            ChatMessage(role = m.role, content = "@@SANKAT_MSG_$i@@")
+        }
+        val templateOut = w.applyChatTemplate(placeholders.toTypedArray(), null, false).getOrElse { e ->
             Log.e(TAG, "applyChatTemplate failed", e)
             history.removeAt(history.lastIndex)
             emit(ChatStream.Failed("The assistant could not read that message."))
             return@flow
+        }
+        var prompt = templateOut.formattedText
+        window.forEachIndexed { i, m ->
+            // Escape any literal placeholder token in user text so it can't hijack another slot.
+            prompt = prompt.replace("@@SANKAT_MSG_$i@@", m.content.replace("@@SANKAT_MSG_", "@@SANKAT-MSG-"))
         }
 
         val generation = GenerationConfig(
@@ -450,7 +468,7 @@ class GenieXEngine(context: Context) {
         )
 
         val answer = StringBuilder()
-        w.generateStreamFlow(templateOut.formattedText, generation).collect { result ->
+        w.generateStreamFlow(prompt, generation).collect { result ->
             when (result) {
                 is LlmStreamResult.Token -> {
                     answer.append(result.text)
