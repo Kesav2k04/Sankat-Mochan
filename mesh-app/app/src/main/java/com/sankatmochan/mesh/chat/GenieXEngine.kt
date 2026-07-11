@@ -159,7 +159,7 @@ class GenieXEngine(context: Context) {
             // A GGUF pull writes no runtime manifest, so fall back to the llama.cpp runtime.
             val runtimeId = paths.runtime_id.ifEmpty { "llama_cpp" }
             val config = ModelConfig(
-                nCtx = 1024,
+                nCtx = 2048,
                 nGpuLayers = if (onNpu) 999 else 0,
                 enable_thinking = false,
             )
@@ -216,7 +216,15 @@ class GenieXEngine(context: Context) {
 
         history.add(ChatMessage(role = "user", userText))
 
-        val templateOut = w.applyChatTemplate(history.toTypedArray(), null, false).getOrElse { e ->
+        // Send the model a sliding window — system prompt + the most recent turns — so a long
+        // conversation can't overflow nCtx and kill generation mid-chat. Full history stays in
+        // [history] untouched; only what the model sees is windowed.
+        val window = ArrayList<ChatMessage>(MAX_WINDOW_MESSAGES + 1)
+        window.add(history[0])
+        val tailStart = maxOf(1, history.size - MAX_WINDOW_MESSAGES)
+        window.addAll(history.subList(tailStart, history.size))
+
+        val templateOut = w.applyChatTemplate(window.toTypedArray(), null, false).getOrElse { e ->
             Log.e(TAG, "applyChatTemplate failed", e)
             history.removeAt(history.lastIndex)
             emit(ChatStream.Failed("The assistant could not read that message."))
@@ -289,6 +297,10 @@ class GenieXEngine(context: Context) {
 
     private companion object {
         const val TAG = "GenieXEngine"
+
+        /** Most recent user/assistant messages replayed per turn (8 = 4 exchanges). Together
+         *  with the 512-token output cap this keeps a turn comfortably inside nCtx = 2048. */
+        const val MAX_WINDOW_MESSAGES = 8
 
         /**
          * The assistant's brief. Kept deliberately short and factual for a small on-device

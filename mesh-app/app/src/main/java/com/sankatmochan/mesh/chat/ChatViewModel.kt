@@ -188,7 +188,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     // ── Chat ────────────────────────────────────────────────────────────────────
 
     fun send(rawText: String) {
-        val text = rawText.trim()
+        // Size-cap untrusted input before it reaches the model (CLAUDE.md #8) — a huge paste
+        // would otherwise eat the whole context window in one turn.
+        val text = rawText.trim().take(MAX_INPUT_CHARS)
         if (text.isEmpty() || isGenerating || phase != Phase.READY) return
 
         messages.add(UiMessage(Role.USER, text))
@@ -253,6 +255,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val current = messages[i]
         if (current.role != Role.ASSISTANT) return
         messages[i] = transform(current)
+    }
+
+    private companion object {
+        /** Hard cap on one typed message — plenty for a real question, small enough that a
+         *  single turn can never dominate the model's context window. */
+        const val MAX_INPUT_CHARS = 1000
     }
 
     override fun onCleared() {

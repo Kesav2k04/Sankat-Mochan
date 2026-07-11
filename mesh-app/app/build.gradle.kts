@@ -14,6 +14,13 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
+
+        ndk {
+            // Every Snapdragon device we target (incl. the OnePlus 15 demo phone) is arm64.
+            // GenieX ships native libs for several ABIs; keeping only arm64-v8a roughly
+            // halves the APK.
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
