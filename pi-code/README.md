@@ -97,7 +97,7 @@ now moved to the **Arduino UNO Q**. Each board runs the same code but only its o
 | Board | `run.nodes` | Radio transport | Setup |
 | --- | --- | --- | --- |
 | Raspberry Pi (relief camp) | `["gateway"]` | `spi` (radio wired to the Pi) | `cp config.gateway.example.json config.json`, then `../server.sh` as before |
-| Arduino UNO Q (field) | `["field"]` | `serial` (radio on the STM32 modem) | `cp config.field.example.json config.json`, set `serial_port`, then `./run.sh` |
+| Arduino UNO Q (field) | `["field"]` | `serial` (radio on the STM32 modem) | ships as the self-contained `../arduino-unoq/` folder — that carries its own copy of this code; see below |
 
 Each radio's `transport` decides how it is driven: `"spi"` (wired to that board's SPI) or `"serial"`
 (reached over the UNO Q's STM32 LoRa modem — see `../arduino-unoq/`). The two boards are still bridged
@@ -105,9 +105,11 @@ Each radio's `transport` decides how it is driven: `"spi"` (wired to that board'
 both radios on one board) auto-disables when a board runs a single node; the link is then proven by live
 traffic and each board's own radio watchdog.
 
-The Pi keeps running via `../server.sh` (gateway + uplink to the dashboard). The UNO Q runs `./run.sh`
-directly — it does not run `server.sh` and does not uplink; it relays over LoRa and the Pi does the
-uplinking. Full UNO Q instructions: [`../arduino-unoq/README.md`](../arduino-unoq/README.md).
+The Pi keeps running via `../server.sh` (gateway + uplink to the dashboard). The UNO Q does **not** run
+`server.sh` and does not uplink — it relays over LoRa and the Pi does the uplinking. Because only the
+`arduino-unoq/` folder is uploaded to the UNO Q, that folder carries its own deployment copy of this code
+in `arduino-unoq/field-node/` (kept in sync with `arduino-unoq/sync-from-pi-code.sh`; this `pi-code/` stays
+the source of truth). Full UNO Q instructions: [`../arduino-unoq/README.md`](../arduino-unoq/README.md).
 
 ## Proving it went over LoRa
 

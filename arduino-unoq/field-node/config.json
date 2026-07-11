@@ -1,0 +1,13 @@
+{
+  "_comment": "UNO Q field-node config (active). This board runs ONLY the field node; its radio is the Ra-02 on the STM32, reached over the serial LoRa modem (../lora_modem). EDIT serial_port below to match what the modem enumerates as on the UNO Q's Linux side — check with: ls /dev/ttyACM* /dev/ttyUSB*. Victim phones connect to this board over Bluetooth exactly as they did to the Pi. This board does NOT uplink to the dashboard; the Pi gateway does that over 433 MHz.",
+  "run": {
+    "nodes": ["field"]
+  },
+  "radios": {
+    "field": {
+      "transport": "serial",
+      "serial_port": "/dev/ttyACM0",
+      "serial_baud": 115200
+    }
+  }
+}
