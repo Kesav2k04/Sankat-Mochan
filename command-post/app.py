@@ -217,7 +217,14 @@ async def _ingest(envelope: dict[str, Any], audio_url: str | None = None) -> boo
         ai = {"urgency": envelope.get("urgency", 3), "category": "sensor",
               "english": envelope.get("gist", ""), "ai": False, "latency_ms": 0}
     else:
-        ai = await triage.triage(envelope)
+        # Inject contextual data (weather + responders) for the dynamic agentic system
+        weather_context = "Heavy rain expected in 30 mins." if envelope.get("lat") else ""
+        responder_context = "Nearest NDRF responder is 15 mins away." if envelope.get("lat") else ""
+        ai = await triage.triage(
+            envelope, 
+            weather_context=weather_context, 
+            responder_context=responder_context
+        )
     if audio_url:
         envelope["audio"] = audio_url
     store.add_report(envelope, ai)

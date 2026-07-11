@@ -74,6 +74,8 @@ def is_configured() -> bool:
 
 async def triage(
     envelope: dict[str, Any],
+    weather_context: str = "",
+    responder_context: str = "",
     base_url: str | None = None,
     model: str | None = None,
 ) -> dict[str, Any]:
@@ -96,10 +98,23 @@ async def triage(
     # disables it in Ollama/Qwen3; other models just ignore the token.
     if "qwen3" in mdl.lower():
         user_msg += "\n/no_think"
+
+    dynamic_system_prompt = SYSTEM_PROMPT
+    if weather_context or responder_context:
+        dynamic_system_prompt += "\n\nENVIRONMENT CONTEXT:"
+        if weather_context:
+            dynamic_system_prompt += f"\n- Weather: {weather_context}"
+        if responder_context:
+            dynamic_system_prompt += f"\n- Responders: {responder_context}"
+        dynamic_system_prompt += (
+            "\nAdjust the 'urgency' score (1-5) based on this context. "
+            "For example, if weather is severe, elevate urgency. Explain in 'rationale'."
+        )
+
     payload = {
         "model": mdl,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": dynamic_system_prompt},
             {"role": "user", "content": user_msg},
         ],
         "temperature": 0.1,
