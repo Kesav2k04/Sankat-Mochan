@@ -254,7 +254,7 @@ private fun ChooseModelCard(vm: ChatViewModel, onPickLocal: () -> Unit) {
                         selected = model.id == selected.id,
                     ) { vm.selectModel(model) }
                 }
-                AddModelChip(onClick = onPickLocal)
+                AddModelChip(isImporting = vm.isImporting, onClick = onPickLocal)
             }
 
             Spacer(Modifier.height(12.dp))
@@ -298,9 +298,10 @@ private fun ChooseModelCard(vm: ChatViewModel, onPickLocal: () -> Unit) {
     }
 }
 
-/** The "+" chip that opens the file picker to side-load a local .gguf model. */
+/** The "+" chip that opens the file picker to side-load a local .gguf model. Swaps to a spinner
+ *  while the picked file is being copied in and validated, so a large file doesn't look stuck. */
 @Composable
-private fun AddModelChip(onClick: () -> Unit) {
+private fun AddModelChip(isImporting: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(12.dp)
     Row(
@@ -309,18 +310,26 @@ private fun AddModelChip(onClick: () -> Unit) {
             .clip(shape)
             .background(scheme.surfaceContainerHigh)
             .border(1.dp, scheme.outline, shape)
-            .bounceClick(pressedScale = 0.93f, onClick = onClick)
+            .bounceClick(pressedScale = 0.93f, enabled = !isImporting, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        Icon(
-            Icons.Rounded.Add,
-            contentDescription = "Add a model from device storage",
-            tint = scheme.primary,
-            modifier = Modifier.size(18.dp),
-        )
+        if (isImporting) {
+            CircularProgressIndicator(
+                color = scheme.primary,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(18.dp),
+            )
+        } else {
+            Icon(
+                Icons.Rounded.Add,
+                contentDescription = "Add a model from device storage",
+                tint = scheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
         Spacer(Modifier.size(6.dp))
         Text(
-            "Local file",
+            if (isImporting) "Importing…" else "Local file",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Medium,
             color = scheme.onSurfaceVariant,

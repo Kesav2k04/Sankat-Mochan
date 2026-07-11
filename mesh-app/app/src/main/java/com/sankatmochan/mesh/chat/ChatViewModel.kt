@@ -78,6 +78,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var isGenerating by mutableStateOf(false)
         private set
 
+    /** True while a picked local file is being copied in and validated (see [importLocalModel]). */
+    var isImporting by mutableStateOf(false)
+        private set
+
     val messages = mutableStateListOf<UiMessage>()
 
     /** GGUF files the user has side-loaded onto the phone, shown alongside the hub catalogue. */
@@ -116,22 +120,36 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Import a user-picked GGUF, then select and load it (plug-and-play). */
+    /** Import a user-picked model file, then select and load it (plug-and-play). */
     fun importLocalModel(uri: android.net.Uri, suggestedName: String) {
-        if (isGenerating || phase == Phase.DOWNLOADING) return
+        if (isGenerating || isImporting || phase == Phase.DOWNLOADING) return
         viewModelScope.launch {
-            val imported = engine.importGguf(uri, suggestedName)
-            if (imported == null) {
-                statusMessage = "Could not import that file. Make sure it is a .gguf model."
-                phase = Phase.NEEDS_MODEL
-                return@launch
+            isImporting = true
+            try {
+                when (val result = engine.importModel(uri, suggestedName)) {
+                    is GenieXEngine.ImportResult.Ok -> {
+                        val imported = result.model
+                        if (localModels.none { it.id == imported.id }) localModels.add(0, imported)
+                        if (phase == Phase.UNSUPPORTED) return@launch
+                        engine.unload()
+                        messages.clear()
+                        selectedModel = imported
+                        evaluateModel()
+                    }
+
+                    GenieXEngine.ImportResult.UnsupportedFormat -> {
+                        statusMessage = "Only .gguf model files are supported right now."
+                        phase = Phase.NEEDS_MODEL
+                    }
+
+                    GenieXEngine.ImportResult.Failed -> {
+                        statusMessage = "Could not import that file. Make sure it is a .gguf model."
+                        phase = Phase.NEEDS_MODEL
+                    }
+                }
+            } finally {
+                isImporting = false
             }
-            if (localModels.none { it.id == imported.id }) localModels.add(0, imported)
-            if (phase == Phase.UNSUPPORTED) return@launch
-            engine.unload()
-            messages.clear()
-            selectedModel = imported
-            evaluateModel()
         }
     }
 
@@ -148,7 +166,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     // ── Model selection / download / load ───────────────────────────────────────
 
     fun selectModel(model: AssistantModel) {
-        if (model.id == selectedModel.id || isGenerating || phase == Phase.DOWNLOADING) return
+        if (model.id == selectedModel.id || isGenerating || isImporting || phase == Phase.DOWNLOADING) return
         viewModelScope.launch {
             downloadJob?.cancel()
             engine.unload()
@@ -160,7 +178,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun chooseCompute(enabled: Boolean) {
-        if (enabled == runOnNpu || isGenerating || phase == Phase.DOWNLOADING) return
+        if (enabled == runOnNpu || isGenerating || isImporting || phase == Phase.DOWNLOADING) return
         runOnNpu = enabled
         // The compute unit is baked in at load time, so re-load if a model is already up.
         if (phase == Phase.READY || phase == Phase.LOAD_FAILED) {
@@ -173,7 +191,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun download() {
-        if (phase == Phase.DOWNLOADING) return
+        if (phase == Phase.DOWNLOADING || isImporting) return
         val model = selectedModel
         downloadJob = viewModelScope.launch {
             phase = Phase.DOWNLOADING

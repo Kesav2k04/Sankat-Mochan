@@ -239,25 +239,47 @@ class GenieXEngine(context: Context) {
 
     // ── Local (side-loaded) models ──────────────────────────────────────────────
 
-    /** Every `*.gguf` sitting in [localModelsDir], newest first, as ready-to-load models. */
+    /**
+     * Extensions the bundled runtime can actually load locally. Only `libgeniex_plugin_llama_cpp`
+     * is wired up for side-loaded files (see [load]), and llama.cpp only reads GGUF — so this is
+     * the full list, not a partial one. Formats like `.litertlm`/`.tflite`/`.task` belong to a
+     * different runtime plugin (LiteRT/MediaPipe) that isn't wired into this app; adding them here
+     * without a real integration would just mislabel unusable files as models (CLAUDE.md #4: don't
+     * fabricate SDK behavior beyond what's actually documented/wired up).
+     */
+    private val SUPPORTED_LOCAL_EXTENSIONS = setOf("gguf")
+
+    /** Every supported model file sitting in [localModelsDir], newest first, ready to load. */
     suspend fun scanLocalModels(): List<AssistantModel> = withContext(Dispatchers.IO) {
         val files = localModelsDir.listFiles { f ->
-            f.isFile && f.name.endsWith(".gguf", ignoreCase = true)
+            f.isFile && f.extension.lowercase(Locale.US) in SUPPORTED_LOCAL_EXTENSIONS
         } ?: return@withContext emptyList()
         files.sortedByDescending { it.lastModified() }.map { it.toLocalModel() }
     }
 
+    sealed interface ImportResult {
+        data class Ok(val model: AssistantModel) : ImportResult
+        /** The picked file's extension isn't one [SUPPORTED_LOCAL_EXTENSIONS] can load. */
+        data object UnsupportedFormat : ImportResult
+        /** Right extension, but the copy itself failed (bad Uri, disk full, permission, ...). */
+        data object Failed : ImportResult
+    }
+
     /**
-     * Copy a user-picked GGUF (content:// Uri) into [localModelsDir] so the native runtime can
-     * open it by path, and return it as a loadable model. Returns null on any I/O failure.
+     * Copy a user-picked model (content:// Uri) into [localModelsDir] so the native runtime can
+     * open it by path, and return it as a loadable model.
      */
-    suspend fun importGguf(uri: Uri, suggestedName: String): AssistantModel? =
+    suspend fun importModel(uri: Uri, suggestedName: String): ImportResult =
         withContext(Dispatchers.IO) {
+            val ext = suggestedName.substringAfterLast('.', "").lowercase(Locale.US)
+            if (ext !in SUPPORTED_LOCAL_EXTENSIONS) {
+                Log.e(TAG, "importModel rejected unsupported extension: $ext")
+                return@withContext ImportResult.UnsupportedFormat
+            }
             localModelsDir.mkdirs()
             val safe = suggestedName.substringAfterLast('/').substringAfterLast('\\')
                 .replace(Regex("[^A-Za-z0-9._-]"), "_")
-                .ifBlank { "model.gguf" }
-                .let { if (it.endsWith(".gguf", ignoreCase = true)) it else "$it.gguf" }
+                .ifBlank { "model.$ext" }
             val dest = File(localModelsDir, safe)
             val ok = runCatching {
                 appContext.contentResolver.openInputStream(uri)?.use { input ->
@@ -265,11 +287,11 @@ class GenieXEngine(context: Context) {
                 } ?: error("could not open picked file")
             }.isSuccess
             if (!ok) {
-                Log.e(TAG, "importGguf failed for $safe")
+                Log.e(TAG, "importModel failed for $safe")
                 dest.delete()
-                null
+                ImportResult.Failed
             } else {
-                dest.toLocalModel()
+                ImportResult.Ok(dest.toLocalModel())
             }
         }
 
