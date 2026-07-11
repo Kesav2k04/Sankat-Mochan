@@ -36,7 +36,7 @@ MAX_FAST_FAILURES=3
 # Override without editing this file:  ./server.sh --post http://host:9000
 #                                      SANKAT_POST=http://host:9000 ./server.sh
 # These are plain LAN addresses — no credentials belong in a URL (rule 2).
-DEFAULT_POST="http://QCWorkshop.local:9000,http://10.79.44.43:9000"
+DEFAULT_POST="http://QCWorkshop.local:9000,http://10.83.166.221:9000"
 
 MODE="gateway"                       # radios here, post on the Mac
 POST_CANDIDATES="${SANKAT_POST:-$DEFAULT_POST}"
