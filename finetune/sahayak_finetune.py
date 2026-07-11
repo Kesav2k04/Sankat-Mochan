@@ -299,9 +299,17 @@ def load_model(args, env):
         kwargs["device_map"] = {"": 0}
     elif env["cuda"]:
         kwargs["device_map"] = {"": 0}
+    if env["cuda"] and args.device_map:
+        # Shard layers across all visible GPUs (naive pipeline parallelism — GPUs take turns,
+        # so it buys MEMORY, not speed). The Trainer detects hf_device_map and skips DDP.
+        kwargs["device_map"] = args.device_map
 
     print(f"[model] loading {args.model} (4bit={quantized}, compute dtype={compute_dtype}) …")
     model = _from_pretrained_compat(AutoModelForCausalLM, args.model, compute_dtype, **kwargs)
+    dev_map = getattr(model, "hf_device_map", None)
+    if args.device_map and dev_map:
+        gpus = sorted({v for v in dev_map.values() if isinstance(v, int)})
+        print(f"[model] layers sharded across GPU(s) {gpus}")
     if env["mps"]:
         model = model.to("mps")
     model.config.use_cache = False  # incompatible with gradient checkpointing
@@ -475,6 +483,10 @@ def parse_args(argv=None):
     p.add_argument("--seed", type=int, default=3407)
     p.add_argument("--no-4bit", action="store_true",
                    help="Disable 4-bit QLoRA loading (CUDA default is 4-bit).")
+    p.add_argument("--device-map", default=None,
+                   help="Set 'balanced' to shard layers across all visible GPUs (e.g. Kaggle's "
+                        "2xT4). Buys memory headroom, not speed — GPUs take turns. Leave unset "
+                        "for single-GPU. Never combine with a torchrun/accelerate launcher.")
     p.add_argument("--export-merged", action="store_true",
                    help="After training, also save merged full weights (CPU merge).")
     p.add_argument("--validate-only", action="store_true",
