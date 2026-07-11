@@ -70,7 +70,13 @@ def detect_device() -> dict:
             info["cuda"] = True
             info["device"] = "cuda"
             info["gpu_name"] = torch.cuda.get_device_name(0)
-            info["bf16"] = torch.cuda.is_bf16_supported()
+            # Gate bf16 on NATIVE support (compute capability >= 8.0, Ampere+), NOT on
+            # torch.cuda.is_bf16_supported(): on a T4 (cc 7.5) that returns True via slow
+            # emulation, which would make the trainer run bf16 autocast the card can't do
+            # natively while the weights load in fp16. Ampere+ (A100/L4/RTX30-40) => real bf16.
+            major = torch.cuda.get_device_capability(0)[0]
+            info["compute_capability"] = major
+            info["bf16"] = major >= 8
         elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
             info["mps"] = True
             info["device"] = "mps"
@@ -152,6 +158,11 @@ def run_unsloth(args, env):
         finetune_language_layers=True,
         finetune_attention_modules=True,
         finetune_mlp_modules=True,
+        # Unsloth's gradient-checkpointing kernel: the documented VRAM saver for Gemma 4 on a
+        # 16 GB T4 (per Unsloth's Gemma 4 fine-tuning guide it drops E4B QLoRA under ~12 GB).
+        # Without it the backward pass keeps all activations and can OOM during training even
+        # when the 4-bit weights loaded fine.
+        use_gradient_checkpointing="unsloth",
         random_state=args.seed,
     )
 
