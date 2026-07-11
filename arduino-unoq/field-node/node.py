@@ -53,6 +53,11 @@ class Link:
     """Something a node can push envelope bytes at."""
     kind: str = "?"
     name: str = "?"
+    # Largest single frame this link can carry, or None for "the wire cap is enough".
+    # The UNO Q Router-Bridge modem takes at most ~234 B per RPC — less than the
+    # 244-byte envelope cap — so the node shrinks a JSON envelope to fit before
+    # sending rather than letting the transport refuse it (see MeshNode._send_one).
+    max_frame: Optional[int] = None
 
     async def send(self, raw: bytes, msg_id: str, *,
                    repeats: Optional[int] = None, post_delay_s: float = 0.0) -> bool:
@@ -71,6 +76,11 @@ class LoRaLink(Link):
         self._chain = chain
         self._node = node_name
         self._repeats = 1
+        # The transport's own single-frame ceiling wins when it is tighter than the
+        # radio config (the bridge modem's RPC buffer caps a frame below max_payload).
+        transport_max = getattr(radio, "tx_max_bytes", None)
+        self.max_frame = min(int(transport_max), lora_cfg.max_payload) \
+            if transport_max else lora_cfg.max_payload
 
     def set_repeats(self, n: int) -> None:
         self._repeats = max(1, n)
@@ -508,6 +518,27 @@ class MeshNode:
 
     async def _send_one(self, link: Link, raw: bytes, msg: env.Envelope) -> None:
         repeats, post_delay_s = self._tx_policy(msg)
+        # A link with a tighter frame budget than the wire cap (the UNO Q bridge modem)
+        # gets the envelope re-encoded with its gist trimmed to fit — a shortened SOS
+        # delivered beats a full one refused. Binary voice frames cannot be trimmed;
+        # anything that still doesn't fit is dropped LOUDLY, never handed down to fail.
+        cap = getattr(link, "max_frame", None)
+        if cap and len(raw) > cap:
+            if isinstance(msg, env.Envelope):
+                raw = msg.encode(max_bytes=cap)
+                if len(raw) <= cap:
+                    self._log.warning(
+                        "[%s] %s is over %s's %d-byte frame budget — trimmed its free "
+                        "text to fit (%d bytes). The structured fields are untouched.",
+                        self.name, msg.id, link.name, cap, len(raw))
+            if len(raw) > cap:
+                self._chain.emit(clog.DROP, self.name, radio=link.name, msg_id=msg.id,
+                                 sha=env.digest(raw), size=len(raw), reason="too_large")
+                self._log.error(
+                    "[%s] LOST %s — %d bytes cannot fit %s's %d-byte frame budget "
+                    "even after trimming. Not delivered on this link.",
+                    self.name, msg.id, len(raw), link.name, cap)
+                return
         try:
             ok = await link.send(raw, msg.id, repeats=repeats, post_delay_s=post_delay_s)
         except Exception as e:

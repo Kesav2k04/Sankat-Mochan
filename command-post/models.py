@@ -78,6 +78,7 @@ def parse_envelope(raw: bytes | str | dict) -> dict[str, Any]:
         "id": msg_id,
         "type": mtype,
         "origin": origin,
+        "deviceId": str(o.get("d", ""))[:32],
         "refId": (str(o["r"])[:32] if "r" in o else None),
         "urgency": urgency,
         "category": str(o.get("c", ""))[:48],
