@@ -352,6 +352,10 @@ class EdgeUplink:
         else:
             self.voice_url = None
 
+    # Idle loops re-stamp their heartbeat at least this often, so the watchdog (max_age 30s)
+    # only fires on a genuinely wedged flush — never on a quiet link.
+    _HEARTBEAT_S = 10.0
+
     def _beat(self, who: str) -> None:
         self._heartbeat[who] = time.monotonic()
 
@@ -452,6 +456,11 @@ class EdgeUplink:
                            "(pip install websockets). Falling back to HTTP only.")
             await self._http_only(stop)
             return
+        # Voice upload is plain HTTP and independent of the dashboard WebSocket — run it for
+        # the whole session so a flaky or absent WS never blocks a victim's audio from
+        # reaching the command post. Still fully decoupled from the SOS/WS sender (C1): a
+        # slow clip cannot delay an SOS, and it no-ops when nothing is queued.
+        uploader = asyncio.create_task(self._voice_uploader(stop))
         backoff = 1.0
         while not stop.is_set():
             try:
@@ -467,13 +476,9 @@ class EdgeUplink:
                     await self._flush_status(ws)
                     reader = asyncio.create_task(self._reader(ws))
                     sender = asyncio.create_task(self._sender(ws, stop))
-                    # Voice upload is decoupled from the WS sender (mesh-transmission.md C1):
-                    # a slow/large clip can never delay an SOS envelope again. It is gated on
-                    # the WS being up (C7) — if the AI PC is unreachable, HTTP voice fails too.
-                    uploader = asyncio.create_task(self._voice_uploader(stop))
                     stopper = asyncio.create_task(stop.wait())
                     done, pend = await asyncio.wait(
-                        [reader, sender, uploader, stopper],
+                        [reader, sender, stopper],
                         return_when=asyncio.FIRST_COMPLETED)
                     for t in pend:
                         t.cancel()
@@ -489,11 +494,17 @@ class EdgeUplink:
                 await self._http_fallback()  # best-effort while the socket is dead
             finally:
                 self._ws = None
+                # The WS-only sender is not running while the socket is down; drop its stale
+                # heartbeat so the watchdog does not report a disconnected link as "wedged".
+                self._heartbeat.pop("sender", None)
             if stop.is_set():
                 break
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=backoff)
             backoff = min(backoff * 2, 30.0)
+        uploader.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await uploader
 
     async def _flush(self, ws) -> None:
         for mid_key, env in self.outbox.pending():
@@ -503,14 +514,16 @@ class EdgeUplink:
         """WS path ONLY: envelopes (SOS-first), peer states, status. Voice upload lives in
         its own task (_voice_uploader) so a slow HTTP clip can never stall this loop —
         mesh-transmission.md C1/B1. No voice work here by design."""
-        self._beat("sender")
         while not stop.is_set():
-            await self._wake.wait()
+            self._beat("sender")      # stamp even while idle — a quiet link is not wedged
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=self._HEARTBEAT_S)
+            except asyncio.TimeoutError:
+                continue
             self._wake.clear()
             await self._flush(ws)
             await self._flush_peer_states(ws)
             await self._flush_status(ws)
-            self._beat("sender")
 
     async def _voice_uploader(self, stop: asyncio.Event) -> None:
         """The SINGLE consumer of the voice outbox. Being the only caller of _flush_voices,
@@ -518,12 +531,14 @@ class EdgeUplink:
         drain pass it uploads up to voice_concurrency clips at once (C2) on the dedicated
         voice pool (C4b), so many victims' clips move in parallel without touching the SOS
         path or the radio thread pool."""
-        self._beat("uploader")
         while not stop.is_set():
-            await self._voice_wake.wait()
+            self._beat("uploader")    # stamp even while idle so a quiet link never alarms
+            try:
+                await asyncio.wait_for(self._voice_wake.wait(), timeout=self._HEARTBEAT_S)
+            except asyncio.TimeoutError:
+                continue
             self._voice_wake.clear()
             await self._flush_voices()
-            self._beat("uploader")
 
     async def _flush_peer_states(self, ws) -> None:
         for state in self._peer_states.values():
