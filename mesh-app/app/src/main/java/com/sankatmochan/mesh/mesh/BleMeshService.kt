@@ -44,6 +44,9 @@ class BleMeshService(context: Context) {
     private var running = false
 
     private val handler = Handler(Looper.getMainLooper())
+    /** DoS backstop: caps how fast any single peer can push packets into the mesh, so one
+     *  flooding link can't be amplified across every re-broadcast target (CLAUDE.md #8). */
+    private val rateLimiter = PeerRateLimiter()
     /** Clips we originated, kept so we can honour a resend request. seq -> chunks. */
     private val sentClips = LinkedHashMap<Int, List<VoiceChunk>>()
     /** How many resend requests we have already sent for a clip we are receiving. */
@@ -204,6 +207,14 @@ class BleMeshService(context: Context) {
 
     /** Called by BOTH controllers whenever raw bytes arrive from a peer. */
     private fun onBytes(bytes: ByteArray, fromAddress: String) {
+        // Rate-limit per peer BEFORE any decode or re-broadcast. A flood dropped here costs one
+        // token check; accepted, each packet would cost a parse plus a fan-out to every other
+        // peer. Dropped packets are intentionally NOT written to the event log — logging every
+        // one would just move the DoS from memory to the log/UI (CLAUDE.md #8/#10).
+        if (!rateLimiter.allow(fromAddress)) {
+            Log.d(TAG, "rate-limited packet from $fromAddress")
+            return
+        }
         // A JSON envelope always starts '{'; a voice frame starts 0xA5, which is not a
         // legal UTF-8 lead byte. The two can never be confused.
         if (VoiceChunk.looksLikeVoice(bytes)) {

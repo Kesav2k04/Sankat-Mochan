@@ -16,7 +16,13 @@ victim's phone shows an honest native-language status ladder.
   3rd "Relay" phone between victim and responder needs zero code changes.
 - **Status ladder**: `Sending…` → `Message reached the control room` → `Help is on the way`.
 - **Untrusted-input hygiene** (CLAUDE.md #8/#9): incoming envelopes are size/type/range
-  validated and rendered as plain text only.
+  validated, free text is stripped of control characters (no forged log lines), and
+  everything is rendered as plain text only.
+- **Flood / DoS protection**: dedup ids live in a capacity-bounded LRU (`BoundedIdSet`) and
+  the received-SOS list is capped, so no peer can grow memory without limit; a per-peer
+  token-bucket (`PeerRateLimiter`) throttles the ingress path before any decode or
+  re-broadcast, so one flooding link can't be amplified across the mesh. These mirror the
+  Pi gateway's own bounded-LRU + ingest-ceiling defences (`../pi-code/node.py`).
 
 ## Build & run
 
@@ -49,12 +55,30 @@ app/src/main/java/com/sankatmochan/mesh/
 ├── model/SosMessage.kt      # the compact envelope + validation
 ├── mesh/
 │   ├── MeshUuids.kt         # service + characteristic UUIDs
-│   ├── MessageStore.kt      # dedup + UI state flows
+│   ├── MessageStore.kt      # dedup + UI state flows (bounded)
+│   ├── BoundedIdSet.kt      # capacity-bounded LRU dedup set (anti-DoS)
+│   ├── PeerRateLimiter.kt   # per-peer token bucket (anti-flood)
 │   ├── GattServerController.kt   # peripheral: advertise + GATT server
 │   ├── GattScannerController.kt  # central: scan + connect + write
 │   └── BleMeshService.kt    # orchestrator: dedup, forward, status ladder
 └── ui/                      # RoleSelection / Victim / Responder / Relay screens
+
+app/src/test/java/com/sankatmochan/mesh/   # JVM unit tests (see "Testing" below)
 ```
+
+## Testing
+
+Pure-JVM unit tests cover the trust-boundary and mesh logic — envelope parsing/validation,
+voice framing, dedup, the DoS caps and the rate limiter. No device or emulator needed:
+
+```
+./gradlew :app:testDebugUnitTest
+```
+
+The suite is hermetic: `SosMessage` (which uses `org.json`) runs against the Apache-2.0
+AOSP `android-json` — the same parser as on device — rather than Crockford's reference jar,
+whose licence is disallowed by CLAUDE.md #1. See the `LICENSE FLAG` note in
+`app/build.gradle.kts` about JUnit 4 (EPL-1.0, test-only) awaiting human sign-off.
 
 ## Offline map tiles (responder screen)
 
