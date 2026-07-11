@@ -1,0 +1,18 @@
+<!-- Status-bar icon: a broadcast glyph. Status icons must be a flat white silhouette on
+     transparency — the system tints it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,10a2,2 0,0 0,-2 2,2 2,0 0,0 2,2 2,2 0,0 0,2 -2,2 2,0 0,0 -2,-2z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M7.76,7.76 L6.34,6.34a8,8 0,0 0,0 11.32l1.42,-1.42a6,6 0,0 1,0 -8.48zM17.66,6.34l-1.42,1.42a6,6 0,0 1,0 8.48l1.42,1.42a8,8 0,0 0,0 -11.32z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M4.93,4.93 L3.51,3.51a12,12 0,0 0,0 16.97l1.42,-1.42a10,10 0,0 1,0 -14.13zM20.49,3.51l-1.42,1.42a10,10 0,0 1,0 14.13l1.42,1.42a12,12 0,0 0,0 -16.97z" />
+</vector>

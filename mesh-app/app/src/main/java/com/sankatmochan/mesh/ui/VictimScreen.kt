@@ -1,5 +1,6 @@
 package com.sankatmochan.mesh.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
@@ -109,7 +110,12 @@ private val URGENCIES = listOf(
  * where I am?" — without a word of jargon. Everything optional lives behind Details.
  */
 @Composable
-fun VictimScreen(vm: MeshViewModel, peers: Int, onOpenSettings: () -> Unit) {
+fun VictimScreen(
+    vm: MeshViewModel,
+    peers: Int,
+    onOpenSettings: () -> Unit,
+    onSosSent: () -> Unit,
+) {
     var gist by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("trapped") }
     var location by remember { mutableStateOf("") }
@@ -142,75 +148,210 @@ fun VictimScreen(vm: MeshViewModel, peers: Int, onOpenSettings: () -> Unit) {
         }
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.fillMaxSize()) {
-            MeshTopBar(
-                "Send for help", "no signal needed", peers,
-                onSettings = onOpenSettings,
-                actions = { LocationIndicator(vm) },
-            )
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Spacer(Modifier.height(0.dp))
+    // The three faces of this screen: the calm home, the radar while the SOS goes out, and
+    // the live-location map that settles in afterwards. `sending` plays the radar; once it
+    // has breathed for a moment we raise the map (`sosActive`).
+    var sending by remember { mutableStateOf(false) }
+    var sosActive by remember { mutableStateOf(false) }
+    LaunchedEffect(sending) {
+        if (sending) {
+            delay(1700)
+            sosActive = true
+            sending = false
+        }
+    }
 
-                // An SOS already in flight outranks everything else.
-                if (latest != null) {
-                    ProgressTile(
-                        stage = latest.stage,
-                        statusText = latest.statusText,
-                        count = sent.size,
-                        modifier = Modifier.entrance(0)
+    // Task 3: the back gesture unwinds the screen a step at a time instead of dropping the
+    // user out of the app — it closes the details drawer, lowers the map, or ends the radar.
+    BackHandler(enabled = sending || sosActive || detailsOpen) {
+        when {
+            sending -> sending = false
+            detailsOpen -> detailsOpen = false
+            sosActive -> sosActive = false
+        }
+    }
+
+    val send = {
+        vm.sendSos(category, urgency, gist, lang, location)
+        // Sending an SOS is the cue to stretch the battery: nudge the user onto Battery
+        // saver (Android won't let us flip it on for them).
+        onSosSent()
+        detailsOpen = false
+        sending = true
+    }
+
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                MeshTopBar(
+                    "Send for help", "no signal needed", peers,
+                    onSettings = onOpenSettings,
+                    actions = { LocationIndicator(vm) },
+                )
+
+                // Swiggy move: the live map grows down from the top, the rest of the screen
+                // stays below it — the major, actionable part remains where the thumb rests.
+                AnimatedVisibility(
+                    visible = sosActive,
+                    enter = expandVertically(tween(Motion.Mid), expandFrom = Alignment.Top) +
+                        fadeIn(tween(Motion.Mid)),
+                    exit = shrinkVertically(tween(Motion.Fast), shrinkTowards = Alignment.Top) +
+                        fadeOut(tween(Motion.Fast)),
+                ) {
+                    LiveLocationMap(
+                        meLat = vm.lat,
+                        meLng = vm.lng,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
                     )
                 }
 
-                SosTile(
-                    justSent = justSent,
-                    repeat = sent.isNotEmpty(),
-                    withVoice = vm.pendingVoice != null,
-                    modifier = Modifier.entrance(1),
-                    onSend = { vm.sendSos(category, urgency, gist, lang, location) }
-                )
-
-                // The mesh and GPS state used to live in two "Searching…" tiles here; both are
-                // now folded into the single location indicator in the top bar, keeping the
-                // console focused on the one thing that matters — the SOS button.
-
-                VoiceTile(vm, Modifier.entrance(3))
-
-                DetailsTile(
-                    open = detailsOpen,
-                    onToggle = { detailsOpen = !detailsOpen },
+                Column(
                     modifier = Modifier
-                        .entrance(4)
-                        .bringIntoViewRequester(detailsReveal),
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(Modifier.padding(top = 4.dp)) {
-                        Field("What is happening?") {
-                            ChipRow(CATEGORIES, category) { category = it }
-                        }
-                        Field("How urgent?") {
-                            ChipRow(URGENCIES, urgency.toString()) { urgency = it.toInt() }
-                        }
-                        Field("Language") {
-                            ChipRow(LANGUAGES, lang) { lang = it }
-                        }
-                        Field("Anything else?") {
-                            DetailField(gist, { gist = it }, "e.g. two children with me")
-                        }
-                        Field("Landmark near you") {
-                            DetailField(location, { location = it }, "e.g. Sector 4, near the temple")
-                        }
-                        CoordinatesRow(vm)
-                    }
-                }
+                    Spacer(Modifier.height(4.dp))
 
-                Spacer(Modifier.height(16.dp))
+                    if (sosActive) {
+                        // After the send: the journey of the call, then a steadying word.
+                        if (latest != null) {
+                            ProgressTile(
+                                stage = latest.stage,
+                                statusText = latest.statusText,
+                                count = sent.size,
+                            )
+                        }
+                        ReassuranceNote()
+                        TextButton(onClick = { sosActive = false }) {
+                            Text("Add details or send again")
+                        }
+                    } else {
+                        // Home: a calm word, the button, and the least chrome we can manage.
+                        EmergencyIntro()
+                        SosTile(
+                            justSent = justSent,
+                            repeat = sent.isNotEmpty(),
+                            withVoice = vm.pendingVoice != null,
+                            onSend = send,
+                        )
+                        VoiceTile(vm)
+                        DetailsTile(
+                            open = detailsOpen,
+                            onToggle = { detailsOpen = !detailsOpen },
+                            modifier = Modifier.bringIntoViewRequester(detailsReveal),
+                        ) {
+                            Column(Modifier.padding(top = 4.dp)) {
+                                Field("What is happening?") {
+                                    ChipRow(CATEGORIES, category) { category = it }
+                                }
+                                Field("How urgent?") {
+                                    ChipRow(URGENCIES, urgency.toString()) { urgency = it.toInt() }
+                                }
+                                Field("Language") {
+                                    ChipRow(LANGUAGES, lang) { lang = it }
+                                }
+                                Field("Anything else?") {
+                                    DetailField(gist, { gist = it }, "e.g. two children with me")
+                                }
+                                Field("Landmark near you") {
+                                    DetailField(location, { location = it }, "e.g. Sector 4, near the temple")
+                                }
+                                CoordinatesRow(vm)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                }
             }
+
+            // The radar takeover: fills the screen while the SOS is on its way out, then
+            // dissolves as the map rises.
+            AnimatedVisibility(
+                visible = sending,
+                enter = fadeIn(tween(Motion.Mid)),
+                exit = fadeOut(tween(Motion.Mid)),
+            ) {
+                SendingRadar()
+            }
+        }
+    }
+}
+
+/** The steadying preamble above the button — names the moment and lowers the pulse. */
+@Composable
+private fun EmergencyIntro() {
+    Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+        Text(
+            "Are you in an emergency?",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Take a slow breath — you are not alone. One tap on SOS quietly shares your live " +
+                "location with every responder nearby. No signal is needed; the mesh carries it " +
+                "for you.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 20.sp
+        )
+    }
+}
+
+/** The word after the send — keeps the panicked hand still and the person hopeful. */
+@Composable
+private fun ReassuranceNote() {
+    Tile(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "Help is on the way",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Your live location is going out to nearby responders and keeps updating as you " +
+                    "move. If it is safe, stay where you are and keep your phone with you. " +
+                    "Breathe — you have done the hard part.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 20.sp
+            )
+        }
+    }
+}
+
+/** Full-screen radar shown the instant SOS is pressed, before the map settles in. */
+@Composable
+private fun SendingRadar() {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            RadarPulse(Modifier.size(240.dp), color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(28.dp))
+            Text(
+                "Sending your SOS",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Reaching every responder nearby. Stay calm — help is being alerted right now.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 48.dp)
+            )
         }
     }
 }

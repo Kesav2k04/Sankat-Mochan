@@ -167,7 +167,7 @@ private fun EmptyQueue(peers: Int) {
         }
         Spacer(Modifier.height(22.dp))
         Text(
-            "Listening",
+            "Scanning",
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground
         )

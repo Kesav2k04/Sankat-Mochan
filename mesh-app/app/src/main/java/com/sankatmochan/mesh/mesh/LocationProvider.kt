@@ -8,6 +8,7 @@ import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.os.CancellationSignal
 import android.util.Log
 import androidx.core.content.ContextCompat
 
@@ -40,6 +41,7 @@ class LocationProvider(context: Context) {
     private val listeners = mutableListOf<Pair<String, LocationListener>>()
     private var gnssCallback: GnssStatus.Callback? = null
     private var best: Location? = null
+    private var activeFixSignal: CancellationSignal? = null
 
     fun hasFineLocation(): Boolean = granted(Manifest.permission.ACCESS_FINE_LOCATION)
     fun hasCoarseLocation(): Boolean = granted(Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -90,8 +92,53 @@ class LocationProvider(context: Context) {
         // Seed from the freshest last-known fix so a warm phone shows a position at once.
         bestLastKnown()?.let { accept(it, onFix, onStatus) }
 
-        if (hasFineLocation()) startGnssStatus(onStatus)
+        if (hasFineLocation()) {
+            startGnssStatus(onStatus)
+            // Airplane mode strips A-GPS, so a cold receiver has to read the almanac off the
+            // satellites — slow. Two things speed it up as much as an app is allowed to:
+            //  - nudge the chipset to (re)inject whatever predicted-orbit data it has cached,
+            //  - actively power a one-shot fix instead of only listening passively.
+            nudgeAssistedData()
+            requestActiveFix(onFix, onStatus)
+        }
         return listeners.map { it.first }
+    }
+
+    /**
+     * Force the GNSS receiver to actively pursue a single fresh fix, rather than waiting for
+     * a passive update that may never come until something else wakes the chipset. This is
+     * the biggest lever on airplane-mode first-fix time. API 30+; minSdk is 31.
+     */
+    private fun requestActiveFix(onFix: (Location) -> Unit, onStatus: (String) -> Unit) {
+        if (!hasFineLocation()) return
+        activeFixSignal?.cancel()
+        val signal = CancellationSignal()
+        activeFixSignal = signal
+        try {
+            lm.getCurrentLocation(
+                LocationManager.GPS_PROVIDER,
+                signal,
+                appContext.mainExecutor
+            ) { loc -> if (loc != null) accept(loc, onFix, onStatus) }
+        } catch (e: Exception) {
+            Log.w(TAG, "active fix request failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Best-effort: ask the GNSS HAL to inject any cached predicted-orbit (PSDS/XTRA) and time
+     * data. Without a network it cannot download fresh data, but injecting what is already
+     * cached can turn a cold start into a warm one. Unsupported on some chipsets — hence the
+     * quiet catch. Command names are the ones documented for the platform GNSS provider.
+     */
+    private fun nudgeAssistedData() {
+        for (cmd in listOf("force_psds_injection", "force_xtra_injection", "force_time_injection")) {
+            try {
+                lm.sendExtraCommand(LocationManager.GPS_PROVIDER, cmd, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "GNSS command $cmd unavailable: ${e.message}")
+            }
+        }
     }
 
     /** Satellite counts, so "searching" is visibly different from "nothing is happening". */
@@ -102,11 +149,16 @@ class LocationProvider(context: Context) {
                 for (i in 0 until status.satelliteCount) if (status.usedInFix(i)) used++
                 if (best == null) {
                     onStatus(
-                        if (status.satelliteCount == 0)
-                            "No satellites yet — go outdoors with a clear view of the sky"
-                        else
-                            "${status.satelliteCount} satellites in view, $used locked " +
-                                "(4 are needed for a fix)"
+                        when {
+                            status.satelliteCount == 0 ->
+                                "Searching for satellites — step outside with a clear view of the sky"
+                            used >= 4 ->
+                                "Locking on — hold still for a moment"
+                            else ->
+                                "Acquiring GPS — ${status.satelliteCount} satellites in view. " +
+                                    "In airplane mode the first fix can take a minute outdoors; keep " +
+                                    "the sky in view."
+                        }
                     )
                 }
             }
@@ -143,6 +195,8 @@ class LocationProvider(context: Context) {
             try { lm.unregisterGnssStatusCallback(it) } catch (e: Exception) { /* already gone */ }
         }
         gnssCallback = null
+        activeFixSignal?.let { try { it.cancel() } catch (e: Exception) { /* already done */ } }
+        activeFixSignal = null
         best = null
     }
 
@@ -184,7 +238,9 @@ class LocationProvider(context: Context) {
 
     private companion object {
         const val TAG = "LocationProvider"
-        const val MIN_INTERVAL_MS = 1_000L
+        // 0 = give me every fix the receiver produces. During a cold airplane-mode acquisition
+        // we want the very first fix the instant it lands, not a second later.
+        const val MIN_INTERVAL_MS = 0L
         const val MIN_DISTANCE_M = 0f
         /** Beyond this, a last-known fix says where you *were*, not where you are. */
         const val MAX_SEED_AGE_MS = 2 * 60 * 1000L
