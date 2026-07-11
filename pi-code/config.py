@@ -107,17 +107,35 @@ def _validate(cfg: Dict[str, Any]) -> None:
         r = cfg["radios"].get(node)
         if not r:
             raise ConfigError(f"run.nodes lists '{node}' but there is no radios.{node} block")
-        for key in ("cs", "rst_gpio", "dio0_gpio"):
-            if not isinstance(r.get(key), int):
-                raise ConfigError(f"radios.{node}.{key} must be an int")
+        transport = r.get("transport", "spi")
+        if transport not in ("spi", "serial"):
+            raise ConfigError(f'radios.{node}.transport must be "spi" or "serial"')
+        if transport == "serial":
+            # A serial radio (the UNO Q field modem) is reached over a device path and
+            # needs no SPI chip-select or GPIO pins.
+            if not isinstance(r.get("serial_port"), str) or not r["serial_port"]:
+                raise ConfigError(
+                    f'radios.{node}.serial_port must be set for a serial radio, '
+                    'e.g. "/dev/ttyACM0"')
+            if "serial_baud" in r and (
+                not isinstance(r["serial_baud"], int)
+                or isinstance(r["serial_baud"], bool) or r["serial_baud"] <= 0
+            ):
+                raise ConfigError(f"radios.{node}.serial_baud must be a positive int")
+        else:
+            for key in ("cs", "rst_gpio", "dio0_gpio"):
+                if not isinstance(r.get(key), int):
+                    raise ConfigError(f"radios.{node}.{key} must be an int")
 
-    # These two only bite when a single board drives more than one radio (both on the
-    # same SPI bus, inches apart). A split board runs one radio, so they are vacuous.
-    if len(active) > 1:
-        cs = [cfg["radios"][n]["cs"] for n in active]
+    # These two only bite when a single board drives more than one SPI radio (both on the
+    # same bus, inches apart). A split board runs one radio, so they are vacuous. Serial
+    # radios carry no chip-select or GPIO pins, so they are exempt from both.
+    spi_nodes = [n for n in active if cfg["radios"][n].get("transport", "spi") == "spi"]
+    if len(spi_nodes) > 1:
+        cs = [cfg["radios"][n]["cs"] for n in spi_nodes]
         if len(set(cs)) != len(cs):
             raise ConfigError("radios on one board must sit on different SPI chip-selects")
-        pins = [cfg["radios"][n][k] for n in active for k in ("rst_gpio", "dio0_gpio")]
+        pins = [cfg["radios"][n][k] for n in spi_nodes for k in ("rst_gpio", "dio0_gpio")]
         if len(set(pins)) != len(pins):
             raise ConfigError(f"radio GPIO pins must be unique, got {pins}")
 

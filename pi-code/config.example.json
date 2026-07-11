@@ -40,13 +40,17 @@
 
   "radios": {
     "field": {
-      "_comment": "Radio A — moves to the UNO Q in the disaster zone later. Verified wiring.",
+      "_comment": "Radio A. Each radio has a 'transport': \"spi\" (wired to THIS board's SPI, the original single-Pi bench) or \"serial\" (reached over a serial link to the Arduino UNO Q LoRa modem, arduino-unoq/). On the UNO Q field board set transport=\"serial\" and serial_port in config.json — see config.field.example.json. cs/rst_gpio/dio0_gpio are used only by the \"spi\" transport and ignored for \"serial\"; they stay here so the old two-radio Pi bench still runs unchanged.",
+      "transport": "spi",
+      "serial_port": "/dev/ttyACM0",
+      "serial_baud": 115200,
       "cs": 0,
       "rst_gpio": 25,
       "dio0_gpio": 24
     },
     "gateway": {
-      "_comment": "Radio B — stays at the relief camp with the Pi. Verified wiring.",
+      "_comment": "Radio B — stays at the relief camp with the Pi, wired to its SPI. Verified wiring.",
+      "transport": "spi",
       "cs": 1,
       "rst_gpio": 17,
       "dio0_gpio": 27

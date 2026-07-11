@@ -1,0 +1,13 @@
+{
+  "_comment": "UNO Q (field) config. Copy to config.json ON THE ARDUINO UNO Q's LINUX SIDE: `cp config.field.example.json config.json`. The UNO Q runs ONLY the field node; its radio is the Ra-02 on the STM32, reached over the serial LoRa modem (arduino-unoq/lora_modem). Set serial_port to whatever the modem enumerates as — check with `ls /dev/ttyACM* /dev/ttyUSB*`. Victim phones connect to this board over Bluetooth exactly as they did to the Pi. This board does NOT uplink to the dashboard; only the Pi gateway does that (over 433 MHz).",
+  "run": {
+    "nodes": ["field"]
+  },
+  "radios": {
+    "field": {
+      "transport": "serial",
+      "serial_port": "/dev/ttyACM0",
+      "serial_baud": 115200
+    }
+  }
+}

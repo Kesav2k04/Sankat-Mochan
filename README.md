@@ -25,6 +25,9 @@ messengers are illegal and cell networks fail within hours of a disaster.
 | Path | What's inside |
 | --- | --- |
 | `mesh-app/` | **Native Android (Kotlin) BLE mesh app** — the working T0 transport slice. Victim / Responder / Relay roles; every phone is a full mesh node (GATT server + scanner); store-and-forward; native-language status ladder. |
+| `pi-code/` | **LoRa gateway** — phone ⇄ BLE ⇄ board ⇄ 433 MHz ⇄ board ⇄ phone. Runs on the Raspberry Pi (gateway node, uplinks to the command post) and, split across boxes, on the Arduino UNO Q (field node). Same code both sides; `run.nodes` + each radio's `transport` (`spi`/`serial`) pick the role. |
+| `arduino-unoq/` | **Field-side LoRa modem** for the Arduino UNO Q. The STM32 sketch (`lora_modem/`) drives the Ra-02; the UNO Q's Linux side runs the `pi-code` field node over a serial link. See `arduino-unoq/README.md`. |
+| `command-post/` | The **offline AI command post** (FastAPI) — receives envelopes, triages/translates, serves the dashboard. |
 | `deck/` | The pitch **presentation** (`deck/index.html`) — a self-contained HTML deck; open in any browser. |
 | `docs/planning/` | Architecture, build plan, demo/stage scripts, prep plan, and the team source-of-truth doc. |
 | `docs/research/` | Fact-checked disaster evidence, model/AI-stack research, competitive analysis, and critiques. |

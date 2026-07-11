@@ -1,0 +1,6 @@
+{
+  "_comment": "PI (relief-camp) config. Copy to config.json ON THE RASPBERRY PI: `cp config.gateway.example.json config.json`. The Pi now holds only the gateway radio (radio B) on its SPI; the field radio has moved to the UNO Q. Everything else is inherited from config.example.json. The uplink to the dashboard is set for you by ../server.sh via env vars — no need to put it here.",
+  "run": {
+    "nodes": ["gateway"]
+  }
+}

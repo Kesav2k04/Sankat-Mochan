@@ -333,14 +333,29 @@ async def run() -> int:
     try:
         for name in node_names:
             r = cfg["radios"][name]
-            radio = Radio(name, r["cs"], r["rst_gpio"], r["dio0_gpio"], lora_cfg)
-            radio.open()
-            radios[name] = radio
-            logger.info("radio '%s' is powered up and listening (chip-select CE%d, "
-                        "reset pin GPIO%d, data-ready pin GPIO%d)",
-                        name, r["cs"], r["rst_gpio"], r["dio0_gpio"])
-            chain.emit(clog.START, name, radio=name, freq_hz=lora_cfg.frequency_hz,
-                       sf=lora_cfg.spreading_factor, tx_power_dbm=lora_cfg.tx_power_dbm)
+            # A node's radio is either wired to THIS board's SPI (the Pi gateway) or
+            # reached over serial through the UNO Q's LoRa modem (the field board). Both
+            # present the same Radio surface, so everything below this point is identical.
+            if r.get("transport", "spi") == "serial":
+                from serial_radio import SerialRadio
+                radio = SerialRadio(name, lora_cfg, r["serial_port"],
+                                    r.get("serial_baud", 115200), logger)
+                radio.open()
+                radios[name] = radio
+                logger.info("radio '%s' is a serial LoRa modem on %s (UNO Q field side)",
+                            name, r["serial_port"])
+                chain.emit(clog.START, name, radio=name, transport="serial",
+                           port=r["serial_port"], freq_hz=lora_cfg.frequency_hz,
+                           sf=lora_cfg.spreading_factor, tx_power_dbm=lora_cfg.tx_power_dbm)
+            else:
+                radio = Radio(name, r["cs"], r["rst_gpio"], r["dio0_gpio"], lora_cfg)
+                radio.open()
+                radios[name] = radio
+                logger.info("radio '%s' is powered up and listening (chip-select CE%d, "
+                            "reset pin GPIO%d, data-ready pin GPIO%d)",
+                            name, r["cs"], r["rst_gpio"], r["dio0_gpio"])
+                chain.emit(clog.START, name, radio=name, freq_hz=lora_cfg.frequency_hz,
+                           sf=lora_cfg.spreading_factor, tx_power_dbm=lora_cfg.tx_power_dbm)
 
         # Prove the RF link before we accept a single byte of real traffic. The probe sends
         # A->B and requires B to hear it, so it only makes sense when BOTH radios are on THIS

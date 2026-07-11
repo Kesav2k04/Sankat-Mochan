@@ -60,10 +60,15 @@ if [[ ! -x "$PY" ]]; then
   # --system-site-packages so the distro's spidev + RPi.GPIO (both MIT) are visible.
   python3 -m venv --system-site-packages "$VENV" || die "could not create venv"
 fi
-if ! "$PY" -c 'import bleak, requests, spidev, RPi.GPIO' >/dev/null 2>&1; then
-  echo "installing missing dependencies (bleak, requests — both permissive-licensed)"
+# bleak + requests are always needed; pyserial only on the UNO Q field board (serial
+# LoRa modem) but it is pure-Python and harmless on the Pi, so install it everywhere.
+# spidev + RPi.GPIO are NOT pip-installed: on the Pi they come from the system packages
+# (the venv uses --system-site-packages); a serial-only field board does not need them.
+# pre-flight verifies the right transport deps per board.
+if ! "$PY" -c 'import bleak, requests, serial' >/dev/null 2>&1; then
+  echo "installing dependencies (bleak, requests, pyserial — all permissive-licensed)"
   "$PY" -m pip install --quiet --upgrade pip >/dev/null 2>&1
-  "$PY" -m pip install --quiet bleak requests || die "pip install failed (no network?)"
+  "$PY" -m pip install --quiet bleak requests pyserial || die "pip install failed (no network?)"
 fi
 echo "  $("$PY" -V) at $PY"
 
