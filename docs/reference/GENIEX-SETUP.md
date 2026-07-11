@@ -15,23 +15,25 @@ noted in `npu_server.py` and `PLAN.md` — it supersedes the manual ORT-genai sh
 earlier Qwen3-4B PC pick.)
 
 ## Model
-**`mradermacher/Llama-3.3-8B-Instruct-heretic-GGUF`** — Llama-3.3 8B, "heretic" =
-abliterated/decensored instruct tune. For our use (faithful translation + triage of
-distressing SOS text) decensoring is a plus: it won't refuse on graphic emergency content.
-8B fits 32 GB comfortably.
+**`bartowski/p-e-w_Llama-3.1-8B-Instruct-heretic-GGUF`** — bartowski's GGUF build of the
+canonical **p-e-w "heretic"** (abliterated/decensored) Llama-3.1-8B Instruct. For our use
+(faithful translation + triage of distressing SOS text) decensoring is a plus: it won't
+refuse on graphic emergency content. 8B fits 32 GB comfortably. (We switched off the
+mradermacher `Llama-3.3-8B` repo because it ships no Q4_0 and "Llama-3.3-8B" isn't an
+official base; this repo has a ready Q4_0 and is the well-known heretic 8B.)
 
-### Quant choice — READ THIS
-For GenieX's GGUF/NPU runtime, **`Q4_0` has the best Hexagon-NPU support**. This repo does
-**not** ship a Q4_0 file, so there's a trade-off:
+### Quant choice — DECIDED: Q4_0 on the NPU
+For GenieX's GGUF/NPU runtime, **`Q4_0` has the best Hexagon-NPU support**, and this repo
+ships one — so that's the default. No self-quantize needed.
 
 | Quant | Size | Runs on | Notes |
 |---|---|---|---|
-| **Q4_0** | ~4.6 GB | **NPU (best)** | Not in this repo → self-quantize (below) for full NPU speed |
-| **Q4_K_M** | 5.0 GB | GPU/CPU (fast on X Elite) | **Default** — one-command pull, good quality, runs now |
-| **Q8_0** ("int8") | 8.6 GB | GPU/CPU | Highest quality, heaviest; what you first asked for |
+| **Q4_0** | 4.68 GB | **NPU (best)** | **Default.** `p-e-w_Llama-3.1-8B-Instruct-heretic-Q4_0.gguf` |
+| Q4_K_M | 4.92 GB | GPU/CPU | Slightly better quality, not NPU-optimal |
+| Q8_0 ("int8") | 8.54 GB | GPU/CPU | Highest quality, heaviest |
 
-Recommendation: start on **Q4_K_M** to be running in minutes; move to **Q4_0** only if you
-want the model pinned on the NPU (translation latency is already fine for our short outputs).
+Default is **Q4_0 + `--device npu`**. Only drop to Q8_0 if you specifically want max quality
+and don't mind GPU/CPU placement (translation latency is already fine for our short outputs).
 
 ## Steps
 
@@ -42,9 +44,9 @@ terminal so `geniex` is on PATH.
 ### 2. Pull + serve + wire the command post (one script)
 From `command-post/` (PowerShell):
 ```powershell
-./setup-geniex.ps1                     # heretic 8B @ Q4_K_M, serves :18181, writes .env
-./setup-geniex.ps1 -Precision Q8_0     # int8 instead
-./setup-geniex.ps1 -Device npu         # force NPU placement (use with a Q4_0 model)
+./setup-geniex.ps1                     # heretic 8B @ Q4_0 on the NPU, serves :18181, writes .env
+./setup-geniex.ps1 -Precision Q8_0     # int8 instead (GPU/CPU)
+./setup-geniex.ps1 -Device hybrid      # let GenieX mix NPU/GPU/CPU
 ```
 The script pulls the model, starts `geniex serve` as a background job, health-checks
 `/v1/models`, smoke-tests `/v1/chat/completions`, and writes `LLM_BASE_URL/LLM_MODEL/
@@ -53,26 +55,25 @@ may rename them; confirm with `geniex pull --help` / `geniex serve --help`.)
 
 ### 2-alt. Manual
 ```powershell
-geniex pull mradermacher/Llama-3.3-8B-Instruct-heretic-GGUF --precision Q4_K_M
-geniex serve            # → http://127.0.0.1:18181/v1
+geniex pull bartowski/p-e-w_Llama-3.1-8B-Instruct-heretic-GGUF --precision Q4_0
+geniex serve --device npu            # → http://127.0.0.1:18181/v1
 ```
 Then set in `command-post/.env`:
 ```
 LLM_BASE_URL=http://127.0.0.1:18181/v1
-LLM_MODEL=mradermacher/Llama-3.3-8B-Instruct-heretic-GGUF
+LLM_MODEL=bartowski/p-e-w_Llama-3.1-8B-Instruct-heretic-GGUF
 LLM_API_KEY=not-needed
 LLM_TIMEOUT_S=60
 ```
 
-### 3. (Optional) Q4_0 for full NPU
-The repo has no Q4_0. Build one from the f16 with llama.cpp, then load the local file:
+### 3. (Only if you pick a repo without Q4_0) self-quantize
+Not needed for the default model — it already ships Q4_0. If you ever switch to a repo that
+lacks Q4_0, build one from its f16 with llama.cpp and load the local file:
 ```powershell
-# needs llama.cpp's llama-quantize + the f16 GGUF (16.2 GB) from the same HF repo
-llama-quantize --pure Llama-3.3-8B-Instruct-heretic.f16.gguf heretic.Q4_0.gguf Q4_0
+llama-quantize --pure model.f16.gguf heretic.Q4_0.gguf Q4_0
 geniex pull local/heretic-q4_0 --model-hub localfs --local-path .\heretic.Q4_0.gguf
 geniex serve --device npu
 ```
-(`--pure` forces every tensor to Q4_0, which the Adreno/Hexagon path wants.)
 
 ### 4. Run the command post
 Start it as usual — it reads `.env` and uses GenieX. First triage call includes model load

@@ -10,19 +10,21 @@
   then open a NEW terminal so `geniex` is on PATH.
 
   Usage (from command-post/):
-    ./setup-geniex.ps1                      # default: heretic 8B, Q4_K_M (runs immediately)
-    ./setup-geniex.ps1 -Precision Q8_0      # highest quality, heavier (8.6 GB)
-    ./setup-geniex.ps1 -Model <hf/repo-GGUF> -Precision Q4_0   # Q4_0 = best NPU support
+    ./setup-geniex.ps1                      # default: heretic 8B @ Q4_0 on the NPU
+    ./setup-geniex.ps1 -Precision Q8_0      # highest quality, heavier (8.5 GB), GPU/CPU
+    ./setup-geniex.ps1 -Device hybrid       # let GenieX place across NPU/GPU/CPU
 
   NOTE: the exact `geniex pull/serve` flags are from the GenieX dev preview and may shift
   between releases — this script echoes each command before running it so you can confirm.
 #>
 [CmdletBinding()]
 param(
-  [string]$Model     = "mradermacher/Llama-3.3-8B-Instruct-heretic-GGUF",
-  [string]$Precision = "Q4_K_M",   # Q4_0 best for NPU (not in this repo); Q4_K_M/Q8_0 = GPU/CPU
+  # bartowski's build of the canonical p-e-w heretic (decensored) Llama-3.1-8B — ships a
+  # ready Q4_0, the layout with the best Hexagon-NPU support (no self-quantize needed).
+  [string]$Model     = "bartowski/p-e-w_Llama-3.1-8B-Instruct-heretic-GGUF",
+  [string]$Precision = "Q4_0",     # Q4_0 = best NPU; Q4_K_M / Q8_0 also available (GPU/CPU)
   [int]   $Port      = 18181,
-  [string]$Device    = "hybrid",   # hybrid (default, fastest) | npu | gpu | cpu
+  [string]$Device    = "npu",      # npu | hybrid (fastest, mixed) | gpu | cpu
   [switch]$NoServe                 # only write .env + health-check an already-running server
 )
 
