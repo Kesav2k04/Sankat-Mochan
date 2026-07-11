@@ -383,10 +383,26 @@ def derive_turn_markers(tokenizer):
         )
     response_part = text[i_u1 + len(_P_U1):i_a1]      # delimiter that begins the assistant turn
     instruction_part = text[i_a1 + len(_P_A1):i_u2]   # delimiter that begins a user turn
+    # The raw spans include the PREVIOUS turn's end token (e.g. "<end_of_turn>\n<start_of_turn>
+    # user\n"). Passing that as instruction_part would mask the assistant's own end-of-turn
+    # token in multi-turn examples, so the model never gets loss on learning to STOP mid-
+    # conversation. Trim each span to its final turn-opener token — matching Unsloth's official
+    # marker style for both Gemma 3 ("<start_of_turn>user\n") and Gemma 4 ("<|turn>user\n",
+    # per the Gemma 4 fine-tuning guide) — so the end-of-turn token stays inside the loss span.
+    response_part = _trim_to_turn_opener(response_part)
+    instruction_part = _trim_to_turn_opener(instruction_part)
     if not response_part.strip() or not instruction_part.strip():
         raise SystemExit("[error] derived empty turn markers — aborting to avoid a broken run.")
     print(f"[markers] instruction_part={instruction_part!r} response_part={response_part!r}")
     return instruction_part, response_part
+
+
+def _trim_to_turn_opener(span: str) -> str:
+    """Cut a derived delimiter span down to the token that OPENS the next turn: the substring
+       starting at the last '<' (Gemma special tokens are all '<...>'-shaped). If the template
+       uses no '<' tokens, keep the full span — over-masking mid-turn stops is the safe side."""
+    i = span.rfind("<")
+    return span[i:] if i > 0 else span
 
 
 def make_sft_config(**kwargs):
