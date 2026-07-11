@@ -49,8 +49,13 @@ os.environ["HF_TOKEN"] = UserSecretsClient().get_secret("HF_TOKEN")
 # The validator is a HARD GATE — do not train on a file that doesn't pass.
 !python validate_dataset.py data/train/all.jsonl
 !python validate_dataset.py data/val/val.jsonl      # the 10% validation split (NOT the holdout)
+# Re-running after a `git pull`? Delete the stale compiled cache first:
+#   !rm -rf unsloth_compiled_cache
 
 # ── Cell 4: train (see §3 for why each value) ─────────────────────────
+# Model id must be the PLAIN repo (unsloth/gemma-4-E2B-it), not *-unsloth-bnb-4bit:
+# E2B loads 16-bit here (per Unsloth's official E2B notebook), so a pre-quantized
+# bnb repo would fight the loader.
 !python sahayak_finetune.py \
     --train data/train/all.jsonl \
     --eval  data/val/val.jsonl \
@@ -87,7 +92,7 @@ starting losses of 13–15 are normal (per Unsloth) — judge the *trend*, not t
 | weight decay | 0.01 *(fixed)* | Mild regularizer, standard. |
 | `--seed` | 3407 *(default)* | Fixed seed → runs comparable across hyperparameter changes. |
 | Response masking | automatic | `train_on_responses_only` with template-derived markers — loss only on assistant turns. Confirm the `[markers]` log line prints Gemma 4 markers at startup. |
-| 4-bit (QLoRA) | on (default) | Do NOT pass `--no-4bit` on a T4 — 16-bit LoRA (let alone the fp32 force) will OOM. |
+| 4-bit | **auto → OFF for E2B** | Mirrors Unsloth's official `Gemma4_(E2B)-Text` notebook: E2B 16-bit LoRA needs ~8-10GB (fits a T4) and skips the bitsandbytes path. E4B auto-stays QLoRA (its LoRA needs ~17GB). Override with `--four-bit on/off`. |
 
 **Best-accuracy protocol (uses ~3 of your weekly GPU-hours):**
 1. **Run A:** the Cell-4 command exactly (r=32, lr 2e-4, 3 epochs).
