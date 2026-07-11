@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Radio, Cpu, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import VoiceRecorder from "./VoiceRecorder.jsx";
+import BenchmarkDropdown from "./BenchmarkDropdown.jsx";
 
 // Top masthead — brand + camp identity, live clock, link-state chips.
 export default function Masthead({ connected, gatewayConnected, aiEnabled }) {
@@ -29,6 +30,7 @@ export default function Masthead({ connected, gatewayConnected, aiEnabled }) {
       <div className="font-mono text-[12px] text-muted-foreground ml-2">{clock} IST</div>
 
       <div className="ml-auto flex items-center gap-2.5">
+        <BenchmarkDropdown />
         <VoiceRecorder />
         <span className="w-px h-5 bg-border" />
         <Badge

@@ -1,7 +1,7 @@
 # Sahayak fine-tuning
 
 Fine-tune **Gemma 4 (E2B/E4B)** into the offline emergency-response assistant, per
-[`SAHAYAK_DATASET_SPEC.md`](../../SAHAYAK_DATASET_SPEC.md). Two files:
+[`SAHAYAK_DATASET_SPEC.md`](../docs/SAHAYAK_DATASET_SPEC.md). Two files:
 
 | File | What it does |
 |------|--------------|

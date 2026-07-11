@@ -5,15 +5,22 @@
 #   - CPU / Windows-ARM / Surface (pipeline test)  pip install torch
 #   - Apple Silicon (MPS)                          pip install torch
 #
+# Versions are UPPER-BOUNDED, not open-ended, so an unattended `pip install` can't silently
+# resolve to a future release that breaks the TRL/Unsloth surface this code uses (that surface
+# is version-sensitive — see the make_sft_config/make_sft_trainer shims in sahayak_finetune.py,
+# which additionally tolerate the tokenizer->processing_class and max_seq_length->max_length
+# renames). These bounds are a compatibility window, NOT a GPU-smoke-tested lock — after your
+# first successful CUDA run, `pip freeze` the exact versions here to make the run reproducible.
+
 # Fast path (needs an NVIDIA CUDA GPU). Unsloth pulls transformers/trl/peft/datasets/bitsandbytes:
-unsloth>=2024.8
+unsloth>=2025.1,<2025.9
 
 # Fallback path deps (CPU/MPS, no CUDA). Also satisfied by the unsloth install above; listed so
 # `pip install -r requirements.txt` gives a working transformers+PEFT trainer without a GPU.
-transformers>=4.44
-datasets>=2.20
-peft>=0.12
-trl>=0.9
-accelerate>=0.33
+transformers>=4.44,<4.49
+datasets>=2.20,<3.3
+peft>=0.12,<0.15
+trl>=0.9,<0.15
+accelerate>=0.33,<1.4
 
 # bitsandbytes (4-bit QLoRA) is CUDA-only — installed with unsloth on CUDA; skip on CPU/ARM.

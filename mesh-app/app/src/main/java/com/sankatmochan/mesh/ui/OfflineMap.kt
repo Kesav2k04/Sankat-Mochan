@@ -2,6 +2,7 @@ package com.sankatmochan.mesh.ui
 
 import android.content.Context
 import android.util.Log
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,7 +12,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
@@ -24,6 +29,7 @@ import com.sankatmochan.mesh.model.SosMessage
 import com.sankatmochan.mesh.ui.theme.urgencyColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.tileprovider.modules.OfflineTileProvider
 import org.osmdroid.tileprovider.tilesource.FileBasedTileSource
 import org.osmdroid.tileprovider.util.SimpleRegisterReceiver
@@ -82,41 +88,61 @@ fun OfflineMapCard(
     val safeArgb = urgencyColors.low.toArgb()
     val landmarkArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
 
+    var mapRef by remember { mutableStateOf<MapView?>(null) }
+    val focus = when {
+        meLat != null && meLng != null -> GeoPoint(meLat, meLng)
+        pins.isNotEmpty() -> GeoPoint(pins.first().lat!!, pins.first().lng!!)
+        else -> null
+    }
+
     Tile(modifier.fillMaxWidth()) {
-        AndroidView(
-            factory = { ctx ->
-                OfflineTiles.configure(ctx)
-                MapView(ctx).apply {
-                    // No network path exists at all: the provider reads the archive only.
-                    setUseDataConnection(false)
-                    setMultiTouchControls(true)
-                    try {
-                        val provider = OfflineTileProvider(
-                            SimpleRegisterReceiver(ctx), ready.toTypedArray()
-                        )
-                        tileProvider = provider
-                        val sourceName = provider.archives
-                            .firstOrNull()
-                            ?.tileSources
-                            ?.firstOrNull()
-                        if (sourceName != null) {
-                            setTileSource(FileBasedTileSource.getSource(sourceName))
-                        }
-                    } catch (e: Exception) {
-                        // A corrupt archive must not take the rescuer's screen down.
-                        Log.w(TAG, "offline tile provider failed: ${e.message}")
-                    }
-                }
-            },
-            update = { map ->
-                drawPins(map, context, pins, meLat, meLng, critical, mine, safeArgb, landmarkArgb)
-            },
-            onRelease = { map -> map.onDetach() },
-            modifier = Modifier
+        Box(
+            Modifier
                 .fillMaxWidth()
                 .height(300.dp)
                 .clip(TileShape)
-        )
+        ) {
+            AndroidView(
+                factory = { ctx ->
+                    OfflineTiles.configure(ctx)
+                    MapView(ctx).apply {
+                        // No network path exists at all: the provider reads the archive only.
+                        setUseDataConnection(false)
+                        setMultiTouchControls(true)
+                        // Hide osmdroid's stock grey +/- buttons; custom controls replace them.
+                        zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+                        try {
+                            val provider = OfflineTileProvider(
+                                SimpleRegisterReceiver(ctx), ready.toTypedArray()
+                            )
+                            tileProvider = provider
+                            val sourceName = provider.archives
+                                .firstOrNull()
+                                ?.tileSources
+                                ?.firstOrNull()
+                            if (sourceName != null) {
+                                setTileSource(FileBasedTileSource.getSource(sourceName))
+                            }
+                        } catch (e: Exception) {
+                            // A corrupt archive must not take the rescuer's screen down.
+                            Log.w(TAG, "offline tile provider failed: ${e.message}")
+                        }
+                        mapRef = this
+                    }
+                },
+                update = { map ->
+                    drawPins(map, context, pins, meLat, meLng, critical, mine, safeArgb, landmarkArgb)
+                },
+                onRelease = { map -> map.onDetach() },
+                modifier = Modifier.fillMaxWidth().height(300.dp)
+            )
+            MapControls(
+                modifier = Modifier.align(Alignment.BottomEnd),
+                onRecenter = { focus?.let { mapRef?.controller?.animateTo(it) } },
+                onZoomIn = { mapRef?.controller?.zoomIn() },
+                onZoomOut = { mapRef?.controller?.zoomOut() },
+            )
+        }
     }
 }
 

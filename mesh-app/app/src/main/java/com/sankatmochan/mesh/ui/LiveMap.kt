@@ -9,15 +9,23 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.MyLocation
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -31,6 +39,7 @@ import com.sankatmochan.mesh.mesh.OfflineTiles
 import com.sankatmochan.mesh.ui.theme.urgencyColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.tileprovider.modules.OfflineTileProvider
 import org.osmdroid.tileprovider.tilesource.FileBasedTileSource
 import org.osmdroid.tileprovider.util.SimpleRegisterReceiver
@@ -120,6 +129,10 @@ fun LiveLocationMap(
             RadarPulse(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.primary)
             LiveCoordinateChip(meLat, meLng, Modifier.align(Alignment.BottomStart))
         } else {
+            // Hold the live MapView so the custom controls below can drive it.
+            var mapRef by remember { mutableStateOf<MapView?>(null) }
+            val here = if (meLat != null && meLng != null) GeoPoint(meLat, meLng) else BENGALURU
+
             AndroidView(
                 factory = { ctx ->
                     OfflineTiles.configure(ctx)
@@ -127,6 +140,11 @@ fun LiveLocationMap(
                         setUseDataConnection(false)
                         setMultiTouchControls(true)
                         setTilesScaledToDpi(true)
+                        // Kill osmdroid's stock grey +/- overlay — we draw our own tasteful
+                        // controls that match the app's chrome.
+                        zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+                        isHorizontalMapRepetitionEnabled = false
+                        isVerticalMapRepetitionEnabled = false
                         // Stay within the zoom levels the bundled archive actually holds, so a
                         // pinch never lands on a blank tile.
                         setMinZoomLevel(11.0)
@@ -144,6 +162,7 @@ fun LiveLocationMap(
                         }
                         controller.setZoom(15.0)
                         controller.setCenter(BENGALURU)
+                        mapRef = this
                     }
                 },
                 update = { map ->
@@ -155,7 +174,6 @@ fun LiveLocationMap(
                         landmarkArgb = landmarkArgb,
                         showLandmarks = true,
                     )
-                    val here = if (meLat != null && meLng != null) GeoPoint(meLat, meLng) else BENGALURU
                     map.overlays.add(
                         Marker(map).apply {
                             position = here
@@ -170,9 +188,37 @@ fun LiveLocationMap(
                 onRelease = { it.onDetach() },
                 modifier = Modifier.fillMaxSize()
             )
-            // A soft top-down scrim so the map never fights the panel above it for attention.
             LiveCoordinateChip(meLat, meLng, Modifier.align(Alignment.BottomStart))
+            MapControls(
+                modifier = Modifier.align(Alignment.BottomEnd),
+                onRecenter = { mapRef?.controller?.animateTo(here) },
+                onZoomIn = { mapRef?.controller?.zoomIn() },
+                onZoomOut = { mapRef?.controller?.zoomOut() },
+            )
         }
+    }
+}
+
+/**
+ * The map's own control cluster — recenter, zoom in, zoom out — styled as the app's circular
+ * chips instead of osmdroid's stock grey buttons. Bottom-right, thumb-reachable, out of the way
+ * of the coordinate readout on the bottom-left.
+ */
+@Composable
+fun MapControls(
+    modifier: Modifier = Modifier,
+    onRecenter: () -> Unit,
+    onZoomIn: () -> Unit,
+    onZoomOut: () -> Unit,
+) {
+    Column(
+        modifier = modifier.padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        TopBarChip(icon = Icons.Rounded.MyLocation, description = "Recenter on my location", onClick = onRecenter)
+        TopBarChip(icon = Icons.Rounded.Add, description = "Zoom in", onClick = onZoomIn)
+        TopBarChip(icon = Icons.Rounded.Remove, description = "Zoom out", onClick = onZoomOut)
     }
 }
 
