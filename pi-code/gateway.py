@@ -238,14 +238,18 @@ def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog,
 
 async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
                              stop: asyncio.Event,
-                             attached: "dict[str, ble_link.BleLink]",
+                             attached: "dict[str, tuple[ble_link.BleLink, str]]",
                              edge: EdgeUplink | None = None) -> None:
     """Keep accepting phones after startup, notably responders arriving later.
 
     Node ids are stable while Android BLE addresses rotate, so they are the identity
-    key. A phone already attached under this node id but now advertising a NEW address has
-    rotated its MAC — we retarget its existing link to the live address so its reconnect
-    loop stops dialling the dead one. Genuinely new phones get a fresh link.
+    key (attached maps node id -> (link, the radio it hangs off)). A phone already
+    attached under this node id but now advertising a NEW address has rotated its MAC —
+    we retarget its existing link to the live address so its reconnect loop stops
+    dialling the dead one. A phone whose ROLE changed is re-homed: the role decides
+    which radio carries it, and leaving it where it was either dual-homes it (letting
+    traffic skip the 433 MHz hop) or strands it on a board that ignores that role.
+    Genuinely new phones get a fresh link.
     """
     retry = float(cfg["ble"]["peer_retry_s"])
     while not stop.is_set():
@@ -265,16 +269,43 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
                            type(e).__name__, retry)
             continue
 
+        # Phones whose role now belongs to the OTHER board are no longer ours to carry.
+        # Keeping the old link would dual-home the phone across both boards and let its
+        # traffic bypass the radio hop; release it and let its own board adopt it.
+        for other_name, group in roster.items():
+            if other_name in nodes:
+                continue
+            for phone in group:
+                entry = attached.pop(phone.node_id, None)
+                if entry is None:
+                    continue
+                bl, old_name = entry
+                logger.warning("phone %s is now a %s — that role lives on the other "
+                               "board, so this board stops carrying it",
+                               phone.node_id, phone.role)
+                await manager.release(bl)
+                nodes[old_name].remove_link(bl)
+
         for name in nodes:
             for phone in roster[name]:
-                existing = attached.get(phone.node_id)
-                if existing is not None:
-                    existing.retarget(phone.address, phone.device)  # follow a rotated address
-                    continue
+                entry = attached.get(phone.node_id)
+                if entry is not None:
+                    bl, old_name = entry
+                    if old_name == name:
+                        bl.retarget(phone.address, phone.device)  # follow a rotated address
+                        continue
+                    # Role switched between THIS board's radios (single-board bench):
+                    # move the link to the radio that matches the new role.
+                    logger.warning("phone %s switched role to %s — moving it from radio "
+                                   "'%s' to radio '%s'",
+                                   phone.node_id, phone.role, old_name, name)
+                    await manager.release(bl)
+                    nodes[old_name].remove_link(bl)
+                    del attached[phone.node_id]
                 bl = attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
                 if bl is None:
                     continue
-                attached[phone.node_id] = bl
+                attached[phone.node_id] = (bl, name)
                 if phone.role == "responder":
                     logger.info("responder %s joined — acceptance updates can now travel "
                                 "back across 433 MHz", phone.node_id)
@@ -497,12 +528,12 @@ async def run() -> int:
             if peers is None:          # operator hit Ctrl-C while we were waiting
                 logger.info("stopped before any phone appeared")
                 return 0
-            attached: "dict[str, ble_link.BleLink]" = {}
+            attached: "dict[str, tuple[ble_link.BleLink, str]]" = {}
             for name in node_names:
                 for phone in peers[name]:
                     bl = attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
                     if bl is not None:
-                        attached[phone.node_id] = bl
+                        attached[phone.node_id] = (bl, name)
             peer_discovery_task = asyncio.create_task(
                 discover_new_peers(manager, nodes, cfg, logger, chain, stop,
                                    attached, edge),
