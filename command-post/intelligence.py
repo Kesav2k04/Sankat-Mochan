@@ -143,6 +143,12 @@ class Store:
         self.reports: dict[str, dict[str, Any]] = {}      # report id -> report
         self.incidents: dict[str, dict[str, Any]] = {}    # incident id -> incident
         self.responders: dict[str, dict[str, Any]] = {}
+        # Per-session nodeId (== envelope `origin`) -> stable handset device_id, learned
+        # from any envelope a phone sends. Lets a BLE-presence row (which the Pi only knows
+        # by the per-session nodeId) collapse onto the SAME `mesh-{device_id}` responder that
+        # this phone's ACCEPTED envelopes create — so one handset is one responder even after
+        # its app restarts mid-session and its nodeId rolls over.
+        self.node_device: dict[str, str] = {}
         self.activity: list[dict[str, Any]] = []          # C13 append-only audit log
         self.metrics = {"pkt_rx": 0, "last_rx": None, "resolved": 0,
                         "response_times_s": [], "triage_latencies_ms": []}
@@ -191,26 +197,68 @@ class Store:
             r["status"] = status
         return True
 
-    def mesh_responder(self, rid: str, connected: bool) -> None:
+    def _responder_key(self, node_id: str) -> str:
+        """Canonical responder id for a mesh node. Always `mesh-<device_id>` once the
+        handset's stable id is known, else `mesh-<node_id>` — so the presence path
+        (nodeId) and the ACCEPTED path (deviceId) converge on ONE key."""
+        return f"mesh-{self.node_device.get(node_id) or node_id}"
+
+    def _learn_device(self, node_id: str, device_id: str) -> None:
+        """Record a nodeId→device_id mapping from an envelope, then fold any presence
+        row still keyed by the pre-session `mesh-<node_id>` onto `mesh-<device_id>`."""
+        if not node_id or not device_id or self.node_device.get(node_id) == device_id:
+            return
+        self.node_device[node_id] = device_id
+        old_key, new_key = f"mesh-{node_id}", f"mesh-{device_id}"
+        old = self.responders.get(old_key)
+        if old is None or old.get("capability") != "mesh responder":
+            return
+        existing = self.responders.get(new_key)
+        if existing is None:
+            old["id"], old["device_id"] = new_key, device_id
+            self.responders[new_key] = old
+        else:
+            # Both rows exist — merge presence into the device-keyed row.
+            if old.get("status") == "available" and existing.get("status") != "on_task":
+                existing["status"] = "available"
+            existing["last_seen"] = max(existing["last_seen"], old["last_seen"])
+        del self.responders[old_key]
+        # Keep any incident that was assigned to the old key pointing at the survivor.
+        for inc in self.incidents.values():
+            if inc.get("assigned_to") == old_key:
+                inc["assigned_to"] = new_key
+        self.log(f"linked mesh node {node_id} → device {device_id} (deduped responder)")
+
+    def mesh_responder(self, node_id: str, connected: bool, device_id: str = "") -> None:
         """Reflect an actual responder BLE link reported by the Pi."""
-        responder = self.responders.get(rid)
+        self._learn_device(node_id, device_id)
+        key = self._responder_key(node_id)
+        responder = self.responders.get(key)
         if responder is None:
             responder = {
-                "id": rid,
-                "callsign": f"FIELD {rid.upper()}",
+                "id": key,
+                "callsign": f"FIELD {node_id.upper()}",
                 "capability": "mesh responder",
+                "device_id": self.node_device.get(node_id, ""),
                 "lat": None,
                 "lng": None,
                 "status": "offline",
                 "assigned_incident": None,
                 "last_seen": _now(),
             }
-            self.responders[rid] = responder
+            self.responders[key] = responder
         previous = responder["status"]
-        responder["status"] = "available" if connected else "offline"
+        # A presence event must not clobber an active assignment: a still-connected
+        # responder that is mid-task stays on_task (it's busy, not free). Only mark
+        # available when it isn't already carrying an incident.
+        if connected:
+            if previous != "on_task":
+                responder["status"] = "available"
+        else:
+            responder["status"] = "offline"
         responder["last_seen"] = _now()
         if responder["status"] != previous:
-            self.log(f"responder {rid} {'connected to' if connected else 'left'} the Pi gateway")
+            self.log(f"responder {node_id} {'connected to' if connected else 'left'} the Pi gateway")
 
     def mesh_responders_offline(self) -> None:
         """A dead Pi uplink means its BLE responders are no longer dispatchable."""
@@ -238,7 +286,13 @@ class Store:
             self.metrics["triage_latencies_ms"].append(ai["latency_ms"])
 
         report = {
-            "id": env["id"], "origin": env["origin"], "ts": env.get("ts", 0),
+            "id": env["id"], "origin": env["origin"],
+            # Stable per-handset id ("d" on the wire). `origin` is a per-SESSION node id
+            # that rolls over every app restart, so it can't identify the same phone across
+            # runs; device_id can. Used for same-source dedup (C2) and mesh-responder
+            # identity so one handset never fans out into duplicate incidents/responders.
+            "device_id": env.get("deviceId") or "",
+            "ts": env.get("ts", 0),
             "received_at": _now(), "hops": env.get("hops", 0),
             "lang": env.get("lang", "en"), "gist": env.get("gist", ""),
             "english": ai.get("english") or env.get("gist", ""),
@@ -254,6 +308,9 @@ class Store:
             "rationale": ai.get("rationale", ""),
         }
         self._sanitize_coords(report)
+        # Learn this handset's stable id so a later BLE-presence row for the same phone
+        # (keyed only by the per-session nodeId) folds onto one responder.
+        self._learn_device(report["origin"], report["device_id"])
 
         # C7: sensor envelopes get their own handling flag
         report["is_sensor"] = report["category"] == "sensor"
@@ -286,12 +343,24 @@ class Store:
             report["location_suspect"] = True
             report["lat"] = report["lng"] = None
 
+    @staticmethod
+    def _same_source(a: dict[str, Any], b: dict[str, Any]) -> bool:
+        """Two reports come from the same handset. Prefer the stable device_id
+        (survives the phone's per-session `origin` rolling over on app restart);
+        fall back to `origin` only when a device_id is absent on either side, so an
+        old-build phone still dedups within a session and two DIFFERENT phones with
+        blank device_ids are never falsely merged."""
+        da, db = a.get("device_id") or "", b.get("device_id") or ""
+        if da and db:
+            return da == db
+        return a["origin"] == b["origin"]
+
     def _dedup_same_source(self, report: dict[str, Any]) -> dict[str, Any] | None:
-        """C2: same origin + short window + same category ⇒ MERGE (escalation
-        update), never a new incident. Different category from the same origin
+        """C2: same source + short window + same category ⇒ MERGE (escalation
+        update), never a new incident. Different category from the same source
         is a NEW emergency — never merged."""
         for other in self.reports.values():
-            if (other["origin"] == report["origin"]
+            if (self._same_source(other, report)
                     and other["category"] == report["category"]
                     and abs(report["received_at"] - other["received_at"]) < DEDUP_WINDOW_S):
                 inc = self._incident_of(other["id"])
@@ -577,7 +646,7 @@ class Store:
                  f"(excluded from further assignment)")
         return True, "ok"
 
-    def accept_from_mesh(self, ref_id: str, origin: str) -> bool:
+    def accept_from_mesh(self, ref_id: str, origin: str, device_id: str = "") -> bool:
         """C6: an ACCEPTED envelope arrived over the mesh (responder tapped
         Accept on their phone; refId = the SOS id). First-write-wins."""
         inc = self._incident_of(ref_id)
@@ -587,12 +656,18 @@ class Store:
             self.log(f"mesh accept for {inc['id']} from {origin} refused — "
                      f"already taken (first-write-wins)")
             return False
-        # Field responder known only by mesh origin — register on the fly (C4).
-        rid = f"mesh-{origin}"
+        # Field responder registered on the fly (C4). Key by the STABLE device_id when the
+        # phone sent one, so the same handset accepting after an app restart (new `origin`)
+        # updates its existing row instead of adding a duplicate responder. `_learn_device`
+        # also folds any earlier BLE-presence row for this node onto the same key. Old-build
+        # phones with no device_id keep the per-session `mesh-{origin}` identity as before.
+        self._learn_device(origin, device_id)
+        rid = self._responder_key(origin)
         if rid not in self.responders:
             self.responders[rid] = {
                 "id": rid, "callsign": f"FIELD {origin.upper()[:8]}",
-                "capability": "mesh responder", "lat": None, "lng": None,
+                "capability": "mesh responder", "device_id": device_id,
+                "lat": None, "lng": None,
                 "status": "available", "assigned_incident": None,
                 "last_seen": _now(),
             }

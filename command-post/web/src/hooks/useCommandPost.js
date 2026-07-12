@@ -35,6 +35,12 @@ export function useCommandPost() {
       ws.onopen = () => setConnected(true);
       ws.onclose = () => {
         setConnected(false);
+        // Drop the last snapshot the moment the socket closes. A disconnected board
+        // is not live, and — critically — when the server is restarted this guarantees
+        // the previous run's incidents/responders/logs vanish immediately instead of
+        // lingering on screen until (or unless) a reconnect delivers the new, empty
+        // session. The fresh backend then repopulates from its blank snapshot.
+        setSnap(EMPTY);
         if (!closedByUs) retry = setTimeout(connect, 1500);
       };
       ws.onerror = () => ws.close();

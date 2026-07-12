@@ -241,8 +241,7 @@ class Radio:
         self._write(REG_FRF_MSB + 1, (frf >> 8) & 0xFF)
         self._write(REG_FRF_MSB + 2, frf & 0xFF)
 
-        self._set_tx_power(c.tx_power_dbm)
-        self._write(REG_OCP, 0x20 | 0x0B)          # over-current protect ~100 mA
+        self._set_tx_power(c.tx_power_dbm)         # also sets OCP to match the PA level
         self._write(REG_LNA, 0x23)                 # max LNA gain + boost on
 
         bw_code = BANDWIDTHS[c.bandwidth_hz]
@@ -271,12 +270,18 @@ class Radio:
 
     def _set_tx_power(self, dbm: int) -> None:
         # Ra-02 routes the antenna through PA_BOOST; the RFO pin is not bonded out.
+        # OCP must track the PA level: the +20 dBm mode draws ~120 mA, so the 100 mA
+        # trim that suits <=17 dBm would clip the PA mid-burst and brown the radio out
+        # (the "fell out of LoRa mode" failure the watchdog chases). Semtech's SX1278
+        # datasheet 5.4.3 — and the Arduino LoRa library — use 140 mA there; match them.
         if dbm > 17:
             self._write(REG_PA_DAC, 0x87)          # +20 dBm mode
             self._write(REG_PA_CONFIG, 0x80 | 0x70 | 0x0F)
+            self._write(REG_OCP, 0x20 | 0x11)      # over-current protect ~140 mA
         else:
             self._write(REG_PA_DAC, 0x84)
             self._write(REG_PA_CONFIG, 0x80 | 0x70 | ((dbm - 2) & 0x0F))
+            self._write(REG_OCP, 0x20 | 0x0B)      # over-current protect ~100 mA
 
     def _set_mode(self, mode: int) -> None:
         self._write(REG_OP_MODE, LONG_RANGE_MODE | mode)

@@ -223,7 +223,7 @@ async def _ingest(envelope: dict[str, Any], audio_url: str | None = None) -> boo
         ref = envelope.get("refId")
         if ref:
             if envelope["type"] == "ACCEPTED":
-                store.accept_from_mesh(ref, envelope["origin"])
+                store.accept_from_mesh(ref, envelope["origin"], envelope.get("deviceId", ""))
             else:
                 store.delivered_from_mesh(ref, envelope["origin"])
             await _broadcast_snapshot()
@@ -666,9 +666,15 @@ async def gateway_ws(ws: WebSocket) -> None:
                 node_id = str(msg.get("node_id", ""))
                 role = msg.get("role")
                 connected = msg.get("connected")
+                # device_id is optional (the BLE beacon can't carry it — 13-byte scan-
+                # response budget); the store normally learns it from this phone's
+                # envelopes. Accept it here too if a future Pi build forwards it.
+                device_id = str(msg.get("device_id", ""))[:32]
+                if device_id and not device_id.isalnum():
+                    device_id = ""
                 if (role == "responder" and node_id.isalnum() and len(node_id) <= 8
                         and isinstance(connected, bool)):
-                    store.mesh_responder(node_id, connected)
+                    store.mesh_responder(node_id, connected, device_id)
                     await _broadcast_snapshot()
             elif kind == "status":
                 gateway.update_edge_status(msg)
