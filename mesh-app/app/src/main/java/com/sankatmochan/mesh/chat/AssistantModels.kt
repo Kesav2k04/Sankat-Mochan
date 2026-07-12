@@ -39,8 +39,20 @@ data class AssistantModel(
 
 object AssistantModels {
 
-    /** Hub models. Gemma first (the requested default); permissive, non-gated fallbacks after. */
+    /** Hub models. The fine-tuned Sahayak model first (the default); stock Gemma and
+     *  permissive, non-gated fallbacks after. */
     val catalog: List<AssistantModel> = listOf(
+        AssistantModel(
+            id = "sahayak-e2b",
+            displayName = "Sahayak E2B (tuned)",
+            // Our own Gemma E2B fine-tune for disaster-response chat, published as a public
+            // (non-gated) Q4_0 GGUF. Base weights remain under Google's Gemma Terms of Use -
+            // same licence caveat as the stock Gemma entries below (CLAUDE.md #1).
+            modelName = "kesav2k04/sahayak-e2b-gguf",
+            quant = "Q4_0",
+            approxSize = "~3.3 GB",
+            blurb = "Recommended - Sahayak's own fine-tune of Gemma E2B for emergencies. No sign-in needed.",
+        ),
         AssistantModel(
             id = "gemma-4-E2B",
             displayName = "Gemma 4 E2B",
@@ -48,7 +60,7 @@ object AssistantModels {
             modelName = "google/gemma-4-E2B-it-qat-q4_0-gguf",
             quant = "Q4_0",
             approxSize = "~1.5 GB",
-            blurb = "Recommended - Google Gemma 4 E2B. One-time Hugging Face sign-in (token built in).",
+            blurb = "Stock Google Gemma 4 E2B. One-time Hugging Face sign-in (token built in).",
             gated = true,
         ),
         AssistantModel(

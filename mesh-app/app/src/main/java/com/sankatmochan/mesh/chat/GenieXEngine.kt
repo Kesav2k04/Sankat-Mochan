@@ -519,6 +519,79 @@ class GenieXEngine(context: Context) {
         }
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * One stateless generation: [systemPrompt] + a single user turn, streamed. Used by the
+     * Sahayak agent (post-SOS conversation) for both its question turns and its tag-extraction
+     * calls. Unlike [replyFlow] it NEVER touches [history] — the agent owns its own state and
+     * stuffs every known fact into a fresh system prompt each turn, so chat and agent can share
+     * one loaded model without polluting each other.
+     *
+     * Reuses the exact ASCII-placeholder templating dance from [replyFlow]: non-ASCII must never
+     * reach Genie's native templater (see the shear/SIGABRT notes above), and both prompts are
+     * [sanitizeForSdk]-cleaned and byte-budgeted before templating.
+     */
+    fun oneShotFlow(systemPrompt: String, userText: String, maxTokens: Int): Flow<ChatStream> = flow {
+        val w = wrapper
+        if (w == null) {
+            emit(ChatStream.Failed("No model is loaded."))
+            return@flow
+        }
+        val window = listOf(
+            ChatMessage(role = "system", truncateUtf8(sanitizeForSdk(systemPrompt), MAX_WINDOW_BYTES)),
+            ChatMessage(role = "user", truncateUtf8(sanitizeForSdk(userText), MAX_WINDOW_BYTES)),
+        )
+        val placeholders = window.mapIndexed { i, m ->
+            ChatMessage(role = m.role, content = "@@SANKAT_MSG_$i@@")
+        }
+        val templateOut = w.applyChatTemplate(placeholders.toTypedArray(), null, false).getOrElse { e ->
+            Log.e(TAG, "oneShot applyChatTemplate failed", e)
+            emit(ChatStream.Failed("The assistant could not read that message."))
+            return@flow
+        }
+        var prompt = templateOut.formattedText
+        window.forEachIndexed { i, m ->
+            prompt = prompt.replace("@@SANKAT_MSG_$i@@", m.content.replace("@@SANKAT_MSG_", "@@SANKAT-MSG-"))
+        }
+        val generation = GenerationConfig(
+            maxTokens = maxTokens.coerceIn(16, 512),
+            stopWords = null,
+            stopCount = 0,
+            nPast = 0,
+            imagePaths = null,
+            imageCount = 0,
+            audioPaths = null,
+            audioCount = 0,
+        )
+        try {
+            w.generateStreamFlow(prompt, generation).collect { result ->
+                when (result) {
+                    is LlmStreamResult.Token -> emit(ChatStream.Token(result.text))
+                    is LlmStreamResult.Completed -> emit(ChatStream.Done)
+                    is LlmStreamResult.Error -> {
+                        Log.e(TAG, "oneShot generation error", result.throwable)
+                        emit(ChatStream.Failed("The assistant stopped unexpectedly."))
+                    }
+                }
+            }
+        } finally {
+            // Stateless: nothing to reconcile — no history was touched.
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /** Collect [oneShotFlow] into the full answer string, or null on failure. */
+    suspend fun oneShot(systemPrompt: String, userText: String, maxTokens: Int): String? {
+        val sb = StringBuilder()
+        var ok = false
+        oneShotFlow(systemPrompt, userText, maxTokens).collect { ev ->
+            when (ev) {
+                is ChatStream.Token -> sb.append(ev.text)
+                is ChatStream.Done -> ok = true
+                is ChatStream.Failed -> ok = false
+            }
+        }
+        return if (ok) sb.toString() else null
+    }
+
     /** Ask the native runtime to stop the in-flight generation early. */
     suspend fun stop() = withContext(Dispatchers.IO) {
         runCatching { wrapper?.stopStream() }
@@ -591,8 +664,21 @@ class GenieXEngine(context: Context) {
         return s.substring(0, i)
     }
 
-    private companion object {
-        const val TAG = "GenieXEngine"
+    companion object {
+        private const val TAG = "GenieXEngine"
+
+        /**
+         * App-scoped singleton. The chat screen and the post-SOS Sahayak agent must share ONE
+         * native LLM handle: a double load would OOM (or crash the DSP session alongside STT),
+         * and the agent needs the model to stay warm across screens/ViewModel lifecycles.
+         */
+        @Volatile
+        private var shared: GenieXEngine? = null
+
+        fun shared(context: Context): GenieXEngine =
+            shared ?: synchronized(this) {
+                shared ?: GenieXEngine(context.applicationContext).also { shared = it }
+            }
 
         /** Most recent user/assistant messages replayed per turn (8 = 4 exchanges). Together
          *  with the 512-token output cap this keeps a turn comfortably inside nCtx = 2048. */

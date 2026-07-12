@@ -22,7 +22,10 @@ import kotlinx.coroutines.launch
  */
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val engine = GenieXEngine(app)
+    // App-scoped shared engine: the post-SOS Sahayak agent uses the SAME loaded model, so a
+    // victim who already opened chat gets an instantly-warm agent (and vice versa), and two
+    // native LLM handles can never coexist on the Hexagon.
+    private val engine = GenieXEngine.shared(app)
 
     /** On-device speech-to-text (IndicConformer on the NPU) + mic capture for voice input.
      *  Audio → text → the SAME [send] path the keyboard uses, so the LLM answers identically. */
@@ -150,7 +153,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             // the 1.2 GB STT context binary resident on the same Hexagon crashes the experimental
             // ggml-hexagon LLM backend (session/memory contention - the DSP session caps ~3.5 GB).
             // STT is loaded per-mic-tap (during recording) and unloaded right after transcribing.
-            refreshLocalModels()
+            // Scan inline (not via refreshLocalModels' own launch) so the side-load check below
+            // can't race the scan. A side-loaded Sahayak fine-tune (adb-pushed GGUF) beats the
+            // hub default: it is already on disk, so it auto-loads straight onto the NPU with no
+            // download step. Only applied while the selection is still the untouched default -
+            // a model the user explicitly picked is never overridden.
+            val found = engine.scanLocalModels()
+            localModels.clear()
+            localModels.addAll(found)
+            if (selectedModel.id == AssistantModels.default.id) {
+                found.firstOrNull { it.modelName.startsWith("sahayak", ignoreCase = true) }
+                    ?.let { selectedModel = it }
+            }
             when (val result = engine.initialize()) {
                 is GenieXEngine.InitResult.Unsupported -> {
                     statusMessage = result.reason
@@ -489,7 +503,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
         runCatching { voiceRecorder.cancel() }
         cleanupScope.launch {
-            engine.unload()
+            // The engine is app-scoped and shared with the post-SOS Sahayak agent: leaving the
+            // chat screen must NOT unload the model out from under an active agent session (and
+            // a warm model is exactly what we want when the agent fires). STT stays per-use.
             stt.unload()
             cleanupScope.cancel()
         }

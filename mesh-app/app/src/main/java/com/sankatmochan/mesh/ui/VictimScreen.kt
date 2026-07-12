@@ -201,8 +201,11 @@ fun VictimScreen(
     val send = {
         vm.sendSos(category, urgency, gist, lang, location)
         // Sending an SOS is the cue to stretch the battery: nudge the user onto Battery
-        // saver (Android won't let us flip it on for them).
-        onSosSent()
+        // saver (Android won't let us flip it on for them). BUT never while the Sahayak
+        // agent has a live conversation open — bouncing a panicking person out to system
+        // settings mid-question is worse than the battery it saves; the agent session
+        // also holds keepScreenOn, which the saver bounce would fight.
+        if (!vm.agent.isEngaged) onSosSent()
         detailsOpen = false
         sending = true
     }
@@ -266,7 +269,7 @@ fun VictimScreen(
                     Spacer(Modifier.height(4.dp))
 
                     if (sosActive) {
-                        // After the send: the journey of the call, then a steadying word.
+                        // After the send: the journey of the call, then Sahayak takes over.
                         if (latest != null) {
                             ProgressTile(
                                 stage = latest.stage,
@@ -274,7 +277,10 @@ fun VictimScreen(
                                 count = sent.size,
                             )
                         }
-                        ReassuranceNote()
+                        // The agent IS the steadying word now — it asks, reassures with real
+                        // status, and quietly escalates if the victim goes silent.
+                        AgentPanel(vm.agent)
+                        if (!vm.agent.isEngaged) ReassuranceNote()
                         DeviceIdNote(vm.deviceId)
                         TextButton(onClick = { sosActive = false }) {
                             Text("Add details or send again")

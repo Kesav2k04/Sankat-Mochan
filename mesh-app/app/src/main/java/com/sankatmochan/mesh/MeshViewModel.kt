@@ -27,6 +27,19 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     private val service = BleMeshService(app)
     private val locationProvider = LocationProvider(app)
 
+    /** The post-SOS victim agent (Sahayak). Starts automatically after every SOS this phone
+     *  originates; sends validated TAGS follow-ups through the mesh service. */
+    val agent = com.sankatmochan.mesh.agent.SahayakAgent(
+        app = app,
+        scope = viewModelScope,
+        sendTags = { wire, urgency ->
+            lastSentSos?.let { service.sendAgentTags(it, wire, urgency) }
+        },
+    )
+
+    /** The SOS the current agent session is anchored to (this phone's most recent send). */
+    private var lastSentSos: SosMessage? = null
+
     val nodeId: String get() = service.nodeId
 
     /** Stable id of this device, sent with every SOS. Shown on the sent confirmation. */
@@ -53,8 +66,15 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
      * cleared when the user has actually left the app and come back.
      */
     fun beginNewSession() {
+        // An engaged Sahayak-agent session is exempt: a panicking victim pocketing the phone
+        // mid-conversation (or mid-check-in) and reopening it must NOT lose the SOS id the
+        // agent's follow-ups and the ACCEPTED status match on, nor kill the silent-escalation
+        // timers. The session resets only once the agent is idle.
+        if (agent.isEngaged) return
         service.store.clearSent()
         notifiedStage.clear()
+        lastSentSos = null
+        agent.endSession()
         // A half-recorded clip or an unsent attachment from before we left is last-session state
         // too - drop it, and make sure no microphone is left live behind a reopened console.
         cancelRecording()
@@ -77,6 +97,8 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
         if (s.stage in 1..2 && s.stage > already) {
             notifiedStage[s.message.id] = s.stage
             RescueNotifier.notifyStatus(getApplication<Application>(), s)
+            // Feed the real status to the agent — it relays it as reassurance (never invents).
+            if (s.message.id == lastSentSos?.id) agent.onStatus(s.stage, s.statusText)
         }
     }
 
@@ -162,6 +184,7 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
 
     val peerCount = service.store.peerCount
     val receivedSos = service.store.receivedSos
+    val agentTags = service.store.agentTags
     val sent = service.store.sent
     val eventLog = service.store.eventLog
     val acceptedIds = service.store.acceptedIds
@@ -293,11 +316,18 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
             pendingVoice = null
             voiceStatus = "Voice message sent with your SOS (${clip.size} bytes)"
         }
+        // The SOS is already ON AIR (above) — only now does the agent open its conversation.
+        // Everything the agent produces is additive follow-up data on this SOS.
+        service.store.sent.value.lastOrNull()?.let { sentSos ->
+            lastSentSos = sentSos.message
+            agent.start(sentSos.message)
+        }
     }
 
     fun accept(sos: SosMessage) = service.accept(sos)
 
     override fun onCleared() {
+        agent.endSession()
         recorder.cancel()
         stopLocation()
         service.stop()
