@@ -46,6 +46,16 @@ data class SosMessage(
             trimmedGist = trimmedGist.dropLast(1)
             bytes = toBytes(trimmedGist)
         }
+        if (trimmedGist.length < gist.length) {
+            // The trim landed mid-word — half a word reads as gibberish on a responder's
+            // card, so back off to the last whole word. Bounded: if the nearest space is
+            // far back (long unspaced script), keep what fits rather than lose it all.
+            val space = trimmedGist.lastIndexOf(' ')
+            if (space > 0 && trimmedGist.length - space <= WORD_BACKOFF_MAX) {
+                trimmedGist = trimmedGist.substring(0, space).trimEnd()
+                bytes = toBytes(trimmedGist)
+            }
+        }
         if (bytes.size > MAX_BYTES) {
             Log.w(TAG, "Envelope $id still ${bytes.size}B after trimming gist")
         }
@@ -88,6 +98,9 @@ data class SosMessage(
         // Field caps - all incoming mesh data is untrusted (CLAUDE.md #8).
         private const val MAX_ID = 32
         private const val MAX_TEXT = 200
+
+        /** How far back the post-trim word-boundary backoff may reach (encode). */
+        private const val WORD_BACKOFF_MAX = 16
 
         /**
          * Parse + validate an incoming envelope. Returns null if the bytes are

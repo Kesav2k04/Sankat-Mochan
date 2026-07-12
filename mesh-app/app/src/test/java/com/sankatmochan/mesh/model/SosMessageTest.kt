@@ -41,6 +41,19 @@ class SosMessageTest {
         assertThat(huge.encode().size).isAtMost(SosMessage.MAX_BYTES)
     }
 
+    @Test fun `a trimmed gist never ends mid-word`() {
+        val msg = SosMessage(
+            id = "a3f9-1", type = MsgType.SOS, origin = "a3f9", deviceId = "0123456789abcdef",
+            category = "flood", lat = 12.959670, lng = 77.641190, ts = 1_700_000_000_000L,
+            gist = "water rising fast second floor two children elderly grandmother " +
+                "cannot swim near the old temple gate beside the broken bridge please hurry",
+        )
+        val decoded = SosMessage.decode(msg.encode())!!
+        assertThat(decoded.gist.length).isLessThan(msg.gist.length) // the trim really ran
+        val lastWord = decoded.gist.substringAfterLast(' ')
+        assertThat(msg.gist.split(" ")).contains(lastWord)
+    }
+
     @Test fun `decode drops empty and oversized input`() {
         assertThat(SosMessage.decode(ByteArray(0))).isNull()
         assertThat(SosMessage.decode(ByteArray(SosMessage.MAX_BYTES + 100))).isNull()
