@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
 from bleak import BleakClient, BleakScanner
@@ -36,6 +36,12 @@ MIN_MTU = 23             # the BLE spec floor, and bleak's BlueZ placeholder val
 # A subscribe or write that never gets an ATT response hangs until the spec's 30 s
 # ATT transaction timeout, which then drops the link. Fail sooner and say why.
 GATT_OP_TIMEOUT_S = 10.0
+
+# How long a single connect attempt may run. The connect handshake holds the adapter
+# lock (BlueZ won't scan and connect at once), so a long timeout on a phone that has
+# rotated away starves discovery for everyone. A live phone answers in a second or
+# two; this ceiling only bites on a phone that is genuinely gone.
+CONNECT_TIMEOUT_S = 10.0
 
 # The app's scan-response beacon: one role byte, then the node id in ASCII.
 # Must stay in step with MeshRole's ordinals in BleMeshService.kt.
@@ -78,13 +84,17 @@ async def negotiated_mtu(client: BleakClient, logger, name: str) -> int:
 class BleLink(nodemod.Link):
     kind = "ble"
 
-    def __init__(self, address: str, char_uuid: str, logger, chain: clog.ChainLog, node_name: str):
+    def __init__(self, address: str, char_uuid: str, logger, chain: clog.ChainLog,
+                 node_name: str, device: object = None):
         self.address = address
         self.name = f"ble:{address}"
         self._char = char_uuid
         self._log = logger
         self._chain = chain
         self._node = node_name
+        # Latest BLEDevice from a scan. Preferred connect target — see MeshPhone.device.
+        # Kept across detach so a reconnect can still use it until the next scan refreshes it.
+        self._device = device
         self._client: Optional[BleakClient] = None
         self._max_write = 0
         self._subscribed = False
@@ -146,14 +156,18 @@ class BleLink(nodemod.Link):
         if sent:
             self._log.info("[%s] replay done — %d frame(s) delivered", self._node, sent)
 
-    def retarget(self, address: str) -> None:
+    def retarget(self, address: str, device: object = None) -> None:
         """Follow the phone to a new Bluetooth address after Android rotated its MAC.
 
         Without this, the reconnect loop keeps dialling the phone's OLD address forever
         (BleakDeviceNotFoundError / InProgress) while the phone is really advertising on a
         fresh one — every delivery to it is then LOST. `_keep_connected` reads `self.address`
-        afresh each cycle, so updating it here makes the next reconnect land on the live
-        address. No-op when the address has not changed."""
+        (and `self._device`) afresh each cycle, so updating them here makes the next
+        reconnect land on the live address. No-op when the address has not changed."""
+        # Always refresh the BLEDevice from the latest scan, even when the address is
+        # unchanged — a fresh handle is what makes the next connect land reliably.
+        if device is not None:
+            self._device = device
         if not address or address == self.address:
             return
         self._log.info("[%s] phone moved to a new Bluetooth address (%s -> %s); Android "
@@ -222,6 +236,11 @@ class MeshPhone:
     node_id: str
     role: str
     rssi: int
+    # The scan's BLEDevice handle. Connecting to THIS (not the bare address string) is
+    # the reliable path on BlueZ: a bare MAC forces bleak to re-discover the device and
+    # then fails with BleakDeviceNotFoundError the moment Android has rotated its address.
+    # Excluded from eq/hash/repr so MeshPhone stays comparable and printable as before.
+    device: object = field(default=None, compare=False, repr=False)
 
     def describe(self) -> str:
         return f"{self.node_id} ({self.role}, {self.rssi} dBm, {self.address})"
@@ -256,6 +275,13 @@ class BleManager:
         self._log = logger
         self._chain = chain
         self._tasks: List[asyncio.Task] = []
+        # BlueZ serialises scanning and connecting on the one adapter. Letting N
+        # reconnect loops and the discovery scan all hit it at once just trades
+        # org.bluez.Error.InProgress failures around until nothing gets through —
+        # scans starve, rotated phones are never re-found, and the mesh livelocks.
+        # Every adapter-owning operation (scan, connect handshake) takes this lock;
+        # an established connection does not hold it.
+        self._adapter_lock = asyncio.Lock()
 
     async def discover(self) -> tuple:
         """Scan once. Returns (phones, stale_addresses).
@@ -275,7 +301,9 @@ class BleManager:
         svc = self._cfg["service_uuid"].lower()
         timeout = float(self._cfg["scan_timeout_s"])
         self._log.info("looking for phones running the mesh app (%.0f second scan)...", timeout)
-        found = await BleakScanner.discover(timeout=timeout, service_uuids=[svc], return_adv=True)
+        async with self._adapter_lock:
+            found = await BleakScanner.discover(timeout=timeout, service_uuids=[svc],
+                                                return_adv=True)
 
         phones: List[MeshPhone] = []
         stale: List[str] = []
@@ -290,7 +318,7 @@ class BleManager:
                 stale.append(device.address)
                 continue
             role, node_id = parsed
-            phone = MeshPhone(device.address, node_id, role, adv.rssi)
+            phone = MeshPhone(device.address, node_id, role, adv.rssi, device=device)
             self._log.info("  found phone %s", phone.describe())
             phones.append(phone)
         return phones, stale
@@ -363,40 +391,54 @@ class BleManager:
         attempt = 0
         while True:
             announced = False
+            client: Optional[BleakClient] = None
             try:
-                async with BleakClient(link.address, timeout=20.0) as client:
-                    attempt = 0
-                    if client.services.get_characteristic(link._char) is None:
-                        raise RuntimeError(
-                            f"{link.address} accepted the connection but does not serve the "
-                            "mesh characteristic — this is not the phone's mesh app's address. "
-                            "Pin the right one under \"ble\".\"peers\" in config.json."
-                        )
-                    mtu = await negotiated_mtu(client, self._log, link._node)
-                    link.attach(client, mtu)
-                    self._chain.emit(clog.PEER, link._node, radio=link.name,
-                                     state="connected", mtu=mtu)
+                # Connect by the scan's BLEDevice when we have one — a bare MAC string
+                # makes bleak re-discover the device first, which fails with
+                # BleakDeviceNotFoundError the moment Android rotates the address.
+                target = link._device or link.address
+                # Only the handshake holds the adapter lock; a connected session
+                # doesn't block scans or the other links' reconnects.
+                async with self._adapter_lock:
+                    client = BleakClient(target, timeout=CONNECT_TIMEOUT_S)
+                    await client.connect()
+                attempt = 0
+                if client.services.get_characteristic(link._char) is None:
+                    raise RuntimeError(
+                        f"{link.address} accepted the connection but does not serve the "
+                        "mesh characteristic — this is not the phone's mesh-app address. "
+                        "Pin the right one under \"ble\".\"peers\" in config.json."
+                    )
+                mtu = await negotiated_mtu(client, self._log, link._node)
+                link.attach(client, mtu)
+                self._chain.emit(clog.PEER, link._node, radio=link.name,
+                                 state="connected", mtu=mtu)
 
-                    def handler(_char, data: bytearray) -> None:
-                        # Hand off to the node's bounded intake queue (a fast, non-blocking
-                        # enqueue) rather than spawning a task per notification — an
-                        # unbounded task-per-frame was a DoS vector (mesh-transmission.md D1).
-                        on_bytes(bytes(data))
+                def handler(_char, data: bytearray) -> None:
+                    # Hand off to the node's bounded intake queue (a fast, non-blocking
+                    # enqueue) rather than spawning a task per notification — an
+                    # unbounded task-per-frame was a DoS vector (mesh-transmission.md D1).
+                    on_bytes(bytes(data))
 
-                    await asyncio.wait_for(client.start_notify(link._char, handler),
-                                           timeout=GATT_OP_TIMEOUT_S)
-                    link.mark_subscribed()
-                    if on_state is not None:
-                        on_state(True)
-                        announced = True
-                    self._log.info("[%s] now listening for messages from this phone", link._node)
-                    # Deliver whatever queued while the phone was away (voice chunks
-                    # especially — this is what keeps a clip complete on the phone).
-                    await link.flush_replay()
+                await asyncio.wait_for(client.start_notify(link._char, handler),
+                                       timeout=GATT_OP_TIMEOUT_S)
+                link.mark_subscribed()
+                if on_state is not None:
+                    on_state(True)
+                    announced = True
+                self._log.info("[%s] now listening for messages from this phone", link._node)
+                # Deliver whatever queued while the phone was away (voice chunks
+                # especially — this is what keeps a clip complete on the phone).
+                await link.flush_replay()
 
-                    while client.is_connected:
-                        await asyncio.sleep(0.5)
+                while client.is_connected:
+                    await asyncio.sleep(0.5)
             except asyncio.CancelledError:
+                if client is not None:
+                    try:
+                        await client.disconnect()
+                    except Exception:
+                        pass
                 raise
             except asyncio.TimeoutError:
                 self._log.warning(
@@ -409,6 +451,11 @@ class BleManager:
             finally:
                 if announced and on_state is not None:
                     on_state(False)
+                if client is not None:
+                    try:
+                        await client.disconnect()
+                    except Exception:
+                        pass
                 if link.connected:
                     link.detach()
 
