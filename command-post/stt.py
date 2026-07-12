@@ -38,6 +38,15 @@ SUPPORTED = {
 # Candidates the on-device language-ID sweeps over, most-likely first (ties break
 # on this order). All 12 are cheap to score — see identify_language().
 LID_CANDIDATES = ["hi", "ur", "bn", "ta", "te", "kn", "ml", "mr", "gu", "pa", "or", "as"]
+# How close Hindi's LID score must be to Urdu's to override to Hindi. Hindi and Urdu
+# are the same spoken language (Hindustani) — the acoustic model can't separate them,
+# so LID flips between the two. India-first, we keep Devanagari Hindi on a near-tie.
+# CALIBRATED on FLEURS (lid_gap.py, 30 hi/ur clips, 2026-07-12): our peak-confidence
+# scores are ~10× smaller than the mobile decoder's, so mobile's 0.15 flipped ALL Urdu
+# to Hindi (ur 0/15). The measured hi/ur gap separates true-Hindi (gap ≤ ~+0.03) from
+# true-Urdu (gap ≥ ~+0.03); 0.02 is the sweep optimum → hi 14/15 + ur 14/15, and 98.9%
+# overall LID vs 97.2% with no margin and 91.7% at 0.15. (Mobile keeps its own 0.15.)
+HINDUSTANI_MARGIN = 0.02
 
 _model = None
 _lock = threading.Lock()
@@ -58,22 +67,35 @@ def is_ready() -> bool:
     return _model is not None
 
 
-def warmup() -> bool:
+def warmup(retries: int = 2, backoff_s: float = 3.0) -> bool:
     """Eagerly load the model (and run one tiny inference to initialize the ONNX
     sessions) so the FIRST real clip doesn't eat the ~13 s cold load. Safe to call
-    from a background thread at startup; returns True once the model is hot."""
-    try:
-        model = _ensure_model()
-        import torch
-        # 0.5 s of silence @16 kHz — exercises encode + CTC so the sessions are warm.
+    from a background thread at startup; returns True once the model is hot.
+
+    The ONNX session init can transiently fail with an allocator error ("bad
+    allocation") when the box is briefly under memory pressure at startup — e.g.
+    another process loading a model, or a heavy one-off job (the FLEURS download reads
+    a whole ~700 MB parquet shard into RAM). That's recoverable once memory frees, so
+    we retry a couple of times with a GC + short backoff between attempts before giving
+    up. On failure `_model` is left None, so the first real clip retries the load too."""
+    import gc
+    for attempt in range(1, retries + 2):
         try:
-            model(torch.zeros(1, 8000, dtype=torch.float32), DEFAULT_LANG, DEFAULT_MODE)
-        except Exception:  # noqa: BLE001 — load succeeded; the dummy pass is best-effort
-            pass
-        return True
-    except Exception as e:  # noqa: BLE001 — startup must never crash on a warm-up
-        print(f"[stt] warmup failed: {type(e).__name__}: {e}")
-        return False
+            model = _ensure_model()
+            import torch
+            # 0.5 s of silence @16 kHz — exercises encode + CTC so the sessions are warm.
+            try:
+                model(torch.zeros(1, 8000, dtype=torch.float32), DEFAULT_LANG, DEFAULT_MODE)
+            except Exception:  # noqa: BLE001 — load succeeded; the dummy pass is best-effort
+                pass
+            return True
+        except Exception as e:  # noqa: BLE001 — startup must never crash on a warm-up
+            print(f"[stt] warmup attempt {attempt}/{retries + 1} failed: "
+                  f"{type(e).__name__}: {e}")
+            gc.collect()
+            if attempt <= retries:
+                time.sleep(backoff_s)
+    return False
 
 
 def _ffmpeg_to_wav16k(path_or_bytes) -> bytes | None:
@@ -157,35 +179,46 @@ def _lid_cols(model):
 
     model.language_masks[lang] is a BOOLEAN array over the full 5633-token vocab (see
     model_onnx.py: `logprobs[:, :, mask]`). Exactly 257 are True per language — 256
-    script tokens + one shared CTC blank. The blank sits at masked-index config.BLANK_ID
-    (256) within the selected columns; we split it out so scoring uses script tokens
-    only. Languages' 256 script columns are disjoint, which is what makes them separable."""
+    script tokens + one shared CTC blank. Returns {lang: (all_cols, blank_pos)} where
+    all_cols is a LongTensor of those 257 full-vocab column indices in mask order and
+    blank_pos is the position of the blank WITHIN them (config.BLANK_ID = 256, last).
+    Scoring renormalizes the softmax over exactly these 257 columns — the same
+    per-language restriction the mobile decoder uses (CtcDecoder.pickLanguage) — so a
+    language's score is isolated from probability mass in other languages' columns."""
     global _lid_cols_cache
     if _lid_cols_cache is not None:
         return _lid_cols_cache
     import torch
     cache = {}
+    blank_pos = int(model.config.BLANK_ID)  # position of blank within the 257 masked cols
     for lang in SUPPORTED:
         true_cols = np.nonzero(np.asarray(model.language_masks[lang], dtype=bool))[0]
-        blank_col = int(true_cols[model.config.BLANK_ID])  # masked idx 256 -> full col
-        script = torch.tensor([int(c) for c in true_cols if int(c) != blank_col], dtype=torch.long)
-        cache[lang] = (script, blank_col)
+        all_cols = torch.tensor([int(c) for c in true_cols], dtype=torch.long)
+        cache[lang] = (all_cols, blank_pos)
     _lid_cols_cache = cache
     return cache
 
 
 def _identify_from_wav(model, wav, candidates: list[str] | None = None) -> dict:
-    """Language identification WITHOUT a second model. IndicConformer has no
+    """Language identification WITHOUT a second model, ported to match the mobile
+    decoder (CtcDecoder.pickLanguage — 100% on FLEURS). IndicConformer has no
     auto-detect (indic_stt.py), but its acoustic encoder is language-independent —
     the language only picks a vocab MASK at the CTC decode step (model_onnx.py
     ::_ctc_decode). So we encode once, run the shared CTC head once, then for each
-    candidate measure how much probability mass the full-vocab softmax puts on THAT
-    language's 256 script tokens over the speech frames. The script the acoustics
-    actually match wins. Returns {"lang", "scores"}; degrades to DEFAULT_LANG on API
-    drift.
+    candidate ask: "assuming this language, how confidently does each frame decode to
+    a single one of its tokens?"
 
-    Method (CTC posterior mass) adapted from the model's own _ctc_decode masking in
-    ai4bharat/indic-conformer-600m-multilingual/model_onnx.py (MIT)."""
+    Per candidate we renormalize the softmax over ONLY that language's 257 columns and
+    average the top token's log-prob over the frames where that language emits a
+    non-blank token. The correct language produces sharp, low-entropy CTC spikes (high
+    top log-prob); a wrong script hedges (low). This PEAK-CONFIDENCE metric — plus
+    per-language speech gating and a Hindi/Urdu (Hindustani) margin — replaced an
+    earlier full-vocab probability-MASS metric that rewarded diffuse mass, normalized
+    globally (so scores leaked across languages), and had no hi/ur guard. Returns
+    {"lang", "scores"}; degrades to DEFAULT_LANG on API drift.
+
+    Method adapted from the mobile port CtcDecoder.pickLanguage and the model's own
+    _ctc_decode masking in ai4bharat/indic-conformer-600m-multilingual (MIT)."""
     import torch
     cands = [c for c in (candidates or LID_CANDIDATES) if c in SUPPORTED]
     try:
@@ -193,17 +226,21 @@ def _identify_from_wav(model, wav, candidates: list[str] | None = None) -> dict:
         enc, _enc_len = model.encode(wav)
         logits = model.models["ctc_decoder"].run(["logprobs"], {"encoder_output": enc})[0]
         logp = torch.from_numpy(logits[0]).log_softmax(dim=-1)  # [T, full_vocab]
-        blank = cols[cands[0]][1]
-        speech = logp.argmax(dim=-1) != blank              # frames that emitted a real token
-        if int(speech.sum()) == 0:
-            return {"lang": DEFAULT_LANG, "scores": {}}
         scores: dict[str, float] = {}
         for lang in cands:
-            script, _b = cols[lang]
-            # log P(token ∈ this language's script | frame), averaged over speech frames.
-            frame_mass = torch.logsumexp(logp.index_select(1, script), dim=-1)
-            scores[lang] = float(frame_mass[speech].mean())
+            all_cols, blank_pos = cols[lang]
+            sub = logp.index_select(1, all_cols)          # [T, 257] this language only
+            mx, arg = sub.max(dim=-1)                      # top token per frame
+            # renormalize WITHIN this language: log P(top token | frame, lang)
+            top = mx - torch.logsumexp(sub, dim=-1)        # [T]
+            speech = arg != blank_pos                      # frames this language emits on
+            scores[lang] = float(top[speech].mean()) if int(speech.sum()) > 0 else float("-inf")
+        if not scores or all(v == float("-inf") for v in scores.values()):
+            return {"lang": DEFAULT_LANG, "scores": {}}
         best = max(scores, key=scores.get)
+        # Hindi vs Urdu (Hindustani): keep Devanagari Hindi when Urdu only barely wins.
+        if best == "ur" and "hi" in scores and scores["hi"] >= scores["ur"] - HINDUSTANI_MARGIN:
+            best = "hi"
         return {"lang": best, "scores": scores}
     except Exception as e:  # noqa: BLE001 — LID must never crash; degrade to default
         print(f"[stt] language id failed, using {DEFAULT_LANG}: {type(e).__name__}: {e}")
