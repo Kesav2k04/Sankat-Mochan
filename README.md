@@ -1,5 +1,11 @@
 # Sankat-Mochan — Off-Grid Disaster Rescue Mesh
 
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![Works 100% offline](https://img.shields.io/badge/works-100%25%20offline-e4572e)
+![AI on-device NPU](https://img.shields.io/badge/AI-on--device%20Snapdragon%20NPU-2a78d6)
+[![Models & dataset on Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-kesav2k04-ffd21e)](https://huggingface.co/kesav2k04)
+![Tests](https://img.shields.io/badge/tests-120%20passing-brightgreen)
+
 > When floods, earthquakes, or blackouts knock out cell towers and the internet, phones and
 > small radio nodes form their **own network** to get SOS calls out — no towers, no internet,
 > no subscriptions. An **offline AI command post** triages, translates, and dispatches help.
@@ -39,6 +45,31 @@ illegal and cell networks fail within hours of a disaster.
       ▲                                                                                        │
       └────────────────────── "help is coming" travels back the same chain ◄──────────────────┘
 ```
+
+## Measured, not claimed
+
+<table>
+  <tr>
+    <td align="center"><h3>98.9%</h3><b>voice language ID</b><br><sub>FLEURS · 178/180 clips · 12 Indic languages</sub><br><sub>↑ +8.3 pts vs the mass scorer</sub></td>
+    <td align="center"><h3>81.6%</h3><b>fine-tune eval accuracy</b><br><sub>49-item held-out set · strict 1/0.5/0 rubric</sub><br><sub>↑ 2.0× the base model (41.0%)</sub></td>
+    <td align="center"><h3>9.0/10 @ 15.6 tok/s</h3><b>Sahayak on the phone NPU</b><br><sub>OnePlus 15 · every layer on Hexagon v81</sub><br><sub>E4B-class quality · E2B speed & size</sub></td>
+    <td align="center"><h3>84.5 ms</h3><b>speech-to-text on the laptop NPU</b><br><sub>encoder + CTC decoder · AI Hub profile</sub><br><sub>1,802 / 1,802 layers on NPU</sub></td>
+  </tr>
+</table>
+
+Every number below was **measured on the hardware it ships on** — greedy decoding, production
+code paths, and a reproduce command in each source doc.
+
+| What | Result | Where it ran | Evidence |
+| --- | --- | --- | --- |
+| Voice language ID (12 Indic languages, FLEURS) | **98.9%** (178/180 clips) | X Elite, CPU (~900 ms/clip) | [`backend/LID-BENCHMARK.md`](backend/LID-BENCHMARK.md) |
+| Sahayak fine-tune vs base Gemma (held-out eval) | **41.0% → 81.6%** accuracy; all 3 adversarial safety failures fixed | Kaggle T4 eval, greedy | [`docs/evals/eval_comparison.md`](docs/evals/eval_comparison.md) |
+| Sahayak on the **phone NPU** (Hexagon v81, all layers) | **9.0/10** answer quality at **15.6 tok/s** — E4B-class quality at E2B speed & size | OnePlus 15 | [`docs/BENCHMARK-NPU-MODELS.md`](docs/BENCHMARK-NPU-MODELS.md) |
+| Speech-to-text pipeline compiled to the **laptop NPU** | **~84.5 ms**, 1,802/1,802 layers on NPU | X Elite, AI Hub profile | [`docs/AI-Hub-Compile-Guide.md`](docs/AI-Hub-Compile-Guide.md) |
+| Command-post triage model bake-off (5 candidates) | Gemma 4 E4B: **6/6 faithful, 2–8 s/query** — 30–80× faster than Sarvam-M 24B, zero mistranslations | X Elite, GenieX | [`docs/BENCHMARK-NPU-MODELS.md`](docs/BENCHMARK-NPU-MODELS.md) |
+
+The full interactive stats page lives at [`docs/benchmark-ledger.html`](docs/benchmark-ledger.html)
+— open it in any browser (works offline, like everything else here).
 
 ## The components
 
@@ -103,6 +134,50 @@ cd app-simulator && npm install && npm run dev
 120 tests across the Python/JS components (`uv run pytest` in `backend/` and
 `raspberrypi/`, `npm test` in `app-simulator/`), plus the Android JVM suite
 (`./gradlew test`). See [`docs/TESTING.md`](docs/TESTING.md) for the full map.
+
+## Fine-tune Sahayak yourself — fully reproducible
+
+**Sahayak** is our QLoRA fine-tune of **Gemma 4 E2B** that turns the base model into a calm,
+terse disaster first-responder: correct `SOS|WHO:|LOC:|NEED:` relay packets, opsec discipline
+(refuses to broadcast raw GPS or relay false claims), and field-usable first aid. Everything
+you need to retrain it from scratch is in this repo and on Hugging Face under
+**[huggingface.co/kesav2k04](https://huggingface.co/kesav2k04)** — check that username for
+every artifact (models, GGUF + NPU runtime, dataset) if a link below moves.
+
+| Artifact | Where |
+| --- | --- |
+| Training + validation scripts | [`backend/finetune/`](backend/finetune/) — `sahayak_finetune.py`, `validate_dataset.py` (Apache-2.0) |
+| Ready-to-run notebooks | `backend/finetune/kaggle_gemma4_e2b_finetune.ipynb` (free Kaggle **T4 ×2**), `colab_gemma4_finetune.ipynb` |
+| Dataset (train / val / held-out eval) | [`backend/finetune/data/`](backend/finetune/data/) — built per [`docs/SAHAYAK_DATASET_SPEC.md`](docs/SAHAYAK_DATASET_SPEC.md) |
+| Deployed model (merged fp16) | [`kesav2k04/sahayak-e2b`](https://huggingface.co/kesav2k04/sahayak-e2b) — gated: accept Google's Gemma Terms first |
+| Phone-ready Q4_0 GGUF + prebuilt Hexagon NPU runtime | [`kesav2k04/sahayak-e2b-gguf`](https://huggingface.co/kesav2k04/sahayak-e2b-gguf) |
+
+**The five-step retry recipe:**
+
+```bash
+cd backend/finetune
+
+# 0) one-time: accept the Gemma terms on HF, then export HF_TOKEN=hf_...
+# 1) validate the dataset (schema, dedup, length budgets — exit 0 = clean)
+uv run validate_dataset.py data/train.jsonl
+
+# 2) train — free path: upload the Kaggle notebook, set accelerator to GPU T4 x2,
+#    attach data/train.jsonl + data/val.jsonl; or on your own CUDA box:
+uv run sahayak_finetune.py --train data/train.jsonl --eval data/eval_holdout.jsonl \
+    --model unsloth/gemma-4-E2B-it --out out/sahayak-e2b --export-gguf q4_0
+
+# 3) eval against the held-out set (the 41.0% → 81.6% table comes from this)
+#    → grading rubric and per-question results: docs/evals/eval_comparison.md
+
+# 4) quantize + package for the phone NPU (Q4_0 — the quant Hexagon wants)
+cd ../deploy/npu && python build_gemma_gguf.py --merged-checkpoint <merged> --llama-cpp <path>
+
+# 5) run it on-device (all layers on the Hexagon NPU, verified in the load logs)
+bash run_gemma_npu.sh out/sahayak-gemma-Q4_0.gguf "first-aid for a deep cut?"
+```
+
+Details, hardware fallbacks (it trains on CUDA, validates on any laptop), and the T4 dtype
+gotcha we already patched: [`backend/finetune/README.md`](backend/finetune/README.md).
 
 ## Team
 

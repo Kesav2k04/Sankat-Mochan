@@ -11,6 +11,17 @@ Fine-tune **Gemma 4 (E2B/E4B)** into the offline emergency-response assistant, p
 Everything here is **Apache-2.0**. The Gemma **weights** are gated under Google's Gemma Terms of
 Use (not OSI-approved) — accept the terms on Hugging Face and set `HF_TOKEN` before training.
 
+**What the fine-tune bought, measured on the held-out set** ([full eval](../../docs/evals/eval_comparison.md)):
+
+<table>
+  <tr>
+    <td align="center"><h3>41.0% → 81.6%</h3><b>overall accuracy</b><br><sub>50/49-item held-out set · greedy · strict rubric</sub></td>
+    <td align="center"><h3>19% → 100%</h3><b>SOS relay packets</b><br><sub>base emitted zero <code>SOS|WHO:|LOC:|NEED:</code> packets</sub></td>
+    <td align="center"><h3>21 → 4</h3><b>failed answers</b><br><sub>and all 3 adversarial safety failures fixed</sub></td>
+    <td align="center"><h3>9.0/10 @ 15.6 tok/s</h3><b>deployed on the phone NPU</b><br><sub><a href="https://huggingface.co/kesav2k04/sahayak-e2b-gguf">kesav2k04/sahayak-e2b-gguf</a></sub></td>
+  </tr>
+</table>
+
 ## Cross-platform (Windows / Linux / Surface, x86-64 or ARM)
 
 The trainer detects your hardware and picks a backend automatically (`--backend auto`):

@@ -5,6 +5,15 @@ LoRa gateway via `POST /sos`, or the test button), runs **AI triage**
 (urgency + Indic→English translation), and shows a live, ranked triage queue
 with dispatch. Backend-agnostic AI so we can benchmark and pick the fastest.
 
+<table>
+  <tr>
+    <td align="center"><h3>2–8 s</h3><b>triage per SOS</b><br><sub>Gemma 4 E4B on GenieX · 6/6 faithful translations</sub><br><sub>30–80× faster than Sarvam-M 24B</sub></td>
+    <td align="center"><h3>98.9%</h3><b>language ID</b><br><sub>FLEURS · 12 languages · production <code>stt.py</code></sub><br><sub><a href="LID-BENCHMARK.md">LID-BENCHMARK.md</a> · reproduce: <code>lid_bench.py</code></sub></td>
+    <td align="center"><h3>~84.5 ms</h3><b>STT pipeline on the NPU</b><br><sub>1,796/1,796 encoder + 6/6 decoder layers</sub><br><sub>AI Hub profile · X Elite</sub></td>
+    <td align="center"><h3>0.5 s</h3><b>warm LLM reply</b><br><sub>502 ms verified · <code>dev</code> scripts pre-warm</sub><br><sub>cold load ~30 s, paid once</sub></td>
+  </tr>
+</table>
+
 ## Folder map
 
 | Path | What it is |
