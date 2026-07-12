@@ -5,6 +5,15 @@ over **Bluetooth Low Energy** with no cell tower or internet. This is the T0 tra
 slice from `../DESIGN.md`: a text SOS travels the mesh, the responder accepts, and the
 victim's phone shows an honest native-language status ladder.
 
+<table>
+  <tr>
+    <td align="center"><h3>15.6 tok/s</h3><b>Sahayak assistant on the NPU</b><br><sub>Gemma 4 E2B fine-tune · Q4_0 · 3.11 GB</sub><br><sub>every layer verified on Hexagon v81 (HTP0)</sub></td>
+    <td align="center"><h3>9.0/10</h3><b>first-aid answer quality</b><br><sub>vs 6.0 stock E2B · 8.5 stock E4B (2× slower)</sub><br><sub><a href="../docs/BENCHMARK-NPU-MODELS.md">BENCHMARK-NPU-MODELS.md</a></sub></td>
+    <td align="center"><h3>100%</h3><b>on-device language ID</b><br><sub>10/10 FLEURS, open 22-language set</sub><br><sub>beats a dedicated SLID model (90%) at zero cost</sub></td>
+    <td align="center"><h3>≤ 244 B</h3><b>SOS envelope</b><br><sub>one BLE write today · one LoRa frame later</sub><br><sub>store-and-forward, deduped</sub></td>
+  </tr>
+</table>
+
 ## What works now
 
 - **Every phone is a full mesh node** - it advertises + runs a GATT server (peripheral)
