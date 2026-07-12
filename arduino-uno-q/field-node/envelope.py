@@ -19,6 +19,7 @@ from typing import Any, ClassVar, Dict, Optional, Union
 
 MAX_BYTES = 244          # ATT payload budget at a 247-byte MTU (247 - 3 ATT header)
 DECODE_TOLERANCE = 8     # mirrors the Kotlin side's small slack on inbound size
+WORD_BACKOFF_MAX = 16    # how far back the post-trim word-boundary backoff may reach
 MAX_ID = 32
 MAX_TEXT = 200
 MAX_HOPS = 15
@@ -130,6 +131,15 @@ class Envelope:
         while len(raw) > max_bytes and gist:
             gist = gist[:-1]
             raw = self._raw(gist)
+        if len(gist) < len(self.gist):
+            # Mid-word cuts read as gibberish downstream, and for a "TAGS …" gist a cut
+            # pair ("inj:ble") is silently dropped by the parser — backing off to the last
+            # space keeps whole words / whole tag pairs. Bounded so a long unspaced script
+            # keeps what fits rather than losing it all. Mirrors SosMessage.encode().
+            space = gist.rfind(" ")
+            if space > 0 and len(gist) - space <= WORD_BACKOFF_MAX:
+                gist = gist[:space].rstrip()
+                raw = self._raw(gist)
         return raw
 
 

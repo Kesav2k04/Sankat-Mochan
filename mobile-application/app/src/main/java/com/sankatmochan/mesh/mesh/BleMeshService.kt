@@ -200,8 +200,8 @@ class BleMeshService(context: Context) {
      * into the same incident by origin. Deliberately NOT added to the sent ladder —
      * the victim's status UI tracks the original SOS, not the agent's data updates.
      */
-    fun sendAgentTags(original: SosMessage, tagsWire: String, urgency: Int) {
-        val msg = SosMessage(
+    fun sendAgentTags(original: SosMessage, tags: Map<String, String>, urgency: Int) {
+        val empty = SosMessage(
             id = nextId(),
             type = MsgType.SOS,
             origin = nodeId,
@@ -212,13 +212,22 @@ class BleMeshService(context: Context) {
             // and the landmark rides in the lm tag — its 64 bytes are better spent making
             // sure every tag pair survives the 244-byte gist trim.
             locationHint = "",
-            gist = tagsWire,
+            gist = "",
             lang = original.lang,
             lat = original.lat,
             lng = original.lng,
             ts = System.currentTimeMillis(),
             hops = 0
         )
+        // Fit the TAGS wire to the bytes THIS envelope actually has left, so encode()'s
+        // blind character trim can never cut a pair in half on its way to the command post.
+        val budget = SosMessage.MAX_BYTES - empty.encode().size
+        val tagsWire = com.sankatmochan.mesh.agent.AgentTags.build(tags, budget)
+        if (tagsWire == null) {
+            store.log("Agent update skipped — no tag fits the frame budget")
+            return
+        }
+        val msg = empty.copy(gist = tagsWire)
         store.markSeen(msg.id)
         store.log("Agent update sent: $tagsWire")
         rememberOutbound(msg)

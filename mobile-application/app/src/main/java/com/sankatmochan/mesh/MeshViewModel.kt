@@ -32,8 +32,8 @@ class MeshViewModel(app: Application) : AndroidViewModel(app) {
     val agent = com.sankatmochan.mesh.agent.SahayakAgent(
         app = app,
         scope = viewModelScope,
-        sendTags = { wire, urgency ->
-            lastSentSos?.let { service.sendAgentTags(it, wire, urgency) }
+        sendTags = { tags, urgency ->
+            lastSentSos?.let { service.sendAgentTags(it, tags, urgency) }
         },
     )
 

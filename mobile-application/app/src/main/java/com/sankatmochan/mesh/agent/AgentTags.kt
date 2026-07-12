@@ -38,16 +38,50 @@ object AgentTags {
         else -> false
     }
 
-    /** Wire string from validated tags. Invalid pairs are silently dropped. */
-    fun build(tags: Map<String, String>): String? {
+    /**
+     * Wire string from validated tags, guaranteed to fit [budgetBytes] UTF-8 bytes WITHOUT
+     * ever cutting mid-pair or mid-word. The envelope's generic gist trim chops characters
+     * blindly, which used to hand the command post half a tag ("inj:ble") or half a landmark
+     * ("near old temp") — so the fitting happens HERE, where pair boundaries are known:
+     * pairs that don't fit are dropped whole (KEY_ORDER is criticality-first, so the least
+     * important go first), and the landmark sheds whole trailing words until it fits.
+     * Invalid pairs are silently dropped.
+     */
+    fun build(tags: Map<String, String>, budgetBytes: Int = Int.MAX_VALUE): String? {
         val parts = ArrayList<String>(tags.size)
+        fun fits(candidate: String): Boolean =
+            (PREFIX + (parts + candidate).joinToString(" "))
+                .toByteArray(Charsets.UTF_8).size <= budgetBytes
         for (key in KEY_ORDER) {
-            val v = tags[key]?.trim()?.lowercase() ?: continue
-            val value = if (key == "lm") tags["lm"]!!.trim().take(LM_MAX) else v
-            if (isValid(key, value)) parts.add("$key:$value")
+            val raw = tags[key]?.trim() ?: continue
+            if (key == "lm") {
+                var lm = capLandmark(raw)
+                // Shed whole trailing words until it fits; a landmark that can't fit even
+                // as one word is dropped entirely — the tags still carry the critical facts.
+                while (lm.isNotEmpty() && !fits("lm:$lm")) lm = dropLastWord(lm)
+                if (lm.isNotEmpty()) parts.add("lm:$lm")
+            } else {
+                val value = raw.lowercase()
+                if (isValid(key, value) && fits("$key:$value")) parts.add("$key:$value")
+            }
         }
         if (parts.isEmpty()) return null
         return PREFIX + parts.joinToString(" ")
+    }
+
+    /** Cap a landmark at [LM_MAX] chars on a WORD boundary — a mid-word cut reads as
+     *  gibberish on the responder card, which is worse than a shorter landmark. */
+    fun capLandmark(s: String): String {
+        val t = s.trim()
+        if (t.length <= LM_MAX) return t
+        val cut = t.take(LM_MAX)
+        val space = cut.lastIndexOf(' ')
+        return (if (space > 0) cut.substring(0, space) else cut).trim()
+    }
+
+    private fun dropLastWord(s: String): String {
+        val space = s.trimEnd().lastIndexOf(' ')
+        return if (space > 0) s.substring(0, space).trimEnd() else ""
     }
 
     /** Parse an incoming "TAGS …" gist (responder phones render these as merged detail,

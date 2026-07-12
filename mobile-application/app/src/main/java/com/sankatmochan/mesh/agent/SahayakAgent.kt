@@ -36,8 +36,10 @@ import org.json.JSONObject
 class SahayakAgent(
     private val app: Application,
     private val scope: CoroutineScope,
-    /** Sends one TAGS follow-up envelope up the mesh (wire string, urgency). */
-    private val sendTags: (String, Int) -> Unit,
+    /** Sends one TAGS follow-up up the mesh (validated tag map, urgency). The wire string
+     *  is built at the mesh layer, where the envelope's real byte budget is known — so no
+     *  tag pair is ever cut mid-pair by the gist trim. */
+    private val sendTags: (Map<String, String>, Int) -> Unit,
 ) {
 
     private val engine = GenieXEngine.shared(app)
@@ -111,7 +113,10 @@ class SahayakAgent(
         latestStatus = null
         helpAccepted = false
         // Seed facts from whatever the victim DID fill in (details drawer / extraction).
-        if (sos.locationHint.isNotBlank()) facts["lm"] = sos.locationHint.take(AgentTags.LM_MAX)
+        if (sos.locationHint.isNotBlank()) {
+            AgentTags.capLandmark(sos.locationHint).takeIf { it.isNotEmpty() }
+                ?.let { facts["lm"] = it }
+        }
 
         scope.launch {
             llmLive = ensureModel()
@@ -429,8 +434,7 @@ class SahayakAgent(
      *  post merges by origin). Urgency is code-decided from the facts, never by the LLM. */
     private fun shipTags() {
         if (facts.isEmpty()) return
-        val wire = AgentTags.build(facts) ?: return
-        sendTags(wire, tagUrgency())
+        sendTags(LinkedHashMap(facts), tagUrgency())
     }
 
     private fun tagUrgency(): Int {
@@ -483,8 +487,7 @@ class SahayakAgent(
         if (escalated) return
         escalated = true
         facts["unresp"] = "y"
-        val wire = AgentTags.build(facts) ?: AgentTags.build(mapOf("unresp" to "y"))!!
-        sendTags(wire, 5)
+        sendTags(LinkedHashMap(facts), 5)
         Log.i(TAG, "silent escalation sent (2 missed check-ins)")
     }
 

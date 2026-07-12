@@ -306,6 +306,10 @@ class Store:
             "voice_transcript": None,
             "voice_english": None,
             "rationale": ai.get("rationale", ""),
+            # Server-side triage tags (triage.extract_tags → parse_tags), when the SOS text
+            # carried enough detail. Same schema as the phone agent's TAGS, so _recompute's
+            # agg_tags renders them in the chip row / ranking. None for bare/undetailed SOS.
+            "tags": ai.get("tags") or None,
         }
         self._sanitize_coords(report)
         # Learn this handset's stable id so a later BLE-presence row for the same phone

@@ -252,6 +252,17 @@ async def _ingest(envelope: dict[str, Any], audio_url: str | None = None) -> boo
               "english": envelope.get("gist", ""), "ai": False, "latency_ms": 0}
     else:
         ai = await triage.triage(envelope)
+        # Enrich with structured triage tags from the fast E2B backend — but only when the
+        # SOS carries real detail. A bare "SOS"/"help" is skipped (worth_tagging) so an
+        # empty-data incident never gets invented tags; the extractor omits anything not
+        # explicitly stated, and parse_tags is the enum whitelist gate (rule #8) for the
+        # model's (untrusted) output before it reaches the dashboard.
+        gist = str(envelope.get("gist", "")).strip()
+        if triage.worth_tagging(gist):
+            candidate = await triage.extract_tags(gist, envelope.get("lang"))
+            tags = intelligence.parse_tags(candidate) if candidate else None
+            if tags:
+                ai["tags"] = tags
     if audio_url:
         envelope["audio"] = audio_url
     store.add_report(envelope, ai)
