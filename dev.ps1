@@ -53,18 +53,26 @@ if (Test-Path $WinVenv) {
     Write-Host "WARN: no command-post/.venv found - using system 'python'"
 }
 
-# --- LLM backend (GenieX on the NPU) -----------------------------------------
-# The command post's triage/translate LLM (Gemma 4 E4B) is served by GenieX over an
-# OpenAI-compatible API. dev.ps1 must guarantee it is up, otherwise every triage call
-# fails with a connection error and the flow stalls. We read the endpoint + model id
-# straight from command-post/.env so this never drifts from what the backend expects.
+# --- LLM backends (GenieX on the NPU) ----------------------------------------
+# The command post runs TWO models on the NPU, each its own task:
+#   - Gemma 4 E4B (:18181) - triage + translation (the safety-critical reasoning)
+#   - Gemma 4 E2B (:18182) - fast structured tag extraction (triage.extract_tags)
+# They run as SEPARATE `geniex serve` instances so the NPU keeps both resident at once:
+# a single server reloads ~15 s on every model switch, but two servers stay warm (~1 s
+# each, measured on the X Elite). dev.ps1 must guarantee both are up, else triage/tagging
+# fails with a connection error. Endpoints + model ids come straight from command-post/.env
+# so this never drifts from what the backend expects.
 $EnvFile   = Join-Path $BackendDir '.env'
 $GenieXBase  = 'http://127.0.0.1:18181/v1'
 $GenieXModel = 'bartowski/google_gemma-4-E4B-it-GGUF:Q4_K_M'
+$TagsBase    = 'http://127.0.0.1:18182/v1'
+$TagsModel   = 'bartowski/google_gemma-4-E2B-it-GGUF:Q4_K_M'
 if (Test-Path $EnvFile) {
     foreach ($line in Get-Content $EnvFile) {
-        if ($line -match '^\s*LLM_BASE_URL\s*=\s*(.+?)\s*$') { $GenieXBase  = $Matches[1].Trim('"').Trim("'") }
-        if ($line -match '^\s*LLM_MODEL\s*=\s*(.+?)\s*$')    { $GenieXModel = $Matches[1].Trim('"').Trim("'") }
+        if ($line -match '^\s*LLM_BASE_URL\s*=\s*(.+?)\s*$')      { $GenieXBase  = $Matches[1].Trim('"').Trim("'") }
+        if ($line -match '^\s*LLM_MODEL\s*=\s*(.+?)\s*$')         { $GenieXModel = $Matches[1].Trim('"').Trim("'") }
+        if ($line -match '^\s*TAGS_LLM_BASE_URL\s*=\s*(.+?)\s*$') { $TagsBase    = $Matches[1].Trim('"').Trim("'") }
+        if ($line -match '^\s*TAGS_LLM_MODEL\s*=\s*(.+?)\s*$')    { $TagsModel   = $Matches[1].Trim('"').Trim("'") }
     }
 }
 
@@ -77,9 +85,13 @@ function Test-Http {
 # in $script:Procs, so Ctrl-C leaves it running — a cold GenieX load costs ~30 s, so
 # reusing it across dev restarts keeps the loop fast. Stop it manually when done:
 #   Get-Process geniex | Stop-Process
+# Start one `geniex serve` bound to $Base's host:port if it isn't already answering. Called
+# once per model so each server only ever serves its own model and never reloads. $Label is
+# a short filename-safe tag (e4b/e2b) used for the per-server log files.
 function Ensure-GenieX {
-    $modelsUrl = "$GenieXBase/models"
-    if (Test-Http $modelsUrl) { Write-Host "  GenieX already serving on $GenieXBase"; return }
+    param([string]$Base, [string]$Label)
+    $modelsUrl = "$Base/models"
+    if (Test-Http $modelsUrl) { Write-Host "  GenieX ($Label) already serving on $Base"; return }
 
     $geniex = (Get-Command geniex -ErrorAction SilentlyContinue).Source
     if (-not $geniex) {
@@ -88,35 +100,37 @@ function Ensure-GenieX {
     }
     if (-not $geniex) {
         Write-Host "  WARN: GenieX not found on PATH or in %LOCALAPPDATA%\GenieX CLI." -ForegroundColor Yellow
-        Write-Host "        The LLM (triage/translate) will be unavailable. Install it, then re-run." -ForegroundColor Yellow
+        Write-Host "        The LLM ($Label) will be unavailable. Install it, then re-run." -ForegroundColor Yellow
         return
     }
 
+    $bind = $Base -replace '^https?://', '' -replace '/v1/?$', ''   # 'http://127.0.0.1:18182/v1' -> '127.0.0.1:18182'
     $logDir = Join-Path $BackendDir 'logs'
     if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
-    Write-Host "  starting 'geniex serve' (LLM on the NPU)..."
-    Start-Process -FilePath $geniex -ArgumentList 'serve' `
-        -RedirectStandardOutput (Join-Path $logDir 'geniex.out.log') `
-        -RedirectStandardError  (Join-Path $logDir 'geniex.err.log') `
+    Write-Host "  starting 'geniex serve --host $bind' ($Label on the NPU)..."
+    Start-Process -FilePath $geniex -ArgumentList @('serve', '--host', $bind) `
+        -RedirectStandardOutput (Join-Path $logDir "geniex.$Label.out.log") `
+        -RedirectStandardError  (Join-Path $logDir "geniex.$Label.err.log") `
         -WindowStyle Hidden | Out-Null
 
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Seconds 1
-        if (Test-Http $modelsUrl) { Write-Host "  GenieX up on $GenieXBase"; return }
+        if (Test-Http $modelsUrl) { Write-Host "  GenieX ($Label) up on $Base"; return }
     }
-    Write-Host "  WARN: GenieX did not answer within 30s; see command-post\logs\geniex.err.log" -ForegroundColor Yellow
+    Write-Host "  WARN: GenieX ($Label) did not answer within 30s; see command-post\logs\geniex.$Label.err.log" -ForegroundColor Yellow
 }
 
-# Fire a tiny completion so GenieX loads Gemma onto the NPU now (~30 s cold), instead of
+# Fire a tiny completion so GenieX loads the model onto the NPU now (~30 s cold), instead of
 # stalling the first real SOS during the demo. Runs in the background; we do not wait.
 function Warm-LLM {
-    if (-not (Test-Http "$GenieXBase/models")) { return }
-    Write-Host "  warming the LLM (loading Gemma onto the NPU in the background)..."
-    $body = @{ model = $GenieXModel; messages = @(@{ role = 'user'; content = 'ping' }); max_tokens = 1; temperature = 0 } | ConvertTo-Json -Depth 5
-    Start-Job -Name geniex-warm -ScriptBlock {
+    param([string]$Base, [string]$Model, [string]$Label)
+    if (-not (Test-Http "$Base/models")) { return }
+    Write-Host "  warming $Label (loading onto the NPU in the background)..."
+    $body = @{ model = $Model; messages = @(@{ role = 'user'; content = 'ping' }); max_tokens = 1; temperature = 0 } | ConvertTo-Json -Depth 5
+    Start-Job -Name "geniex-warm-$Label" -ScriptBlock {
         param($u, $b)
         try { Invoke-RestMethod -Uri "$u/chat/completions" -Method Post -ContentType 'application/json' -Body $b -TimeoutSec 120 | Out-Null } catch {}
-    } -ArgumentList $GenieXBase, $body | Out-Null
+    } -ArgumentList $Base, $body | Out-Null
 }
 
 # --- track child processes for cleanup ---------------------------------------
@@ -140,9 +154,11 @@ try {
     Stop-Port $BackendPort
     Stop-Port $FrontendPort
 
-    Write-Host "==> Ensuring LLM backend (GenieX / NPU) is up"
-    Ensure-GenieX
-    Warm-LLM
+    Write-Host "==> Ensuring LLM backends (GenieX / NPU) are up - E4B (triage) + E2B (tags)"
+    Ensure-GenieX -Base $GenieXBase -Label 'e4b'
+    Ensure-GenieX -Base $TagsBase   -Label 'e2b'
+    Warm-LLM -Base $GenieXBase -Model $GenieXModel -Label 'Gemma 4 E4B (triage)'
+    Warm-LLM -Base $TagsBase   -Model $TagsModel   -Label 'Gemma 4 E2B (tags)'
 
     Write-Host "==> Starting backend (FastAPI) on :$BackendPort"
     $backend = Start-Process -FilePath $Python `
@@ -165,7 +181,7 @@ try {
     Write-Host ""
     Write-Host "Backend : http://localhost:$BackendPort   (dashboard served by FastAPI)"
     Write-Host "Frontend: http://localhost:$FrontendPort  (Vite dev server, live UI)"
-    Write-Host "LLM     : $GenieXBase  (GenieX / Gemma 4 E4B on the NPU)"
+    Write-Host "LLM     : $GenieXBase  (E4B / triage)  +  $TagsBase  (E2B / tags)  - both on the NPU"
     Write-Host "STT     : AI4Bharat IndicConformer-600M on CPU (loads on first voice clip)"
     Write-Host "Press Ctrl-C to stop the backend + frontend (GenieX keeps running)."
     Write-Host ""
