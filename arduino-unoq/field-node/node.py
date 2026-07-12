@@ -35,6 +35,17 @@ from sx127x import LoraConfig, LoraError, Radio, RxPacket
 # so a simultaneous transmit is a guaranteed collision, not a race we can tolerate.
 _AIRWAVES = threading.Lock()
 
+# A rescue-status envelope (ACCEPTED / DELIVERED) crosses the air exactly once, and its
+# back-to-back repeats fail together inside one fade or collision — after which every
+# copy the responder's phone replays is dropped by the seen-ring as a duplicate. So the
+# victim's "help is on the way" sometimes simply never arrived. Re-send the same frame
+# in WAVES a few seconds apart (time diversity): a fade that outlives both repeats
+# rarely outlives 20 s. The waves cost only airtime — the far node drops them as
+# duplicates once any crossing lands, and status envelopes are rare (one Accept per
+# incident). LoRa links only: BLE already has ATT acks plus store-and-forward.
+STATUS_TYPES = ("ACCEPTED", "DELIVERED")
+STATUS_RESEND_DELAYS_S = (6.0, 18.0)
+
 
 def signal_words(rssi_dbm: float, snr_db: float) -> str:
     """`strong signal (-67 dBm, SNR 10.5 dB)` — the number, plus what it means."""
@@ -225,6 +236,8 @@ class MeshNode:
         self._log = logger
         self._chain = chain
         self._on_accept = on_accept
+        # Strong refs to in-flight status re-send waves (asyncio would GC bare tasks).
+        self._resend_tasks: "set[asyncio.Task]" = set()
 
         # Bounded, TWO-LANE RX intake (mesh-transmission.md D1 + MJ1/MJ2). One drainer per
         # node (per-node, not global, preserves the two-MeshNode loop-freedom isolation this
@@ -516,7 +529,8 @@ class MeshNode:
             return self.voice_tx_repeats, self.voice_post_delay_s
         return None, 0.0
 
-    async def _send_one(self, link: Link, raw: bytes, msg: env.Envelope) -> None:
+    async def _send_one(self, link: Link, raw: bytes, msg: env.Envelope,
+                        *, is_resend: bool = False) -> None:
         repeats, post_delay_s = self._tx_policy(msg)
         # A link with a tighter frame budget than the wire cap (the UNO Q bridge modem)
         # gets the envelope re-encoded with its gist trimmed to fit — a shortened SOS
@@ -548,6 +562,24 @@ class MeshNode:
         if not ok:
             self._chain.emit(clog.DROP, self.name, radio=link.name, msg_id=msg.id,
                              sha=env.digest(raw), reason="send_failed")
+        # Time-diversity waves for rescue-status envelopes on the air (see STATUS_TYPES).
+        # Scheduled even when the first send failed — a busy/resetting radio is exactly
+        # the kind of trouble a later wave outlives. is_resend stops a wave from
+        # re-waving, so each status envelope transmits at most 1 + len(delays) times.
+        if (not is_resend and link.kind == "lora"
+                and getattr(msg, "type", None) in STATUS_TYPES):
+            for delay in STATUS_RESEND_DELAYS_S:
+                t = asyncio.create_task(self._status_resend(link, raw, msg, delay))
+                self._resend_tasks.add(t)
+                t.add_done_callback(self._resend_tasks.discard)
+
+    async def _status_resend(self, link: Link, raw: bytes, msg: env.Envelope,
+                             delay_s: float) -> None:
+        await asyncio.sleep(delay_s)
+        self._log.info("[%s] re-sending %s over %s (+%.0fs wave — beating a fade takes "
+                       "time apart, not more back-to-back repeats)",
+                       self.name, msg.id, link.name, delay_s)
+        await self._send_one(link, raw, msg, is_resend=True)
 
     async def originate(self, msg: env.Envelope) -> None:
         """Inject a locally-created envelope (used by the self-test and by tools)."""
