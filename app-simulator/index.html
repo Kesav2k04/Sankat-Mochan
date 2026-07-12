@@ -8,6 +8,26 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Browsers freeze requestAnimationFrame in occluded/background windows, which
+      // stalls MapLibre's style load and the sim clock. Fall back to setTimeout while
+      // hidden so automated captures and half-covered demo screens keep animating.
+      ;(() => {
+        const raf = window.requestAnimationFrame.bind(window)
+        const caf = window.cancelAnimationFrame.bind(window)
+        const timers = new Map()
+        let seq = 1
+        window.requestAnimationFrame = (cb) => {
+          if (document.visibilityState !== 'hidden') return raf(cb)
+          const id = -(seq++)
+          timers.set(id, setTimeout(() => { timers.delete(id); cb(performance.now()) }, 16))
+          return id
+        }
+        window.cancelAnimationFrame = (id) => {
+          if (id < 0) { clearTimeout(timers.get(id)); timers.delete(id) } else caf(id)
+        }
+      })()
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

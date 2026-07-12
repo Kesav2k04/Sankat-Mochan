@@ -7,14 +7,15 @@ import { ZONE, OUTPOST, DANGER_SPOT, RANGE_KM } from '../sim/lora.js'
 
 // Real offline basemap — the same Wayanad PMTiles extract the command post
 // serves (data © OpenStreetMap contributors, ODbL; MapLibre + @protomaps/basemaps, BSD-3).
+// Dark flavor: the story happens at night, and the map is the set.
 const protocol = new Protocol()
 maplibregl.addProtocol('pmtiles', protocol.tile)
 
-const flavor = { ...namedFlavor('light'), background: '#eee7d9' }
+const flavor = { ...namedFlavor('dark'), background: '#0b1118' }
 const STYLE = {
   version: 8,
   glyphs: `${location.origin}/basemaps-assets/fonts/{fontstack}/{range}.pbf`,
-  sprite: `${location.origin}/basemaps-assets/sprites/v4/light`,
+  sprite: `${location.origin}/basemaps-assets/sprites/v4/dark`,
   sources: {
     protomaps: {
       type: 'vector',
@@ -25,11 +26,11 @@ const STYLE = {
   layers: layers('protomaps', flavor, { lang: 'en' }),
 }
 
-const RED = '#d92d20'
-const AMBER = '#b45309'
-const GREEN = '#079455'
-const TEAL = '#0e7490'
-const GREY = '#98a2b3'
+const RED = '#ff5147'
+const AMBER = '#ffb347'
+const GREEN = '#3ddc84'
+const TEAL = '#45c4e8'
+const GREY = '#54697d'
 
 /** The damaged cell tower — the reason nothing else works tonight. */
 const TOWER = { lat: 11.679, lng: 76.155 }
@@ -64,9 +65,9 @@ function ease(u) {
 /** A little human figure — victims and rangers are people, not arrows. */
 function Person({ c, wave = false }) {
   return (
-    <g>
-      <circle cy="-7" r="3.1" fill={c} stroke="#fff" strokeWidth="1.1" />
-      <path d="M -4.5 7 Q -4.5 -2.5 0 -2.5 Q 4.5 -2.5 4.5 7 Z" fill={c} stroke="#fff" strokeWidth="1.1" />
+    <g filter="url(#glo)">
+      <circle cy="-7" r="3.1" fill={c} stroke="#0a1219" strokeWidth="1.1" />
+      <path d="M -4.5 7 Q -4.5 -2.5 0 -2.5 Q 4.5 -2.5 4.5 7 Z" fill={c} stroke="#0a1219" strokeWidth="1.1" />
       {wave && <line x1="4" y1="-4" x2="8.5" y2="-11" stroke={c} strokeWidth="2" strokeLinecap="round" />}
     </g>
   )
@@ -117,6 +118,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
       placeRef.current({ lat: e.lngLat.lat, lng: e.lngLat.lng })
     })
     map.getCanvas().style.cursor = ''
+    map.on('error', (e) => console.error('map error:', e.error?.message ?? e))
     mapRef.current = map
     return () => {
       map.remove()
@@ -135,6 +137,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
 
   // ---- live positions derived from the timeline clock -----------------------
   const packets = []
+  const arrivals = [] // hop endings still flashing
   const txNodes = new Set()
   let rangerPos = {}
   let victimVisible = false
@@ -157,10 +160,14 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
       const local = clock - seg.t0
       if (local < 0) continue
       const u = Math.min(1, local / seg.dur)
-      if (seg.kind === 'hop' && local <= seg.dur) {
-        packets.push({ from: seg.from, to: seg.to, u, pkt: seg.pkt })
-        if (seg.from.id !== 'VICTIM') txNodes.add(seg.from)
-        else txNodes.add('VICTIM') // the first broadcast, heard all around the spot
+      if (seg.kind === 'hop') {
+        if (local <= seg.dur) {
+          packets.push({ from: seg.from, to: seg.to, u, pkt: seg.pkt })
+          if (seg.from.id !== 'VICTIM') txNodes.add(seg.from)
+          else txNodes.add('VICTIM') // the first broadcast, heard all around the spot
+        } else if (local <= seg.dur + 0.5) {
+          arrivals.push({ at: seg.to, pkt: seg.pkt, key: `${seg.t0}-${seg.pkt}` })
+        }
       }
       if (seg.kind === 'respond') {
         const e = ease(u)
@@ -172,16 +179,39 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
     }
   }
 
-  const PKT = { SOS: RED, DISPATCH: '#7c3aed', ACCEPT: GREEN, ACK: TEAL }
+  const PKT = { SOS: RED, DISPATCH: '#b794f6', ACCEPT: GREEN, ACK: TEAL }
 
   return (
-    <div className={`theatre ${phase === 'setup' ? 'placing' : ''} ${fx?.shake ? 'fx-shake' : ''}`}>
+    <div className={`theatre ${phase === 'setup' ? 'placing' : ''} ${fx?.shake ? 'fx-shake' : ''} ${phase === 'done' ? 'dawn' : ''}`}>
       <div ref={boxRef} className="basemap" />
-      {fx?.rain && <div className="fx-rain" />}
+      {fx?.rain && <div className={`fx-rain ${fx.rain === 'light' ? 'light' : ''}`} />}
       <div className="fx-tint" style={{ opacity: fx?.tint ?? 0 }} />
 
       {ready && (
         <svg className="overlay">
+          <defs>
+            {/* soft neon: everything luminous on the night map goes through these */}
+            <filter id="glo" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="2.2" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <filter id="glo2" x="-120%" y="-120%" width="340%" height="340%">
+              <feGaussianBlur stdDeviation="5" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <radialGradient id="zonefill">
+              <stop offset="62%" stopColor={RED} stopOpacity="0.02" />
+              <stop offset="96%" stopColor={RED} stopOpacity="0.09" />
+              <stop offset="100%" stopColor={RED} stopOpacity="0.16" />
+            </radialGradient>
+          </defs>
+
           {/* spotlight on the victim while they open the phone */}
           {beatKey === 'phone' &&
             (() => {
@@ -195,10 +225,10 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
                     </radialGradient>
                     <mask id="spot">
                       <rect width="100%" height="100%" fill="#fff" />
-                      <circle cx={vp.x} cy={vp.y} r="130" fill="url(#spotg)" />
+                      <circle cx={vp.x} cy={vp.y} r="150" fill="url(#spotg)" />
                     </mask>
                   </defs>
-                  <rect width="100%" height="100%" fill="#04101c" opacity="0.42" mask="url(#spot)" className="fade-in" />
+                  <rect width="100%" height="100%" fill="#010409" opacity="0.55" mask="url(#spot)" className="fade-in" />
                 </>
               )
             })()}
@@ -211,28 +241,29 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
                   const p = px({ lat: la, lng: ln })
                   return `${p.x},${p.y}`
                 }).join(' ')}
-                fill="#6b4226"
-                fillOpacity="0.5"
-                stroke="#4a2e1a"
-                strokeWidth="1.4"
+                fill="#5f3e26"
+                fillOpacity="0.55"
+                stroke="#7a4f2e"
+                strokeWidth="1.6"
+                strokeOpacity="0.8"
               />
               {RUBBLE.map(([la, ln], i) => {
                 const p = px({ lat: la, lng: ln })
-                return <circle key={i} cx={p.x} cy={p.y} r={3.4 - i * 0.6} fill="#4a2e1a" className={beatKey === 'slide' ? 'rubble' : ''} style={{ animationDelay: `${i * 0.4}s` }} />
+                return <circle key={i} cx={p.x} cy={p.y} r={3.6 - i * 0.6} fill="#7a4f2e" className={beatKey === 'slide' ? 'rubble' : ''} style={{ animationDelay: `${i * 0.4}s` }} />
               })}
             </g>
           )}
 
-          {/* village lights — lit, then dying one by one in the blackout */}
+          {/* village lights — warm in the dark, then dying one by one */}
           {LIGHT_STATE[beatKey] &&
             VILLAGES.map(([la, ln], i) => {
               const p = px({ lat: la, lng: ln })
               const st = LIGHT_STATE[beatKey]
-              const delay = st === 'dying' ? { animationDelay: `${0.5 + i * 0.26}s` } : undefined
+              const delay = st === 'dying' ? { animationDelay: `${0.5 + i * 0.32}s` } : { animationDelay: `${(i % 5) * 0.7}s` }
               return (
                 <g key={i} transform={`translate(${p.x},${p.y})`} className={`vl ${st}`}>
-                  <circle r="7.5" className="vl-glow" style={delay} />
-                  <circle r="2.6" className="vl-dot" style={delay} />
+                  <circle r="10" className="vl-glow" style={delay} filter="url(#glo2)" />
+                  <circle r="2.8" className="vl-dot" style={delay} filter="url(#glo)" />
                 </g>
               )
             })}
@@ -244,15 +275,16 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               const r = kmToPx(ZONE.radiusKm)
               return (
                 <g className="fade-in">
-                  <circle cx={c.x} cy={c.y} r={r} fill={RED} fillOpacity="0.05" stroke={RED} strokeOpacity="0.55" strokeWidth="1.6" strokeDasharray="10 7" />
-                  <text x={c.x} y={c.y - r + 20} textAnchor="middle" className="svg-label danger">
+                  <circle cx={c.x} cy={c.y} r={r} fill="url(#zonefill)" />
+                  <circle className="zone-ring" cx={c.x} cy={c.y} r={r} fill="none" stroke={RED} strokeOpacity="0.75" strokeWidth="1.8" strokeDasharray="12 8" filter="url(#glo)" />
+                  <text x={c.x} y={c.y - r + 22} textAnchor="middle" className="svg-label danger">
                     DANGER ZONE · {ZONE.radiusKm} km RADIUS · NO CELL, NO INTERNET
                   </text>
                 </g>
               )
             })()}
 
-          {/* the damaged cell tower */}
+          {/* the damaged cell tower — its aviation beacon still blinks */}
           {showTower &&
             (() => {
               const p = px(TOWER)
@@ -266,7 +298,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
                         <path
                           key={i}
                           d={`M ${-r} -18 a ${r} ${r} 0 0 1 ${r * 2} 0`}
-                          stroke="#5fb3d9"
+                          stroke={TEAL}
                           strokeWidth="2"
                           fill="none"
                           className="sig-die"
@@ -274,7 +306,8 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
                         />
                       )
                     })}
-                  <path d="M -7 12 L 0 -14 L 7 12 M -4.5 3 h9 M -3 -5 h6" stroke="#5b6b78" strokeWidth="1.6" fill="none" />
+                  <path d="M -7 12 L 0 -14 L 7 12 M -4.5 3 h9 M -3 -5 h6" stroke="#6c8093" strokeWidth="1.6" fill="none" />
+                  <circle cy="-16" r="1.8" fill={RED} className="beacon-red" filter="url(#glo)" />
                   <g className={dying ? 'x-in' : ''}>
                     <line x1="-7" y1="-16" x2="7" y2="-2" stroke={RED} strokeWidth="2.6" strokeLinecap="round" />
                     <line x1="7" y1="-16" x2="-7" y2="-2" stroke={RED} strokeWidth="2.6" strokeLinecap="round" />
@@ -290,8 +323,8 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               const p = px(DANGER_SPOT)
               return (
                 <g transform={`translate(${p.x},${p.y})`} className="fade-in">
-                  <circle r="14" fill="none" stroke={RED} strokeWidth="1.2" strokeDasharray="3 4" opacity="0.7" />
-                  <path d="M 0 -8 L 7.5 6 L -7.5 6 Z" fill="#fbe9e7" stroke={RED} strokeWidth="1.6" />
+                  <circle r="14" fill="none" stroke={RED} strokeWidth="1.2" strokeDasharray="3 4" opacity="0.8" />
+                  <path d="M 0 -8 L 7.5 6 L -7.5 6 Z" fill="#2a0f0c" stroke={RED} strokeWidth="1.6" filter="url(#glo)" />
                   <text y="3.5" textAnchor="middle" fontSize="9" fontWeight="700" fill={RED}>!</text>
                   <text y="24" textAnchor="middle" className="svg-label danger">DANGER SPOT</text>
                   {phase === 'setup' && <text y="35" textAnchor="middle" className="svg-label dim">SOS originates here</text>}
@@ -305,7 +338,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               const a = px(alertLine.via)
               const r = px(rangerPos[alertLine.rid])
               return (
-                <line x1={a.x} y1={a.y} x2={r.x} y2={r.y} stroke={alertLine.accepted ? GREEN : '#e04f16'} strokeWidth="1.6" strokeDasharray="6 5" opacity="0.85">
+                <line x1={a.x} y1={a.y} x2={r.x} y2={r.y} stroke={alertLine.accepted ? GREEN : '#ff7849'} strokeWidth="1.7" strokeDasharray="6 5" opacity="0.9" filter="url(#glo)">
                   {!alertLine.accepted && <animate attributeName="stroke-dashoffset" values="22;0" dur="0.7s" repeatCount="indefinite" />}
                 </line>
               )
@@ -315,32 +348,31 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               the run there are no wires on the map, only travelling signals */}
           {phase === 'setup' &&
             links.map((l) => {
-            const a = px(l.a)
-            const b = px(l.b)
-            const onPath =
-              path &&
-              path.some((p, k) => k < path.length - 1 && ((path[k] === l.a && path[k + 1] === l.b) || (path[k] === l.b && path[k + 1] === l.a)))
-            return (
-              <line
-                key={`${l.a.lng},${l.a.lat}-${l.b.lng},${l.b.lat}`}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke={onPath ? AMBER : GREY}
-                strokeWidth={onPath ? 2 : 1}
-                strokeOpacity={onPath ? 0.75 : 0.35}
-                strokeDasharray={onPath ? '0' : '4 5'}
-                className={!onPath && beatKey === 'mesh' ? 'link-march' : ''}
-              />
-            )
-          })}
+              const a = px(l.a)
+              const b = px(l.b)
+              const onPath =
+                path &&
+                path.some((p, k) => k < path.length - 1 && ((path[k] === l.a && path[k + 1] === l.b) || (path[k] === l.b && path[k + 1] === l.a)))
+              return (
+                <line
+                  key={`${l.a.lng},${l.a.lat}-${l.b.lng},${l.b.lat}`}
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                  stroke={onPath ? AMBER : GREY}
+                  strokeWidth={onPath ? 2 : 1}
+                  strokeOpacity={onPath ? 0.85 : 0.4}
+                  strokeDasharray={onPath ? '0' : '4 5'}
+                />
+              )
+            })}
 
           {/* LoRa range rings while placing */}
           {phase === 'setup' &&
             nodes.map((n, i) => {
               const p = px(n)
-              return <circle key={`rg${i}`} cx={p.x} cy={p.y} r={kmToPx(RANGE_KM)} fill={AMBER} fillOpacity="0.03" stroke={AMBER} strokeOpacity="0.25" strokeWidth="1" strokeDasharray="2 5" />
+              return <circle key={`rg${i}`} cx={p.x} cy={p.y} r={kmToPx(RANGE_KM)} fill={AMBER} fillOpacity="0.025" stroke={AMBER} strokeOpacity="0.28" strokeWidth="1" strokeDasharray="2 5" />
             })}
 
           {/* LoRa modules — each pops in with a bounce and a wake-up ring */}
@@ -352,15 +384,15 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
                 {tx &&
                   [0, 1, 2].map((k) => {
                     const t = ((clock * 0.8) + k / 3) % 1
-                    return <circle key={k} r={10 + t * (kmToPx(RANGE_KM) - 10)} fill="none" stroke={AMBER} strokeWidth="1.3" opacity={0.5 * (1 - t)} />
+                    return <circle key={k} r={10 + t * (kmToPx(RANGE_KM) - 10)} fill="none" stroke={AMBER} strokeWidth="1.4" opacity={0.55 * (1 - t)} />
                   })}
                 <g className="pop-in">
-                  <circle r="9" fill="none" stroke="#37c978" strokeWidth="1.4">
+                  <circle r="9" fill="none" stroke={GREEN} strokeWidth="1.4">
                     <animate attributeName="r" values="9;34" dur="1.4s" repeatCount="1" fill="freeze" />
                     <animate attributeName="opacity" values="0.8;0" dur="1.4s" repeatCount="1" fill="freeze" />
                   </circle>
-                  <path d="M -9 8 L 0 -10 L 9 8 Z" fill="#fdf1e0" stroke={AMBER} strokeWidth="1.6" />
-                  <circle r="2" cy="-10" fill={AMBER} />
+                  <path d="M -9 8 L 0 -10 L 9 8 Z" fill="#221607" stroke={AMBER} strokeWidth="1.7" filter="url(#glo)" />
+                  <circle r="2" cy="-10" fill={AMBER} filter="url(#glo)" />
                 </g>
                 <text y="22" textAnchor="middle" className="svg-label bright">LORA‑{i + 1}</text>
               </g>
@@ -373,9 +405,9 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
             const got = run && clock >= run.outpostAt
             return (
               <g transform={`translate(${p.x},${p.y})`}>
-                {got && <circle r="20" fill={GREEN} fillOpacity="0.15" />}
-                <rect x="-11" y="-10" width="22" height="20" rx="4" fill={got ? '#e5f4ec' : '#fff'} stroke={got ? GREEN : TEAL} strokeWidth="1.8" />
-                <path d="M -5 -1 h10 M -5 4 h7 M -5 -6 h9" stroke={got ? GREEN : TEAL} strokeWidth="1.3" opacity="0.8" />
+                {got && <circle r="22" fill={GREEN} fillOpacity="0.18" filter="url(#glo2)" />}
+                <rect x="-11" y="-10" width="22" height="20" rx="4" fill="#0c141d" stroke={got ? GREEN : TEAL} strokeWidth="1.8" filter="url(#glo)" />
+                <path d="M -5 -1 h10 M -5 4 h7 M -5 -6 h9" stroke={got ? GREEN : TEAL} strokeWidth="1.3" opacity="0.9" />
                 <text y="26" textAnchor="middle" className="svg-label bright">{OUTPOST.label}</text>
                 <text y="37" textAnchor="middle" className="svg-label dim">{got ? 'SOS RECEIVED' : 'outside the zone'}</text>
               </g>
@@ -391,15 +423,15 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
                 <g transform={`translate(${p.x},${p.y})`} className="fade-in">
                   {/* the moment of the tap: one big shockwave */}
                   {run && clock < 2.4 && (
-                    <circle r="8" fill="none" stroke={RED} strokeWidth="2.4">
-                      <animate attributeName="r" values="8;90" dur="2.2s" repeatCount="1" fill="freeze" />
+                    <circle r="8" fill="none" stroke={RED} strokeWidth="2.4" filter="url(#glo)">
+                      <animate attributeName="r" values="8;110" dur="2.2s" repeatCount="1" fill="freeze" />
                       <animate attributeName="opacity" values="0.9;0" dur="2.2s" repeatCount="1" fill="freeze" />
                     </circle>
                   )}
                   {bc &&
                     [0, 1, 2].map((k) => {
                       const t = (clock * 0.8 + k / 3) % 1
-                      return <circle key={k} r={10 + t * (kmToPx(RANGE_KM) - 10)} fill="none" stroke={RED} strokeWidth="1.2" opacity={0.4 * (1 - t)} />
+                      return <circle key={k} r={10 + t * (kmToPx(RANGE_KM) - 10)} fill="none" stroke={RED} strokeWidth="1.3" opacity={0.45 * (1 - t)} />
                     })}
                   {!victimAcked && (
                     <circle r="8" fill="none" stroke={RED} strokeWidth="1">
@@ -428,29 +460,36 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
             const tasking = isTasked && taskState === 'alerting'
             const accepted = isTasked && taskState === 'accepted'
             const heard = overheardNow.has(r.id)
-            const c = accepted ? GREEN : tasking ? '#e04f16' : GREEN
+            const c = accepted ? GREEN : tasking ? '#ff7849' : GREEN
             return (
               <g key={r.id}>
                 {/* the walked trail, home -> here */}
-                {moved && <line x1={home.x} y1={home.y} x2={p.x} y2={p.y} stroke={c} strokeWidth="1.6" strokeDasharray="3 5" opacity="0.55" />}
+                {moved && <line x1={home.x} y1={home.y} x2={p.x} y2={p.y} stroke={c} strokeWidth="1.6" strokeDasharray="3 5" opacity="0.6" />}
                 <g transform={`translate(${p.x},${p.y})`}>
-                {tasking && (
-                  <circle r="13" fill="none" stroke={c} strokeWidth="1.5">
-                    <animate attributeName="r" values="8;18;8" dur="1s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.8;0;0.8" dur="1s" repeatCount="indefinite" />
-                  </circle>
-                )}
-                {accepted && <circle r="12" fill={GREEN} fillOpacity="0.14" />}
-                <Person c={c} />
-                <text y="-16" textAnchor="middle" className="svg-label" fill={c}>
-                  {r.label}
-                </text>
+                  {tasking && (
+                    <circle r="13" fill="none" stroke={c} strokeWidth="1.5">
+                      <animate attributeName="r" values="8;18;8" dur="1s" repeatCount="indefinite" />
+                      <animate attributeName="opacity" values="0.8;0;0.8" dur="1s" repeatCount="indefinite" />
+                    </circle>
+                  )}
+                  {accepted && <circle r="12" fill={GREEN} fillOpacity="0.16" filter="url(#glo2)" />}
+                  <Person c={c} />
+                  <text y="-16" textAnchor="middle" className="svg-label" fill={c}>
+                    {r.label}
+                  </text>
                   {tasking && <text y="20" textAnchor="middle" className="svg-label danger">TASKED — accepting…</text>}
                   {accepted && <text y="20" textAnchor="middle" className="svg-label" fill={GREEN}>✓ ACCEPTED · responding</text>}
                   {!tasking && !accepted && heard && <text y="20" textAnchor="middle" className="svg-label dim">overheard SOS · monitoring</text>}
                 </g>
               </g>
             )
+          })}
+
+          {/* the hop landing: a burst of light on the receiving node */}
+          {arrivals.map((a) => {
+            const p = px(a.at)
+            const c = PKT[a.pkt] ?? RED
+            return <circle key={a.key} className="burst" cx={p.x} cy={p.y} r="14" fill="none" stroke={c} strokeWidth="2.4" filter="url(#glo)" />
           })}
 
           {/* packets in flight — SOS up, DISPATCH/ACK down, ACCEPT back up */}
@@ -463,14 +502,14 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
             return (
               <g key={i}>
                 {/* a comet trail behind the packet */}
-                {[0.05, 0.1, 0.16].map((d, k) => {
+                {[0.045, 0.09, 0.14, 0.2, 0.27].map((d, k) => {
                   const g = at(Math.max(0, pk.u - d))
-                  return <circle key={k} cx={g.x} cy={g.y} r={2.6 - k * 0.7} fill={c} opacity={0.34 - k * 0.1} />
+                  return <circle key={k} cx={g.x} cy={g.y} r={3.1 - k * 0.55} fill={c} opacity={0.4 - k * 0.07} />
                 })}
                 <g transform={`translate(${x},${y})`}>
-                  <circle r="9" fill={c} opacity="0.15" />
-                  <circle r="3.6" fill={c} stroke="#fff" strokeWidth="0.9" />
-                  <text y="-9" textAnchor="middle" className="svg-label" fill={c}>{pk.pkt}</text>
+                  <circle r="11" fill={c} opacity="0.16" filter="url(#glo2)" />
+                  <circle r="4" fill={c} stroke="#fff" strokeWidth="1" filter="url(#glo)" />
+                  <text y="-11" textAnchor="middle" className="svg-label" fill={c}>{pk.pkt}</text>
                 </g>
               </g>
             )

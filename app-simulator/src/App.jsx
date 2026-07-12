@@ -79,12 +79,30 @@ export default function App() {
     return () => clearTimeout(t)
   }, [story])
 
-  // the camera dives into each beat: the sliding rock, the dead tower, the
-  // waking mesh, the victim. Safe now — the overlay re-projects on every move.
+  // the camera lives inside each beat: pitched, rotated, always drifting.
+  // When the hero panel covers the left of frame, padding pushes the subject
+  // into the clear right half; the phone beat clears space on the right instead.
   useEffect(() => {
     if (!story.on || !mapReady) return
     const b = BEATS[story.beat]
-    if (b?.cam) mapApi.current?.easeTo({ center: b.cam.center, zoom: b.cam.zoom, duration: 1800 })
+    if (!b?.cam) return
+    const m = mapApi.current
+    const w = m.getContainer().clientWidth
+    m.easeTo({
+      center: b.cam.center,
+      zoom: b.cam.zoom,
+      pitch: b.cam.pitch ?? 0,
+      bearing: b.cam.bearing ?? 0,
+      padding: {
+        left: b.scene === 'hero' ? Math.round(w * 0.5) : 0,
+        right: b.phone ? Math.round(w * 0.26) : 0,
+        top: 0,
+        bottom: 56,
+      },
+      duration: b.dur ? b.dur * 1000 - 500 : 2800,
+      easing: (t) => t, // a slow continuous drift — the shot never "arrives"
+      essential: true,
+    })
   }, [story, mapReady])
 
   // the tower stays broken and the scar stays scarred once the story shows them
@@ -124,7 +142,8 @@ export default function App() {
   }, [phase, run, clock])
 
   // the follow shot: every frame, glide the camera toward whatever carries the
-  // story right now — the signal, the camp, the ranger, the victim
+  // story right now — the signal, the camp, the ranger, the victim. The story
+  // hands over a pitched, rotated camera; this shot gently levels it out.
   const camPos = useRef(null)
   useEffect(() => {
     if (phase !== 'run' || !run || !mapReady) return
@@ -133,17 +152,26 @@ export default function App() {
     const t = followTarget(run, clock)
     if (!camPos.current) {
       const c = m.getCenter()
-      camPos.current = { lat: c.lat, lng: c.lng, zoom: m.getZoom() }
+      camPos.current = { lat: c.lat, lng: c.lng, zoom: m.getZoom(), pitch: m.getPitch(), bearing: m.getBearing() }
     }
     const p = camPos.current
     // tight tracking: at this zoom the dot must stay in the frame
     p.lat += (t.lat - p.lat) * 0.11
     p.lng += (t.lng - p.lng) * 0.11
     p.zoom += (t.zoom - p.zoom) * 0.06
-    m.jumpTo({ center: [p.lng, p.lat], zoom: p.zoom })
+    p.pitch += (34 - p.pitch) * 0.03
+    p.bearing += (0 - p.bearing) * 0.03
+    m.jumpTo({ center: [p.lng, p.lat], zoom: p.zoom, pitch: p.pitch, bearing: p.bearing })
   }, [clock, phase, run, mapReady])
 
   // ---- actions --------------------------------------------------------------
+  const flattenCamera = () => {
+    const m = mapApi.current
+    if (!m) return
+    m.setPadding({ left: 0, right: 0, top: 0, bottom: 0 })
+    m.fitBounds(WIDE, { padding: 24, duration: 1400, pitch: 0, bearing: 0 })
+  }
+
   const place = useCallback((p) => {
     if (storyRef.current.on) return // the story owns the map until it ends
     if (!inZone(p)) {
@@ -154,14 +182,41 @@ export default function App() {
     setNodes((ns) => (ns.length >= MAX_NODES ? ns : [...ns, p]))
   }, [])
 
+  // The SOS tap must NEVER dead-end: if the placed mesh can't route (or the
+  // wake-up animation was cut short), fall back to the full auto layout.
   const start = useCallback(() => {
-    const t = buildTimeline(layoutRef.current && !nodes.length ? layoutRef.current : nodes)
+    let pool = nodes.length ? nodes : (layoutRef.current ??= autoLayout())
+    let t = buildTimeline(pool)
+    if (!t) {
+      pool = layoutRef.current ?? autoLayout()
+      t = buildTimeline(pool)
+    }
+    if (!t) {
+      pool = autoLayout()
+      t = buildTimeline(pool)
+    }
     if (!t) return
+    if (pool !== nodes) setNodes(pool)
+    mapApi.current?.setPadding({ left: 0, right: 0, top: 0, bottom: 0 })
     camPos.current = null
     setRun(t)
     setClock(0)
     setPhase('run')
   }, [nodes])
+
+  // jumping between chapters must keep the timeline honest: what a beat has
+  // not yet shown cannot already be on the map, and what it has shown must be
+  const jumpTo = (k) => {
+    const meshIdx = BEATS.findIndex((b) => b.mesh)
+    setTowerDown(BEATS.slice(0, k + 1).some((b) => b.tower))
+    setScarSeen(BEATS.slice(0, k + 1).some((b) => b.scar))
+    if (k < meshIdx) setNodes([])
+    else if (k > meshIdx) {
+      layoutRef.current ??= autoLayout()
+      setNodes(layoutRef.current)
+    }
+    setStory((s) => ({ ...s, beat: k }))
+  }
 
   const skipStory = () => {
     layoutRef.current ??= autoLayout()
@@ -169,7 +224,7 @@ export default function App() {
     setTowerDown(true)
     setScarSeen(true)
     setStory({ on: false, beat: 0 })
-    mapApi.current?.fitBounds(WIDE, { padding: 24, duration: 1200 })
+    flattenCamera()
   }
 
   const onSos = () => {
@@ -194,13 +249,13 @@ export default function App() {
     setClock(0)
     setPhase('setup')
     camPos.current = null
-    mapApi.current?.fitBounds(WIDE, { padding: 24, duration: 1200 })
+    flattenCamera()
   }
 
   const events = run ? run.events.filter((e) => e.t <= clock).slice(-6) : []
 
   return (
-    <div className="app">
+    <div className={`app ${inStory ? 'cinema' : ''}`}>
       <header className="masthead">
         <div className="brand">
           <span className="beacon" />
@@ -211,30 +266,29 @@ export default function App() {
         </div>
 
         <div className="clock">
-          <b>{story.on ? BEATS[story.beat].hour.split('·')[0].trim() : phase === 'setup' ? '—' : `T+${clock.toFixed(1)}s`}</b>
-          <span>{story.on ? 'the night of the disaster' : phase === 'setup' ? 'placing modules' : phase === 'run' ? 'live' : 'complete'}</span>
+          <b>{phase === 'setup' ? '—' : `T+${clock.toFixed(1)}s`}</b>
+          <span>{phase === 'setup' ? 'placing modules' : phase === 'run' ? 'live' : 'complete'}</span>
         </div>
 
         <div className="controls">
           <button className="ghost" onClick={replayStory} title="Replay the story">
             ✦ Story
           </button>
-          {!story.on &&
-            (phase === 'setup' ? (
-              <>
-                <button className="ghost" onClick={() => { setNodes(autoLayout()); setHint('') }}>
-                  Auto‑place
-                </button>
-                <button className="ghost" onClick={() => { setNodes([]); setHint('') }} disabled={!nodes.length}>
-                  Clear
-                </button>
-                <button className="primary" onClick={start} disabled={!canStart}>
-                  ▶ Simulate
-                </button>
-              </>
-            ) : (
-              <button className="primary" onClick={reset}>↺ Reset</button>
-            ))}
+          {phase === 'setup' ? (
+            <>
+              <button className="ghost" onClick={() => { setNodes(autoLayout()); setHint('') }}>
+                Auto‑place
+              </button>
+              <button className="ghost" onClick={() => { setNodes([]); setHint('') }} disabled={!nodes.length}>
+                Clear
+              </button>
+              <button className="primary" onClick={start} disabled={!canStart}>
+                ▶ Simulate
+              </button>
+            </>
+          ) : (
+            <button className="primary" onClick={reset}>↺ Reset</button>
+          )}
         </div>
       </header>
 
@@ -265,7 +319,7 @@ export default function App() {
             beats={BEATS}
             beat={story.beat}
             onNext={() => setStory((s) => ({ ...s, beat: Math.min(s.beat + 1, BEATS.length - 1) }))}
-            onJump={(k) => setStory((s) => ({ ...s, beat: k }))}
+            onJump={jumpTo}
             onSkip={skipStory}
             onSos={onSos}
           />
@@ -291,7 +345,7 @@ export default function App() {
         )}
 
         {/* what the safe camp does with the SOS: transcribe -> triage -> supplies */}
-        {run && clock >= run.triage.t && (
+        {run && clock >= run.triage.t && phase !== 'done' && (
           <div className="triage-card">
             <div className="tr-head">
               <Lottie data={aiRobot} className="tr-lottie" />
@@ -310,7 +364,7 @@ export default function App() {
           </div>
         )}
 
-        {events.length > 0 && (
+        {events.length > 0 && phase !== 'done' && (
           <div className="events">
             {events.map((e, i) => (
               <div key={`${e.t}-${i}`} className={`ev ${e.tone ?? ''}`}>
