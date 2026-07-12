@@ -270,6 +270,15 @@ class MeshNode:
     def add_link(self, link: Link) -> None:
         self.links.append(link)
 
+    def remove_link(self, link: Link) -> None:
+        """Stop forwarding to a link (a phone whose role moved to the other radio/board).
+        An in-flight send to it fails soft: a detached BleLink just queues the frame to
+        its replay ring, which is discarded along with the link object."""
+        try:
+            self.links.remove(link)
+        except ValueError:
+            pass
+
     # ---- bounded two-lane RX intake (D1 + MJ1/MJ2) ----
     def start_intake(self, loop: "asyncio.AbstractEventLoop",
                      stop: asyncio.Event) -> asyncio.Task:

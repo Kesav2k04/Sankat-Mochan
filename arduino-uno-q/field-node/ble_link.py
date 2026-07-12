@@ -43,6 +43,12 @@ GATT_OP_TIMEOUT_S = 10.0
 # two; this ceiling only bites on a phone that is genuinely gone.
 CONNECT_TIMEOUT_S = 10.0
 
+# Below this, a scan entry is a BlueZ cache ghost, not a phone we can hear. BlueZ
+# reports devices it merely REMEMBERS alongside ones that are advertising right now,
+# and stamps -127 dBm on an entry with no fresh reading. No real BLE link demodulates
+# below about -100 dBm, so anything under this floor cannot be connected to anyway.
+STALE_RSSI_DBM = -110
+
 # The app's scan-response beacon: one role byte, then the node id in ASCII.
 # Must stay in step with MeshRole's ordinals in BleMeshService.kt.
 ROLE_NAMES = {0: "victim", 1: "responder", 2: "relay"}
@@ -282,6 +288,54 @@ class BleManager:
         # Every adapter-owning operation (scan, connect handshake) takes this lock;
         # an established connection does not hold it.
         self._adapter_lock = asyncio.Lock()
+        self._by_link: Dict[BleLink, asyncio.Task] = {}
+
+    async def _purge_bluez_cache(self) -> None:
+        """Make BlueZ forget every device it merely remembers (Connected=False).
+
+        BlueZ's device cache outlives Android's MAC rotation by design, so a scan
+        returns ghosts next to live phones: old addresses, old RSSI readings, and —
+        worst — the OLD ROLE BEACON of a phone whose operator has since switched roles.
+        A ghost that outranks the live entry sends a responder to the wrong radio or to
+        a dead address (the -127 dBm entries), and whether the ghost or the live entry
+        wins a given scan is timing luck — which is exactly why delivery came and went.
+        Purging remembered-but-unconnected devices right before the scan makes every
+        result a phone the adapter can hear NOW. Best-effort: on any D-Bus hiccup we
+        log and scan with the cache as-is. Runs under the adapter lock (caller holds it).
+        Talks straight to BlueZ over D-Bus via dbus_fast, which bleak itself depends on.
+        """
+        try:
+            from dbus_fast import BusType, Message, MessageType
+            from dbus_fast.aio import MessageBus
+        except ImportError:          # non-BlueZ platform: no cache to purge
+            return
+        bus = None
+        removed = 0
+        try:
+            bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+            reply = await bus.call(Message(
+                destination="org.bluez", path="/",
+                interface="org.freedesktop.DBus.ObjectManager",
+                member="GetManagedObjects"))
+            for path, ifaces in reply.body[0].items():
+                dev = ifaces.get("org.bluez.Device1")
+                if dev is None or dev["Connected"].value:
+                    continue         # never touch a live link's device
+                res = await bus.call(Message(
+                    destination="org.bluez", path=dev["Adapter"].value,
+                    interface="org.bluez.Adapter1", member="RemoveDevice",
+                    signature="o", body=[path]))
+                if res.message_type != MessageType.ERROR:
+                    removed += 1
+        except Exception as e:
+            self._log.debug("could not clear the Bluetooth cache (%s: %s) — scanning "
+                            "with it as-is", type(e).__name__, e)
+        finally:
+            if bus is not None:
+                bus.disconnect()
+        if removed:
+            self._log.info("cleared %d remembered-but-silent device(s) from the Bluetooth "
+                           "cache, so this scan only reports phones it can hear", removed)
 
     async def discover(self) -> tuple:
         """Scan once. Returns (phones, stale_addresses).
@@ -302,12 +356,21 @@ class BleManager:
         timeout = float(self._cfg["scan_timeout_s"])
         self._log.info("looking for phones running the mesh app (%.0f second scan)...", timeout)
         async with self._adapter_lock:
+            await self._purge_bluez_cache()
             found = await BleakScanner.discover(timeout=timeout, service_uuids=[svc],
                                                 return_adv=True)
 
         phones: List[MeshPhone] = []
         stale: List[str] = []
         for device, adv in found.values():
+            if adv.rssi is None or adv.rssi <= STALE_RSSI_DBM:
+                # A cache ghost that survived the purge (e.g. it reappeared between the
+                # purge and the scan). Its address, beacon and ROLE are all historical —
+                # routing a phone by a ghost beacon is what sent responders to the wrong
+                # radio, or to a dead address, and made delivery a coin toss.
+                self._log.info("  ignoring %s — remembered by Bluetooth but not heard now "
+                               "(no live signal)", device.address)
+                continue
             advertised = {u.lower() for u in (adv.service_uuids or ())}
             if svc not in advertised:
                 self._log.info("  ignoring %s — it is not advertising the mesh app", device.address)
@@ -384,7 +447,26 @@ class BleManager:
             self._keep_connected(link, on_bytes, on_state), name=f"ble-{link.address}"
         )
         self._tasks.append(task)
+        self._by_link[link] = task
         return task
+
+    async def release(self, link: BleLink) -> None:
+        """Stop maintaining one link (its phone switched roles and belongs to another
+        radio now). Cancels the reconnect loop, which disconnects any live client on
+        its way out; the caller unhooks the link from its MeshNode."""
+        task = self._by_link.pop(link, None)
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        try:
+            self._tasks.remove(task)
+        except ValueError:
+            pass
+        link.detach()
 
     async def _keep_connected(self, link: BleLink, on_bytes, on_state=None) -> None:
         backoff = list(self._cfg["reconnect_backoff_s"]) or [5]
@@ -448,6 +530,12 @@ class BleManager:
             except Exception as e:
                 self._log.warning("[%s] Bluetooth trouble with %s: %s: %s",
                                   link._node, link.address, type(e).__name__, e)
+                if "not found" in str(e).lower():
+                    # The address is gone (Android rotated it, or the cache purge swept
+                    # it). Redialling faster won't bring it back — only the next scan's
+                    # retarget will. Go straight to the slowest backoff rung so this
+                    # loop stops hammering the adapter in the meantime.
+                    attempt = max(attempt, len(backoff) - 1)
             finally:
                 if announced and on_state is not None:
                     on_state(False)
