@@ -220,7 +220,8 @@ def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog,
         logger.info("ignoring phone %s — its role belongs to the '%s' node, which runs on "
                     "the other board", phone.describe(), name)
         return None
-    bl = ble_link.BleLink(phone.address, cfg["ble"]["char_uuid"], logger, chain, name)
+    bl = ble_link.BleLink(phone.address, cfg["ble"]["char_uuid"], logger, chain, name,
+                          device=phone.device)
     nodes[name].add_link(bl)
     node = nodes[name]
     on_state = None
@@ -268,7 +269,7 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
             for phone in roster[name]:
                 existing = attached.get(phone.node_id)
                 if existing is not None:
-                    existing.retarget(phone.address)   # follow a rotated Bluetooth address
+                    existing.retarget(phone.address, phone.device)  # follow a rotated address
                     continue
                 bl = attach_phone(phone, manager, nodes, cfg, logger, chain, edge)
                 if bl is None:
