@@ -19,7 +19,7 @@
     "spreading_factor": 7,
     "bandwidth_hz": 125000,
     "coding_rate": 5,
-    "tx_power_dbm": 5,
+    "tx_power_dbm": 17,
     "sync_word": 18,
     "preamble_len": 8,
     "crc": true,
