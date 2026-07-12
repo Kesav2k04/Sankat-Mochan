@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
+import intelligence
 import stt
 import triage
 from database import database
@@ -230,6 +231,20 @@ async def _ingest(envelope: dict[str, Any], audio_url: str | None = None) -> boo
     if envelope["id"] in _seen_ids:
         return False  # transport re-broadcast dedup
     _seen_ids.add(envelope["id"])
+
+    if envelope.get("gist", "").startswith(intelligence.TAGS_PREFIX):
+        # Sahayak agent follow-up: machine-authored structured tags. MUST bypass
+        # LLM triage — triage would re-label category before dedup and the
+        # follow-up would coin-flip into a duplicate incident (and the raw
+        # 'TAGS …' string would become a headline). parse_tags is the enum
+        # whitelist gate for this untrusted mesh input (rule #8).
+        tags = intelligence.parse_tags(envelope["gist"])
+        if tags is None:
+            print(f"[ingest] dropped malformed TAGS gist from {envelope['origin']}")
+            return False
+        store.merge_tags_update(envelope, tags)
+        await _broadcast_snapshot()
+        return True
 
     if envelope.get("category") == "sensor":
         # C7: sensor envelopes skip the LLM — readings aren't language
@@ -532,7 +547,16 @@ async def accept(incident_id: str, responder: str | None = None) -> JSONResponse
     if not ok:
         return JSONResponse({"status": reason}, status_code=409)
     # Return path: push "help is on the way" back down the gateway to the victim(s).
-    await _dispatch_to_victims(incident_id)
+    # When both incident and responder have coords, embed a real ETA so the
+    # on-phone agent can reassure with facts. No coords → no ETA is ever invented.
+    gist = "Help is on the way"
+    inc = store.incidents.get(incident_id)
+    r = store.responders.get((inc or {}).get("assigned_to") or "")
+    if inc and r and inc.get("lat") is not None and r.get("lat") is not None:
+        dist = intelligence.haversine_km(inc["lat"], inc["lng"], r["lat"], r["lng"])
+        eta_min = int(dist / intelligence.RESPONDER_SPEED_KMH * 60) + 1
+        gist = f"Help is on the way · ETA ~{eta_min} min"
+    await _dispatch_to_victims(incident_id, gist)
     return JSONResponse({"status": "ok"})
 
 

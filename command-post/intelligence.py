@@ -39,6 +39,90 @@ except ValueError:
 
 ACTIVE_STATES = {"new", "triaged", "awaiting responder", "proposed", "assigned", "en route", "on-scene"}
 
+# ---- Sahayak agent TAGS (victim-conversation follow-ups) -------------------
+# Wire format (ASCII, rides the normal SOS gist field, ≤244B trivially):
+#   "TAGS c:3 inj:bleed trap:y hz:water mob:n unresp:y lm:old temple gate"
+# Every value is an enum/small int validated HERE (untrusted mesh input, rule #8)
+# and again implicitly by the phone before send. `lm` (landmark) is the only
+# free-text value: it must be LAST, is length-capped, and is only ever rendered
+# as plain text (rule #9). Unknown keys are dropped, never stored.
+TAGS_PREFIX = "TAGS "
+TAG_ENUMS: dict[str, set[str]] = {
+    "inj": {"none", "bleed", "fracture", "burn", "breath", "uncon", "other"},
+    "hz": {"none", "water", "fire", "collapse", "gas", "electric"},
+    "trap": {"y", "n"},
+    "mob": {"y", "n"},
+    "unresp": {"y"},
+}
+TAG_COUNT_MAX = 99
+TAG_LM_MAX = 48
+
+_TAG_LABELS = {  # chip/humanized text — key: (label, value formatter)
+    "inj": {"bleed": "bleeding", "fracture": "fracture", "burn": "burns",
+            "breath": "breathing difficulty", "uncon": "unconscious", "other": "injured"},
+    "hz": {"water": "rising water", "fire": "fire", "collapse": "collapse risk",
+           "gas": "gas leak", "electric": "electrical hazard"},
+}
+
+
+def parse_tags(gist: str) -> dict[str, Any] | None:
+    """Parse+validate a 'TAGS …' gist into a tag dict. Returns None when the
+    payload isn't valid TAGS (caller falls back to normal handling). Only
+    whitelisted keys with in-range values survive — everything else is dropped."""
+    if not gist.startswith(TAGS_PREFIX):
+        return None
+    body = gist[len(TAGS_PREFIX):].strip()
+    if not body:
+        return None
+    tags: dict[str, Any] = {}
+    rest = body
+    while rest:
+        key, sep, after = rest.partition(":")
+        key = key.strip().lower()
+        if not sep or not key.isalpha():
+            # A malformed TAIL (e.g. the phone's 244B gist-trim cut mid-pair) must not
+            # discard the valid pairs before it; a malformed HEAD means not-TAGS at all.
+            if tags:
+                break
+            return None
+        if key == "lm":  # landmark consumes the remainder (free text, capped)
+            lm = after.strip()[:TAG_LM_MAX]
+            if lm:
+                tags["lm"] = lm
+            break
+        value, _, rest = after.partition(" ")
+        value = value.strip().lower()
+        rest = rest.strip()
+        if key == "c":
+            if not value.isdigit() or not (1 <= int(value) <= TAG_COUNT_MAX):
+                continue  # bad count: drop the pair, keep the rest
+            tags["c"] = int(value)
+        elif key in TAG_ENUMS:
+            if value in TAG_ENUMS[key]:
+                tags[key] = value
+        # unknown key: dropped silently (untrusted input, no error surface)
+    return tags or None
+
+
+def humanize_tags(tags: dict[str, Any]) -> str:
+    """Plain-text one-liner for headlines/audit-log — never raw wire format."""
+    parts: list[str] = []
+    if tags.get("c"):
+        parts.append(f"{tags['c']} people" if tags["c"] > 1 else "1 person")
+    if tags.get("inj") and tags["inj"] != "none":
+        parts.append(_TAG_LABELS["inj"][tags["inj"]])
+    if tags.get("trap") == "y":
+        parts.append("trapped")
+    if tags.get("hz") and tags["hz"] != "none":
+        parts.append(_TAG_LABELS["hz"][tags["hz"]])
+    if tags.get("mob") == "n":
+        parts.append("cannot move")
+    if tags.get("unresp") == "y":
+        parts.append("UNRESPONSIVE")
+    if tags.get("lm"):
+        parts.append(f"near {tags['lm']}")
+    return " · ".join(parts) or "situation update"
+
 
 def _now() -> float:
     return time.time()
@@ -232,6 +316,63 @@ class Store:
                 return inc
         return None
 
+    # ---- Sahayak agent TAGS merge --------------------------------------
+    def merge_tags_update(self, env: dict[str, Any], tags: dict[str, Any]) -> dict[str, Any] | None:
+        """A validated TAGS follow-up from the victim's on-phone agent. Bypasses
+        LLM triage entirely (structured, machine-authored, already validated).
+
+        Merge is by ORIGIN + window only — category is deliberately ignored,
+        because the phone's agent reuses the original SOS category while LLM
+        triage may have re-labelled the incident's earlier reports. The raw
+        'TAGS …' wire string must never become gist/english/headline.
+
+        received_at is refreshed on merge so a long conversation + check-in
+        timeline (>10 min) keeps the window alive and the unresp escalation
+        still lands on the SAME incident."""
+        anchor: dict[str, Any] | None = None
+        for other in self.reports.values():
+            if (other["origin"] == env["origin"] and not other["is_sensor"]
+                    and abs(_now() - other["received_at"]) < DEDUP_WINDOW_S):
+                inc = self._incident_of(other["id"])
+                if inc is None or inc["status"] not in ACTIVE_STATES:
+                    continue
+                if anchor is None or other["received_at"] > anchor["received_at"]:
+                    anchor = other
+        summary = humanize_tags(tags)
+        if anchor is not None:
+            inc = self._incident_of(anchor["id"])
+            merged = dict(anchor.get("tags") or {})
+            merged.update(tags)
+            anchor["tags"] = merged
+            if not anchor["gist"]:
+                # The victim sent no words of their own — the humanized agent
+                # summary beats the "no text details received" placeholder.
+                # Never touches a report that carries real victim text.
+                anchor["english"] = humanize_tags(merged)
+            anchor["urgency"] = max(anchor["urgency"], env.get("urgency", 1))
+            anchor["received_at"] = _now()  # keep the merge window alive
+            anchor["updates"] = anchor.get("updates", 0) + 1
+            self._recompute_incident(inc)
+            self._rank_all()
+            self.log(f"agent tags from {env['origin']} → {inc['id']}: {summary}"
+                     f" — urgency now {anchor['urgency']}")
+            return inc
+        # Original SOS unknown (lost or aged out): file as a fresh report whose
+        # gist is the HUMANIZED summary — never the raw wire string.
+        fallback_env = {**env, "gist": summary}
+        ai = {"urgency": env.get("urgency", 3), "category": env.get("category") or "other",
+              "english": summary, "ai": False, "latency_ms": 0}
+        incident = self.add_report(fallback_env, ai)
+        if incident is not None:
+            for rid in incident["report_ids"]:
+                if rid == env["id"]:
+                    self.reports[rid]["tags"] = dict(tags)
+            self._recompute_incident(incident)
+            self._rank_all()
+            self.log(f"agent tags from {env['origin']} had no anchor SOS — "
+                     f"filed as new report: {summary}")
+        return incident
+
     def attach_voice(self, report_id: str, audio_url: str, transcript: str | None,
                      ai: dict[str, Any] | None = None) -> bool:
         """Attach a reassembled mesh recording to its original SOS.
@@ -347,6 +488,18 @@ class Store:
         # The phone's exact words are the source of truth. AI translation remains on
         # the report as secondary text and must never replace what the mobile sent.
         inc["headline"] = worst["gist"] or worst["english"]
+        # Sahayak agent tags: aggregate member tags (later reports win) for the
+        # dashboard chip-row; unresponsive is a first-class flag for ranking.
+        agg_tags: dict[str, Any] = {}
+        for m in sorted(members, key=lambda m: m["received_at"]):
+            if m.get("tags"):
+                agg_tags.update(m["tags"])
+        inc["tags"] = agg_tags
+        inc["unresponsive"] = agg_tags.get("unresp") == "y"
+        if not inc["headline"] and agg_tags:
+            # Empty-details SOS + agent conversation: the humanized tag summary
+            # becomes the headline (fills a blank — never replaces victim words).
+            inc["headline"] = humanize_tags(agg_tags)
         if inc["status"] == "new" and any(m["ai"] for m in members):
             inc["status"] = "triaged"
 
@@ -361,12 +514,16 @@ class Store:
             waited = _now() - inc["created_at"]
             aging = min(AGING_CAP_BOOST, AGING_CAP_BOOST * waited / AGING_HALF_LIFE_S)
             boost = 0.2 * (inc.get("origins", 1) - 1) + (0.3 if inc.get("sensor_confirmed") else 0)
+            if inc.get("unresponsive"):
+                boost += 0.4  # victim stopped answering agent check-ins
             inc["rank_score"] = inc["urgency"] + min(0.9, aging + boost)
             why = [f"urgency {inc['urgency']}"]
             if inc.get("report_count", 1) > 1:
                 why.append(f"{inc['report_count']} reports")
             if inc.get("sensor_confirmed"):
                 why.append("sensor corroborated")
+            if inc.get("unresponsive"):
+                why.append("victim unresponsive")
             mins = int(waited // 60)
             why.append(f"waited {mins//60}h{mins%60:02d}m" if mins >= 60 else f"waited {mins}m")
             inc["why"] = " · ".join(why)

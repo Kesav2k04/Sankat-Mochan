@@ -153,13 +153,9 @@ class ModelPrepViewModel(app: Application) : AndroidViewModel(app) {
         val mi = ActivityManager.MemoryInfo()
         am?.getMemoryInfo(mi)
         deviceRamGb = mi.totalMem / 1_000_000_000.0
-        return when {
-            // Plenty of headroom → the larger Gemma answers better.
-            deviceRamGb >= 7.0 ->
-                AssistantModels.byId("gemma-4-E4B") ?: AssistantModels.default
-            // Comfortable → the recommended default (Gemma E2B).
-            else -> AssistantModels.default
-        }
+        // The Sahayak fine-tune is trained for exactly this app's emergency chats, so it beats
+        // the larger stock Gemma regardless of headroom - recommend it on every device.
+        return AssistantModels.default
     }
 
     override fun onCleared() {

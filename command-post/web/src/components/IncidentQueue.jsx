@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { priorityLabel, urgencyColor, statusMeta, fmtWait } from "@/lib/urgency";
+import { tagChips, TAG_TONES } from "@/lib/tags";
 
 function IncidentCard({ inc, selected, onSelect }) {
+  const chips = tagChips(inc.tags);
   const color = urgencyColor(inc.urgency);
   const st = statusMeta(inc.status);
   const resolved = inc.status === "resolved";
@@ -41,6 +43,11 @@ function IncidentCard({ inc, selected, onSelect }) {
             + SENSOR
           </Badge>
         )}
+        {inc.unresponsive && !resolved && (
+          <Badge variant="outline" className="font-mono text-[9px] px-1.5 py-0 text-[#c62828] border-[#c62828]/40 bg-[#c62828]/10">
+            UNRESPONSIVE
+          </Badge>
+        )}
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">
           waited {fmtWait(inc.waited_s)}
         </span>
@@ -48,6 +55,18 @@ function IncidentCard({ inc, selected, onSelect }) {
       <div className={`text-[13.5px] font-semibold leading-snug ${resolved ? "" : "text-foreground"}`}>
         {inc.headline}
       </div>
+      {chips.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {chips.map((chip) => (
+            <span
+              key={chip.key}
+              className={`font-mono text-[9px] px-1.5 py-0.5 rounded border ${TAG_TONES[chip.tone]}`}
+            >
+              {chip.label}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="font-mono text-[10px] text-muted-foreground mt-1 truncate">
         {inc.why}
         {inc.location_hint ? ` · ${inc.location_hint.toUpperCase()}` : ""}

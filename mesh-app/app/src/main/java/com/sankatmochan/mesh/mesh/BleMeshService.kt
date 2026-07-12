@@ -194,6 +194,37 @@ class BleMeshService(context: Context) {
         broadcast(msg, exceptAddress = null)
     }
 
+    /**
+     * Sahayak-agent follow-up: validated structured tags ride a normal SOS envelope,
+     * REUSING the original SOS's category/lang/location so the command post merges it
+     * into the same incident by origin. Deliberately NOT added to the sent ladder —
+     * the victim's status UI tracks the original SOS, not the agent's data updates.
+     */
+    fun sendAgentTags(original: SosMessage, tagsWire: String, urgency: Int) {
+        val msg = SosMessage(
+            id = nextId(),
+            type = MsgType.SOS,
+            origin = nodeId,
+            deviceId = deviceId,
+            urgency = urgency.coerceIn(1, 5),
+            category = original.category,
+            // No locationHint: the original SOS already carried it, the merge is by origin,
+            // and the landmark rides in the lm tag — its 64 bytes are better spent making
+            // sure every tag pair survives the 244-byte gist trim.
+            locationHint = "",
+            gist = tagsWire,
+            lang = original.lang,
+            lat = original.lat,
+            lng = original.lng,
+            ts = System.currentTimeMillis(),
+            hops = 0
+        )
+        store.markSeen(msg.id)
+        store.log("Agent update sent: $tagsWire")
+        rememberOutbound(msg)
+        broadcast(msg, exceptAddress = null)
+    }
+
     /** Responder accepts a SOS → tells the victim help is coming. */
     fun accept(sos: SosMessage) {
         store.markAccepted(sos.id)
@@ -344,6 +375,18 @@ class BleMeshService(context: Context) {
     private fun handle(msg: SosMessage, fromAddress: String) {
         when (msg.type) {
             MsgType.SOS -> {
+                val tags = com.sankatmochan.mesh.agent.AgentTags.parse(msg.gist)
+                if (tags != null) {
+                    // Sahayak-agent follow-up: merge into the origin's existing card instead
+                    // of stacking raw "TAGS …" strings in the responder queue. Still relayed
+                    // onward at the bottom of handle() — relays only carry it. No DELIVERED
+                    // ack either: the victim's ladder tracks the original SOS, not updates.
+                    store.mergeAgentTags(msg.origin, tags, msg.urgency)
+                    store.log("Agent update in from ${msg.origin}: " +
+                        com.sankatmochan.mesh.agent.AgentTags.humanize(tags))
+                    broadcast(msg.copy(hops = (msg.hops + 1).coerceAtMost(15)), exceptAddress = fromAddress)
+                    return
+                }
                 store.addReceivedSos(msg)
                 store.log("SOS in [${msg.urgency}] ${msg.category}: ${msg.gist} (hop ${msg.hops})")
                 // If we're the control room, acknowledge delivery back to the victim.
@@ -369,7 +412,9 @@ class BleMeshService(context: Context) {
                 store.log("Delivery ack for $it")
             }
             MsgType.ACCEPTED -> msg.refId?.let {
-                store.updateSentStatus(it, stage = 2, text = "Help is on the way")
+                // Pass the command post's gist through: it may carry a REAL ETA
+                // ("Help is on the way · ETA ~12 min") the Sahayak agent relays as fact.
+                store.updateSentStatus(it, stage = 2, text = msg.gist.ifBlank { "Help is on the way" })
                 store.log("Help-on-the-way for $it")
             }
         }

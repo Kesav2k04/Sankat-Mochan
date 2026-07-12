@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { priorityLabel, urgencyColor, statusMeta, fmtWait, fmtClock } from "@/lib/urgency";
+import { tagChips, TAG_TONES } from "@/lib/tags";
 
 // Deterministic decorative waveform bars (seeded from the report id).
 function WaveBars({ seed }) {
@@ -109,6 +110,27 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
           <div className="font-mono text-[10.5px] text-muted-foreground tracking-wide">
             WHY THIS RANK — {inc.why}
           </div>
+
+          {(tagChips(inc.tags).length > 0 || inc.unresponsive) && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-3">
+              <span className="font-mono text-[9.5px] tracking-[0.15em] text-muted-foreground mr-0.5">
+                SAHAYAK AGENT
+              </span>
+              {inc.unresponsive && (
+                <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded border text-[#c62828] border-[#c62828]/40 bg-[#c62828]/10">
+                  VICTIM UNRESPONSIVE
+                </span>
+              )}
+              {tagChips(inc.tags).map((chip) => (
+                <span
+                  key={chip.key}
+                  className={`font-mono text-[10px] px-2 py-0.5 rounded border ${TAG_TONES[chip.tone]}`}
+                >
+                  {chip.label}
+                </span>
+              ))}
+            </div>
+          )}
 
           {inc.sensor_confirmed && (
             <div className="flex items-start gap-2.5 mt-3 rounded-lg px-3.5 py-2.5 bg-[#2e7d32]/8 border border-[#2e7d32]/20">

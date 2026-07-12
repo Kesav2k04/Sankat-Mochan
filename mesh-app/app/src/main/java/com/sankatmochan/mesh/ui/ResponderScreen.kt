@@ -50,6 +50,7 @@ fun ResponderScreen(vm: MeshViewModel, peers: Int, onOpenSettings: () -> Unit) {
     val sosList by vm.receivedSos.collectAsState()
     val accepted by vm.acceptedIds.collectAsState()
     val voice by vm.voiceClips.collectAsState()
+    val agentTags by vm.agentTags.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
@@ -109,6 +110,8 @@ fun ResponderScreen(vm: MeshViewModel, peers: Int, onOpenSettings: () -> Unit) {
                             accepted = sos.id in accepted,
                             route = Geo.describeRoute(vm.lat, vm.lng, sos.lat, sos.lng),
                             voiceClips = attached,
+                            agentTags = if (hostSosIdByOrigin[sos.origin] == sos.id)
+                                agentTags[sos.origin] else null,
                             onAccept = { vm.accept(sos) }
                         )
                     }
@@ -210,6 +213,7 @@ private fun SosCard(
     route: String?,
     onAccept: () -> Unit,
     voiceClips: List<VoiceClip> = emptyList(),
+    agentTags: Map<String, String>? = null,
 ) {
     val palette = urgencyColors
     val accent = palette.forLevel(sos.urgency)
@@ -245,6 +249,30 @@ private fun SosCard(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+            }
+
+            // Situation summary harvested by the victim's on-phone Sahayak agent — the
+            // responder arrives knowing what they're walking into. Humanized, never the
+            // raw wire string; plain text only (CLAUDE.md #9).
+            if (!agentTags.isNullOrEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (agentTags["unresp"] == "y") urgencyColors.critical
+                                else MaterialTheme.colorScheme.primary
+                            )
+                    )
+                    Spacer(Modifier.size(6.dp))
+                    Text(
+                        com.sankatmochan.mesh.agent.AgentTags.humanize(agentTags),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (agentTags["unresp"] == "y") urgencyColors.critical
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
 
             if (sos.locationHint.isNotBlank()) {

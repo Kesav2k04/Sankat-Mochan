@@ -41,6 +41,27 @@ class MessageStore {
     private val _acceptedIds = MutableStateFlow<Set<String>>(emptySet())
     val acceptedIds: StateFlow<Set<String>> = _acceptedIds.asStateFlow()
 
+    /** Sahayak-agent tag updates, keyed by origin node id — the responder UI joins these onto
+     *  the origin's SOS card (never rendered as raw "TAGS …" wire strings). Later updates
+     *  merge over earlier ones. Bounded like everything fed by the untrusted mesh. */
+    private val _agentTags = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
+    val agentTags: StateFlow<Map<String, Map<String, String>>> = _agentTags.asStateFlow()
+
+    fun mergeAgentTags(origin: String, tags: Map<String, String>, urgency: Int) {
+        _agentTags.update { current ->
+            val merged = (current[origin] ?: emptyMap()) + tags
+            val next = current + (origin to merged)
+            // Cap distinct origins so a flood of fake origins can't grow this without bound.
+            if (next.size > MAX_TAG_ORIGINS) next.entries.drop(next.size - MAX_TAG_ORIGINS)
+                .associate { it.key to it.value } else next
+        }
+        // An escalated follow-up must also re-sort the origin's card by its new urgency.
+        _receivedSos.update { list ->
+            list.map { if (it.origin == origin && urgency > it.urgency) it.copy(urgency = urgency) else it }
+                .sortedWith(compareByDescending<SosMessage> { it.urgency }.thenByDescending { it.ts })
+        }
+    }
+
     /** Returns true the FIRST time an id is seen; false thereafter (dedup). */
     fun markSeen(id: String): Boolean = seenIds.add(id)
 
@@ -97,5 +118,8 @@ class MessageStore {
         /** Hard cap on the retained received-SOS list. Far above any real incident, small
          *  enough that a flood can never blow up memory or the per-message re-sort. */
         const val MAX_RECEIVED_SOS = 300
+
+        /** Cap on distinct origins holding agent-tag state (untrusted mesh, CLAUDE.md #8). */
+        const val MAX_TAG_ORIGINS = 300
     }
 }
