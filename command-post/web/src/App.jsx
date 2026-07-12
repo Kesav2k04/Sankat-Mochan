@@ -4,8 +4,7 @@ import Masthead from "./components/Masthead.jsx";
 import IncidentQueue from "./components/IncidentQueue.jsx";
 import IncidentDetail from "./components/IncidentDetail.jsx";
 import MapPanel from "./components/MapPanel.jsx";
-import RespondersPanel from "./components/RespondersPanel.jsx";
-import CapacityStrip from "./components/CapacityStrip.jsx";
+import ResourceStatusPanel from "./components/ResourceStatusPanel.jsx";
 import ActivityDrawer from "./components/ActivityDrawer.jsx";
 import StatusBar from "./components/StatusBar.jsx";
 
@@ -26,14 +25,14 @@ export default function App() {
   const selected = cp.incidents.find((i) => i.id === selectedId) || null;
 
   return (
-    <div className="h-full flex flex-col paper-texture">
+    <div className="h-full flex flex-col bg-background">
       <Masthead
         connected={cp.connected}
         gatewayConnected={Boolean(cp.gateway?.connected)}
         aiEnabled={cp.ai_enabled}
       />
 
-      <main className="flex-1 min-h-0 grid grid-cols-[300px_1fr_320px] gap-3 px-4 py-3">
+      <main className="flex-1 min-h-0 grid grid-cols-[280px_minmax(0,1fr)_380px] gap-8 px-8 py-8 max-w-[1920px] mx-auto w-full">
         <IncidentQueue
           incidents={cp.incidents}
           selectedId={selectedId}
@@ -47,19 +46,18 @@ export default function App() {
           onAccept={cp.accept}
           onResolve={cp.resolve}
         />
-        <div className="grid grid-rows-[1fr_auto_auto] gap-3 min-h-0">
+        <div className="grid grid-rows-[1fr_auto] gap-6 min-h-0">
           <MapPanel
             incidents={cp.incidents}
             responders={cp.responders}
             selectedId={selectedId}
             onSelect={setSelectedId}
           />
-          <RespondersPanel responders={cp.responders} criticalOpen={cp.metrics?.critical_open ?? 0} />
-          <CapacityStrip capacity={cp.capacity} />
+          <ResourceStatusPanel responders={cp.responders} capacity={cp.capacity} criticalOpen={cp.metrics?.critical_open ?? 0} />
         </div>
       </main>
 
-      <div className="px-4 pb-2">
+      <div className="px-8 pb-4">
         <ActivityDrawer activity={cp.activity} />
       </div>
 

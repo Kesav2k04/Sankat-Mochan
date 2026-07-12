@@ -10,12 +10,12 @@ export default function ActivityDrawer({ activity }) {
   const latest = activity[activity.length - 1];
 
   return (
-    <div className="bg-card rounded-2xl shadow-sm overflow-hidden">
+    <div className="bg-card rounded-[12px] border border-border overflow-hidden">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-accent/50 transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-muted/60 transition-colors"
       >
-        <span className="font-mono text-[9.5px] tracking-[0.15em] text-muted-foreground shrink-0">
+        <span className="u-label shrink-0">
           AI ACTIVITY
         </span>
         {latest && !open && (

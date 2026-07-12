@@ -21,7 +21,7 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
       zoom: MAP_ZOOM,
       minZoom: MAP_MIN_ZOOM,
       maxZoom: MAP_MAX_ZOOM,
-      attributionControl: { compact: true },
+      attributionControl: false,
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
@@ -110,26 +110,33 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
   }, [selectedId, incidents]);
 
   return (
-    <div className="relative rounded-2xl overflow-hidden shadow-sm bg-surface-alt min-h-0 border">
+    <div className="relative rounded-[16px] overflow-hidden bg-surface-alt min-h-0 border border-border">
       <div ref={containerRef} className="h-full w-full opacity-90" />
-      <div className="absolute top-3 left-3 z-10 flex items-baseline gap-2">
-        <span className="font-display italic font-semibold text-[15px] bg-card/85 backdrop-blur px-2 py-0.5 rounded-md shadow-sm">
+
+      {/* Title alone reads as the panel heading — no competing status chip. */}
+      <div className="absolute top-3 left-3 z-10">
+        <span className="font-display font-semibold text-[15px] bg-card/90 backdrop-blur px-3 py-1.5 rounded-[8px] tracking-tight border border-border">
           Sector Map
         </span>
-        <span className="font-mono text-[9px] tracking-wide text-muted-foreground bg-card/85 backdrop-blur px-1.5 py-0.5 rounded shadow-sm">
-          OFFLINE TILES
+      </div>
+
+      {/* OFFLINE TILES demoted to quiet status/meta language, out of the title row. */}
+      <div className="absolute top-3 right-14 z-10">
+        <span className="u-label bg-card/90 backdrop-blur px-2.5 py-1.5 rounded-[8px] border border-border">
+          Offline Tiles
         </span>
       </div>
-      <div className="absolute bottom-3 left-3 z-10 bg-card border rounded-lg px-3 py-2.5 font-mono text-[9px] leading-tight shadow-md flex flex-col gap-1.5 text-muted-foreground">
-        <div className="flex items-center gap-3">
-          <span className="flex items-center"><span className="inline-block size-2 rounded-full bg-critical mr-1.5" />OPEN</span>
-          <span className="flex items-center"><span className="inline-block size-2 rounded-full bg-warning mr-1.5" />CLAIMED</span>
-          <span className="flex items-center"><span className="inline-block size-2 rounded-full bg-success mr-1.5" />CLEARED</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="flex items-center"><span className="inline-block size-2 bg-warning mr-1.5" />SENSOR</span>
-          <span className="flex items-center"><span className="inline-block size-2 rounded-full bg-success mr-1.5" />RESPONDER</span>
-          <span className="flex items-center"><span className="inline-block size-2 bg-foreground mr-1.5 outline outline-1 outline-background" />CAMP HQ</span>
+
+      {/* Legend in a fixed strip with defined columns — dots in row 2 line up
+          under the dots in row 1. */}
+      <div className="absolute bottom-3 left-3 z-10 bg-card/95 backdrop-blur border border-border rounded-[8px] px-4 py-3">
+        <div className="grid grid-cols-3 gap-x-5 gap-y-2 u-label">
+          <span className="flex items-center gap-1.5"><span className="inline-block size-2 rounded-full bg-critical" />Open</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block size-2 rounded-full bg-warning" />Claimed</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block size-2 rounded-full bg-success" />Cleared</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block size-2 bg-warning" />Sensor</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block size-2 rounded-full bg-success" />Responder</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block size-2 bg-foreground outline outline-1 outline-background" />Camp HQ</span>
         </div>
       </div>
     </div>

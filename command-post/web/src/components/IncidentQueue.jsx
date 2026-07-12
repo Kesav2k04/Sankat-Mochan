@@ -13,55 +13,58 @@ function IncidentCard({ inc, selected, onSelect }) {
   return (
     <motion.button
       layout
-      initial={{ opacity: 0, y: 10, boxShadow: "0 0 0 4px var(--accent)" }}
-      animate={{ opacity: 1, y: 0, boxShadow: "0 0 0 0px var(--accent)" }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
-      transition={{
-        type: "spring", stiffness: 300, damping: 30,
-        boxShadow: { duration: 1.5, ease: "easeOut" }
-      }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
       onClick={() => onSelect(inc.id)}
-      // Left rail is keyed to urgency; a live critical also glows on its ring.
-      style={{ borderLeft: `3px solid ${resolved ? "var(--border)" : color}` }}
-      className={`w-full text-left rounded-xl pl-3 pr-3.5 py-3 transition-all duration-200 cursor-pointer ${
-        critical ? "bg-critical/[0.06]" : "bg-card"
-      } ${
+      // Calm flat card: severity reads from the P-badge + dot, never a tinted
+      // fill. Selection is a single 3px urgency-coloured left rail on a clean
+      // white card — a quiet Linear-style indicator, no full outline.
+      style={selected ? { borderLeftColor: color, borderLeftWidth: 3 } : undefined}
+      className={`relative w-full text-left rounded-[16px] px-4 py-3.5 transition-all duration-150 cursor-pointer border ${
         selected
-          ? "shadow-md ring-1 ring-primary/60"
-          : critical
-          ? "shadow-sm hover:shadow-md ring-1 ring-critical/25"
-          : "shadow-sm hover:shadow-md ring-1 ring-transparent"
-      } ${resolved ? "opacity-55" : ""}`}
+          ? "bg-selected border-border shadow-md pl-[13px]"
+          : "bg-surface border-border shadow-sm hover:shadow-md hover:-translate-y-px"
+      } ${resolved ? "opacity-50" : ""}`}
     >
-      <div className="flex items-center gap-1.5 mb-1">
+      <div className="flex items-start justify-between mb-2.5 gap-3">
+        <div className={`text-[15px] font-semibold leading-snug tracking-tight ${resolved ? "text-foreground/70" : "text-foreground"}`}>
+          {inc.headline}
+        </div>
         <span
-          className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded"
-          style={{ color, background: `color-mix(in srgb, ${color} 12%, transparent)` }}
+          className="shrink-0 flex items-center gap-1.5 font-mono text-[9px] font-bold px-2 py-1 rounded-[8px] uppercase tracking-widest"
+          style={{ color: color, background: `color-mix(in srgb, ${color} 12%, transparent)` }}
         >
+          <span className="size-1.5 rounded-full" style={{ background: color }} />
           {priorityLabel(inc.urgency)}
         </span>
+      </div>
+
+      <div className="flex items-center gap-2 mb-2.5">
         <span
-          className="font-mono text-[9px] font-medium px-1.5 py-0.5 rounded"
+          className="font-mono text-[9px] font-bold px-2 py-0.5 rounded-[8px] uppercase tracking-widest"
           style={{ color: st.fg, background: st.bg }}
         >
           {st.label}
         </span>
         {inc.sensor_confirmed && (
-          <Badge variant="outline" className="font-mono text-[9px] px-1.5 py-0 text-success border-success/30">
-            + SENSOR
-          </Badge>
+          <span className="font-mono text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 text-success bg-success/10 rounded-[8px] border border-success/20">
+            Sensor
+          </span>
         )}
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-          waited {fmtWait(inc.waited_s)}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2.5 font-mono text-[9.5px] uppercase tracking-widest text-muted-foreground/70 border-t border-border/50 pt-2.5">
+        <span className="flex items-center gap-1"><span className="text-foreground/50">WAIT</span> {fmtWait(inc.waited_s)}</span>
+        <span className="opacity-30">•</span>
+        <span className="flex items-center gap-1">
+          {inc.location_hint ? (
+            <span className="truncate max-w-[110px]">{inc.location_hint}</span>
+          ) : (
+            <span className="text-warning/80">NO GPS</span>
+          )}
         </span>
-      </div>
-      <div className={`text-[13.5px] font-semibold leading-snug ${resolved ? "" : "text-foreground"}`}>
-        {inc.headline}
-      </div>
-      <div className="font-mono text-[10px] text-muted-foreground mt-1 truncate">
-        {inc.why}
-        {inc.location_hint ? ` · ${inc.location_hint.toUpperCase()}` : ""}
-        {inc.lat == null ? " · NO GPS" : ""}
       </div>
     </motion.button>
   );
@@ -75,9 +78,9 @@ export default function IncidentQueue({ incidents, selectedId, onSelect, onInjec
 
   return (
     <aside className="flex flex-col min-h-0">
-      <div className="flex items-baseline gap-2 px-1 pb-2">
-        <h2 className="font-display italic font-semibold text-xl m-0">Incidents</h2>
-        <span className="font-mono text-[10px] tracking-wide text-muted-foreground">
+      <div className="flex items-baseline gap-3 mb-6 px-1">
+        <h2 className="font-display font-semibold text-[22px] m-0 tracking-tight text-foreground">Incidents</h2>
+        <span className="u-label">
           {open} OPEN · AI-RANKED
         </span>
         <span className="ml-auto flex items-center gap-1.5 font-mono text-[10px] text-primary">
@@ -90,7 +93,7 @@ export default function IncidentQueue({ incidents, selectedId, onSelect, onInjec
       </div>
 
       <ScrollArea className="flex-1 min-h-0 -mx-1 px-1">
-        <div className="flex flex-col gap-2 pb-2">
+        <div className="flex flex-col gap-4 pb-2">
           {incidents.length === 0 && (
             <div className="flex flex-col items-center gap-3 text-center text-muted-foreground py-16 text-sm">
               {/* Alive waiting state — concentric rings breathe like a mesh listener. */}
@@ -115,7 +118,7 @@ export default function IncidentQueue({ incidents, selectedId, onSelect, onInjec
 
           {unknown.length > 0 && (
             <>
-              <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.15em] text-muted-foreground pt-2 px-1">
+              <div className="flex items-center gap-1.5 u-section pt-4 pb-1 px-1">
                 <MapPinOff className="size-3" /> LOCATION UNKNOWN · {unknown.length}
               </div>
               <AnimatePresence mode="popLayout">

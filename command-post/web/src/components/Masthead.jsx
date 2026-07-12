@@ -17,45 +17,55 @@ export default function Masthead({ connected, gatewayConnected, aiEnabled }) {
   });
 
   return (
-    <header className="relative z-50 flex items-center gap-5 px-6 pt-3 pb-2.5 bg-card border-b">
-      {/* Signal glyph — a small clay mark that pulses when the console is live. */}
+    <header className="relative z-50 flex items-center gap-6 px-8 py-2.5 bg-card border-b border-border">
+      {/* Signal glyph — a small mark that pulses when the console is live. */}
       <span className="relative flex size-2.5 shrink-0" title="Console live">
-        <span className="absolute inline-flex h-full w-full rounded-[2px] bg-brand opacity-60 breathe" />
-        <span className="relative inline-flex size-2.5 rounded-[2px] bg-brand" />
+        <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-60 breathe" />
+        <span className="relative inline-flex size-2.5 rounded-full bg-primary" />
       </span>
 
+      {/* Identity block — the orphaned clock is docked here as a third line of
+          metadata so it reads as system identity, not floating text. */}
       <div>
-        <h1 className="font-display font-semibold text-[28px] leading-none tracking-[-0.02em] m-0">
+        <h1 className="font-display font-semibold text-2xl tracking-tighter m-0 text-foreground leading-none">
           Sankat-Mochan
         </h1>
-        <div className="font-mono text-[10px] font-medium tracking-[0.2em] text-muted-foreground mt-1.5">
-          COMMAND POST · WAYANAD FORWARD CAMP 7
+        <div className="u-label mt-1.5">
+          Command Post · Wayanad Forward Camp 7
+        </div>
+        <div className="u-label mt-1 tabular !font-medium !tracking-[0.12em]">
+          {clock} IST
         </div>
       </div>
 
-      <div className="font-mono text-[13px] font-medium text-foreground/80 ml-2 tabular">{clock} <span className="text-muted-foreground">IST</span></div>
-
-      <div className="ml-auto flex items-center gap-2.5">
+      {/* Right cluster grouped by affordance: config · action · status,
+          each separated by a vertical rule so hierarchy reads at a glance. */}
+      <div className="ml-auto flex items-center gap-5">
         <BenchmarkDropdown />
+
+        <span className="w-px h-6 bg-border" />
+
         <VoiceRecorder />
-        <span className="w-px h-5 bg-border" />
-        <div className="flex items-center gap-1.5">
+
+        <span className="w-px h-6 bg-border" />
+
+        <div className="flex items-center gap-2">
           {!gatewayConnected ? (
-            <Badge className="gap-1.5 font-mono text-[10px] tracking-wide bg-destructive text-destructive-foreground border-transparent">
+            <div className="flex items-center gap-1.5 font-mono text-[9px] font-bold tracking-widest px-2.5 py-1.5 bg-critical/10 text-critical rounded-[8px]">
               <TriangleAlert className="size-3.5" />
-              NO FIELD UPLINK
-            </Badge>
+              NO UPLINK
+            </div>
           ) : (
-            <Badge variant="outline" className="gap-1.5 font-mono text-[10px] tracking-wide text-muted-foreground border-transparent">
+            <div className="flex items-center gap-1.5 font-mono text-[9px] font-bold tracking-widest px-2.5 py-1.5 bg-surface-alt text-muted-foreground rounded-[8px] border border-border">
               <Radio className="size-3.5" />
               UPLINK OK
-            </Badge>
+            </div>
           )}
 
           {!connected && (
-            <Badge variant="outline" className="gap-1.5 font-mono text-[10px] tracking-wide text-muted-foreground border-transparent">
+            <div className="font-mono text-[9px] font-bold tracking-widest px-2.5 py-1.5 text-muted-foreground bg-surface-alt rounded-[8px] border border-border">
               RECONNECTING...
-            </Badge>
+            </div>
           )}
         </div>
       </div>

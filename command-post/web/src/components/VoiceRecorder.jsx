@@ -122,7 +122,7 @@ export default function VoiceRecorder() {
         value={lang}
         onChange={(e) => setLang(e.target.value)}
         disabled={state !== "idle"}
-        className="h-8 rounded-md border border-border bg-background px-2 text-[12px] font-mono"
+        className="h-8 rounded-[8px] border border-border bg-background px-2 text-[12px] font-mono"
         title="Language spoken in the SOS"
       >
         {LANGS.map(([code, name]) => (

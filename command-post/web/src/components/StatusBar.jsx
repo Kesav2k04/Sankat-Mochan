@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 
 // Bottom status bar — instrumentation at a glance (C13 metrics).
 export default function StatusBar({ metrics, gateway, database, voice, aiEnabled, sttReady }) {
@@ -16,28 +17,42 @@ export default function StatusBar({ metrics, gateway, database, voice, aiEnabled
 
   const hasCritical = m.critical_open > 0;
 
+  const StatusIndicator = ({ label, ok, warn }) => (
+    <div className="flex items-center gap-1.5 px-4">
+      <span className={`size-1.5 rounded-full ${ok ? "bg-success/50" : warn ? "bg-warning/80" : "bg-destructive/80"}`} />
+      <span className="uppercase text-muted-foreground/80">{label}</span>
+    </div>
+  );
+
   return (
-    <footer className={`flex items-center gap-0 divide-x divide-border px-6 py-1.5 font-mono text-[10px] tracking-wide text-muted-foreground border-t transition-colors duration-500 ${hasCritical ? "bg-critical/10 border-critical/20" : "bg-card"}`}>
-      <span className="pr-3">PKT RX <b className="text-foreground">{m.pkt_rx ?? 0}</b></span>
-      <span className="px-3">LAST RX {lastRx == null ? "—" : lastRx < 60 ? `${lastRx}s AGO` : `${Math.floor(lastRx / 60)}m AGO`}</span>
-      {m.median_triage_ms != null && <span className="px-3">MEDIAN TRIAGE {m.median_triage_ms}ms</span>}
-      <span className="px-3">{ai}</span>
-      <span className="px-3">VOICE RX <b className="text-foreground">{voice?.received ?? 0}</b></span>
-      {voice?.transcribing > 0 && <span className="px-3 text-warning">TRANSCRIBING {voice.transcribing}</span>}
-      {voice?.failed > 0 && <span className="px-3 text-critical">VOICE STT FAILED {voice.failed}</span>}
-      {(gateway?.voice_inflight > 0 || gateway?.voice_queued > 0) && (
-        <span className="px-3 text-warning">
-          VOICE {gateway.voice_inflight ?? 0} ASSEMBLING · {gateway.voice_queued ?? 0} QUEUED
+    <footer className="flex items-center divide-x divide-border/40 px-8 py-2.5 font-mono text-[9px] font-bold tracking-widest text-muted-foreground border-t bg-surface">
+      <div className="flex items-center pr-4">
+        <StatusIndicator label="LoRa Link" ok={gateway?.connected !== false} />
+        <StatusIndicator label="BLE Mesh" ok={gateway?.connected !== false} />
+        <StatusIndicator label="AI Engine" ok={aiEnabled && sttReady} warn={aiEnabled && !sttReady} />
+        <StatusIndicator label="Database" ok={database?.connected !== false} />
+        <StatusIndicator label="GPS" ok={true} />
+      </div>
+      
+      <div className="flex items-center pl-4">
+        <span className="px-4">
+          LAST PKT <b className="text-foreground ml-1">{lastRx == null ? "—" : lastRx < 60 ? `${lastRx}s AGO` : `${Math.floor(lastRx / 60)}m AGO`}</b>
         </span>
-      )}
-      <span className="px-3" title={database?.session_id || ""}>
-        DB {database?.connected ? "ON" : "OFF"} · SESSION {database?.session_id?.slice(0, 8) || "—"}
-      </span>
-      <span className="ml-auto pl-3 flex items-center">
-        <span className={`font-semibold px-2 py-0.5 rounded transition-colors ${hasCritical ? "bg-critical text-critical-foreground" : "text-success"}`}>
-          {m.critical_open ?? 0} CRITICAL OPEN
-        </span>
-      </span>
+        {m.median_triage_ms != null && (
+          <span className="px-4">
+            LATENCY <b className="text-foreground ml-1">{m.median_triage_ms}ms</b>
+          </span>
+        )}
+      </div>
+
+      <div className="ml-auto flex items-center pl-4">
+        {hasCritical && (
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] bg-critical/10 text-critical font-bold tracking-widest">
+            <TriangleAlert className="size-3.5" />
+            {m.critical_open} CRITICAL OPEN
+          </span>
+        )}
+      </div>
     </footer>
   );
 }

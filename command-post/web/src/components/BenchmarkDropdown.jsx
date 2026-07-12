@@ -20,7 +20,7 @@ export default function BenchmarkDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:bg-muted/50 transition-colors focus:outline-none"
+        className="flex items-center gap-2 px-2.5 py-1.5 rounded-[8px] border border-border text-muted-foreground hover:bg-muted/50 transition-colors focus:outline-none"
       >
         <Activity size={14} />
         <span className="text-[10px] font-mono tracking-wide">NPU BENCHMARK</span>
