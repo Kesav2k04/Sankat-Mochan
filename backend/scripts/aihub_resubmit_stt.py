@@ -18,9 +18,9 @@ from pathlib import Path
 
 import qai_hub as hub
 
-STAGE = Path(__file__).parent / "aihub_out" / "indic_ctc_stage"
-PKG = Path(__file__).parent / "aihub_out" / "indic_ctc_pkg"
-OUT = Path(__file__).parent / "aihub_out" / "indic_ctc_jobs.json"
+STAGE = Path(__file__).parents[1] / "aihub_out" / "indic_ctc_stage"
+PKG = Path(__file__).parents[1] / "aihub_out" / "indic_ctc_pkg"
+OUT = Path(__file__).parents[1] / "aihub_out" / "indic_ctc_jobs.json"
 DEVICE = hub.Device("Snapdragon 8 Elite Gen 5 QRD")  # OnePlus 15 chip
 # qnn_context_binary = SOC-specific NPU deployment (the fully-NPU-resident target).
 # --qairt_version only applies to a QNN runtime, hence the earlier failure with no

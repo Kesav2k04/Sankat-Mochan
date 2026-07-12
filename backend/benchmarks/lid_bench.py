@@ -29,6 +29,8 @@ import numpy as np
 import soundfile as sf
 import torch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/ modules
+
 import stt
 
 # Windows' default cp1252 stdout can't encode the █ bars or Devanagari in this report
@@ -38,7 +40,7 @@ try:
 except Exception:  # noqa: BLE001 — best-effort; older/redirected streams may lack reconfigure
     pass
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).parents[1]
 AUDIO_DIR = BASE / (sys.argv[1] if len(sys.argv) > 1 else "fleurs")
 
 

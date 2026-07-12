@@ -15,9 +15,9 @@ from pathlib import Path
 
 import qai_hub as hub
 
-PKG = Path("aihub_out/indic_ctc_pkg")
-ART = Path("aihub_out/artifacts/indic_ctc_precompiled")
-OUT = Path("aihub_out/indic_ctc_precompiled_jobs.json")
+PKG = Path(__file__).parents[1] / "aihub_out/indic_ctc_pkg"
+ART = Path(__file__).parents[1] / "aihub_out/artifacts/indic_ctc_precompiled"
+OUT = Path(__file__).parents[1] / "aihub_out/indic_ctc_precompiled_jobs.json"
 DEVICE = hub.Device("Snapdragon 8 Elite Gen 5 QRD")
 BASE = "--target_runtime precompiled_qnn_onnx --qairt_version=default"
 ART.mkdir(parents=True, exist_ok=True)

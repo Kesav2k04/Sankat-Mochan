@@ -28,7 +28,7 @@ import numpy as np
 import soundfile as sf
 import torch
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).parents[1]
 AUDIO_DIR = BASE / (sys.argv[1] if len(sys.argv) > 1 else "fleurs")
 WHISPER_SIZE = "small"
 INDIC_ID = "ai4bharat/indic-conformer-600m-multilingual"

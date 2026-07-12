@@ -84,7 +84,7 @@ job.download_target_model("out/encoder")              # writes a .zip (model.onn
 - **Static input specs are required** — pick a fixed window (we used 15 s → 1501 mel frames) and
   pad shorter audio in app code; pass the real valid length so the encoder masks the pad.
 - Derive exact static shapes empirically by running the preprocessor once (see
-  `backend/dump_mel_golden.py`).
+  `backend/scripts/dump_mel_golden.py`).
 
 ### 2c. Profile + download
 ```python

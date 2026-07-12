@@ -11,7 +11,7 @@ import kotlin.math.sqrt
 
 /**
  * Log-mel front-end for IndicConformer, a bit-for-bit port of the model's own NeMo
- * `preprocessor.ts` (AI4Bharat, MIT). VERIFIED: `backend/dump_mel_golden.py`
+ * `preprocessor.ts` (AI4Bharat, MIT). VERIFIED: `backend/scripts/dump_mel_golden.py`
  * reconstructs this exact algorithm in Python and matches the scripted preprocessor to
  * max-abs-diff ≈ 8e-5 on fleurs/hi_0.wav. The 512-pt window and 257×80 mel filterbank are
  * the model's real constants, shipped as assets (`mel_window512.f32`, `mel_fb.f32`), so the

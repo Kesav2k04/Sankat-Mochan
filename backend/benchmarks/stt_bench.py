@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).parents[1]
 AUDIO_DIR = BASE / (sys.argv[1] if len(sys.argv) > 1 else "audio")
 FW_MODELS = ["small", "medium"]
 AUDIO_EXT = {".wav", ".m4a", ".mp3", ".flac", ".ogg", ".opus", ".aac"}

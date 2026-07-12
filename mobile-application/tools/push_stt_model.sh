@@ -24,7 +24,7 @@ push_graph() {
   local zip
   zip="$(ls "$ART/$name"/*.onnx.zip 2>/dev/null | head -1 || true)"
   if [[ -z "$zip" ]]; then
-    echo "!! missing artifact for '$name' in $ART/$name — run backend/aihub_precompiled_stt.py first"
+    echo "!! missing artifact for '$name' in $ART/$name — run backend/scripts/aihub_precompiled_stt.py first"
     exit 1
   fi
   echo "→ $name: extracting $(basename "$zip")"

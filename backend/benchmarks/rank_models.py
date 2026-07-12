@@ -20,6 +20,11 @@ import time
 
 import httpx
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/ modules
+
 import triage
 
 OLLAMA = "http://localhost:11434/api/chat"

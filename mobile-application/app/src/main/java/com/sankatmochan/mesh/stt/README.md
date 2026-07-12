@@ -27,7 +27,7 @@ Remaining before it actually transcribes on the phone:
 ### 1. Install the model (side-loaded — it's ~1.2 GB, not in the APK)
 ```
 # on the Mac, in backend/ — reuses the cached uploads, produces precompiled_qnn_onnx:
-python aihub_precompiled_stt.py         # → aihub_out/artifacts/indic_ctc_precompiled/{encoder,ctc_decoder}/*.zip
+uv run python scripts/aihub_precompiled_stt.py         # → aihub_out/artifacts/indic_ctc_precompiled/{encoder,ctc_decoder}/*.zip
 # then, with the OnePlus 15 connected over adb + app installed once:
 mobile-application/tools/push_stt_model.sh        # extracts + pushes model.onnx/model.bin per graph
 ```
@@ -55,7 +55,7 @@ Names assumed: encoder `audio_signal`,`length` → `outputs`; ctc `encoder_outpu
 ### 4. MelFrontend parity gate — DONE (verified)
 The encoder was trained on NeMo features; a mismatched mel collapses accuracy. `MelFrontend` is
 a bit-for-bit port of `preprocessor.ts`, using the model's REAL window512 + mel filterbank
-(`assets/stt/mel_window512.f32`, `mel_fb.f32`, extracted by `backend/dump_mel_golden.py`).
+(`assets/stt/mel_window512.f32`, `mel_fb.f32`, extracted by `backend/scripts/dump_mel_golden.py`).
 Python reconstruction matched the scripted preprocessor to ~8e-5; `androidTest/MelParityTest`
 re-checks the Kotlin against golden vectors on-device (`./gradlew connectedDebugAndroidTest`).
 

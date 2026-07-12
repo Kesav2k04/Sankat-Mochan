@@ -20,7 +20,7 @@ SNAP = Path.home() / (
     ".cache/huggingface/hub/models--ai4bharat--indic-conformer-600m-multilingual/"
     "snapshots/e9b71b369c048e2c6b634d4c131061c34e441179"
 )
-FLEURS = Path(__file__).parent / "fleurs"
+FLEURS = Path(__file__).parents[1] / "fleurs"
 BLANK_ID = 256
 
 

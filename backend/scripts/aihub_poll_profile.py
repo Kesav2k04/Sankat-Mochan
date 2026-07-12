@@ -14,7 +14,7 @@ from pathlib import Path
 
 import qai_hub as hub
 
-BASE = Path(__file__).parent / "aihub_out"
+BASE = Path(__file__).parents[1] / "aihub_out"
 JOBS = json.loads((BASE / "indic_ctc_jobs.json").read_text())
 ART = BASE / "artifacts" / "indic_ctc_sd8eg5"
 DEVICE = hub.Device("Snapdragon 8 Elite Gen 5 QRD")

@@ -15,6 +15,11 @@ Invariants under test (each one killed a demo beat in the adversarial critique):
 import asyncio
 import json
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/ modules
+
 import app as cp
 import intelligence
 from intelligence import Store, parse_tags, humanize_tags

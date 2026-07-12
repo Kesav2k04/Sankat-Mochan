@@ -5,6 +5,20 @@ LoRa gateway via `POST /sos`, or the test button), runs **AI triage**
 (urgency + Indic→English translation), and shows a live, ranked triage queue
 with dispatch. Backend-agnostic AI so we can benchmark and pick the fastest.
 
+## Folder map
+
+| Path | What it is |
+| --- | --- |
+| `*.py` (root) | The runtime: `app.py` (FastAPI), `intelligence.py`, `triage.py`, `stt.py`, `indic_stt.py`, `models.py`, `database.py`, `npu_server.py`. |
+| `web/` | The React (Vite) dashboard; FastAPI serves its `dist/`. |
+| `static/` | Offline basemaps (PMTiles) + vendored map fonts/sprites. |
+| `scripts/` | One-off dev tools: AI-Hub STT compiles, basemap extracts, mel-golden dump, FLEURS download. |
+| `benchmarks/` | `bench.py` (LLM backends), STT/LID benches, extraction bench, model ranking. |
+| `tests/` | `test_tags.py` — TAGS parse/merge/wire-size checks (`uv run python tests/test_tags.py`). |
+| `finetune/` | Sahayak (Gemma 4) QLoRA training + dataset; eval result CSVs live in `docs/evals/`. |
+| `deploy/npu/` | Package the finetuned model for the phone NPU (GGUF → llama.cpp/Hexagon). |
+| `aihub_out/` | AI-Hub job records + compiled STT artifacts (consumed by `mobile-application/tools/push_stt_model.sh`). |
+
 ## Run
 
 ```bash
@@ -52,7 +66,7 @@ Set in `.env` — swap freely, no code change:
 Start the backends you have, then:
 
 ```bash
-python bench.py            # reads backends.json (copy from backends.example.json)
+uv run python benchmarks/bench.py   # reads backends.json (copy from backends.example.json)
 ```
 
 It runs the same triage task on each and prints a ranked table (avg ms, p50, tok/s)

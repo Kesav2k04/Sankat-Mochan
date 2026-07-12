@@ -27,9 +27,9 @@ SNAP = Path.home() / (
     ".cache/huggingface/hub/models--ai4bharat--indic-conformer-600m-multilingual/"
     "snapshots/e9b71b369c048e2c6b634d4c131061c34e441179"
 )
-WAV = Path(__file__).parent / "fleurs" / "hi_0.wav"
-APP_ASSETS = Path(__file__).parents[1] / "mobile-application/app/src/main/assets/stt"
-TEST_ASSETS = Path(__file__).parents[1] / "mobile-application/app/src/androidTest/assets/mel_golden"
+WAV = Path(__file__).parents[1] / "fleurs" / "hi_0.wav"
+APP_ASSETS = Path(__file__).parents[2] / "mobile-application/app/src/main/assets/stt"
+TEST_ASSETS = Path(__file__).parents[2] / "mobile-application/app/src/androidTest/assets/mel_golden"
 
 HOP, WIN, NFFT, NMEL, PREEMPH, PAD = 160, 400, 512, 80, 0.97, 256
 

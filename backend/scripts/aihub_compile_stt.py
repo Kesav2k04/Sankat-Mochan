@@ -37,8 +37,8 @@ SNAP = Path(
     )
 )
 ASSETS = SNAP / "assets"
-STAGE = Path(__file__).parent / "aihub_out" / "indic_ctc_stage"
-OUT = Path(__file__).parent / "aihub_out" / "indic_ctc_jobs.json"
+STAGE = Path(__file__).parents[1] / "aihub_out" / "indic_ctc_stage"
+OUT = Path(__file__).parents[1] / "aihub_out" / "indic_ctc_jobs.json"
 DEVICE = hub.Device("Snapdragon 8 Elite Gen 5 QRD")  # OnePlus 15 chip
 OPTS = "--qairt_version=default"  # RESULTS.md gotcha A
 

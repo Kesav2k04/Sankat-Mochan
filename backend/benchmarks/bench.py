@@ -20,6 +20,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/ modules
+
 import triage
 from models import parse_envelope, sample_sos
 
@@ -70,7 +74,7 @@ async def probe(name: str, url: str, model: str) -> dict[str, Any]:
 def load_backends(args: argparse.Namespace) -> list[dict[str, str]]:
     if args.url:
         return [{"name": args.name or "cli", "url": args.url, "model": args.model or "default"}]
-    cfg = Path(__file__).parent / "backends.json"
+    cfg = Path(__file__).parents[1] / "backends.json"
     if cfg.exists():
         return json.loads(cfg.read_text())
     # Sensible defaults for the common local servers.
