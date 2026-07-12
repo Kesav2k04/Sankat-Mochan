@@ -6,6 +6,11 @@ timing is deterministic. Run directly (`python test_voice_assembler.py`) or unde
 """
 from __future__ import annotations
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # raspberrypi/ modules
+
 import envelope as env
 import uplink
 

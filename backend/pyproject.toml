@@ -41,3 +41,10 @@ dependencies = [
 [tool.uv]
 # Plain flat-module app (app.py, stt.py, …), not an installable package.
 package = false
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

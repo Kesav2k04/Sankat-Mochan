@@ -98,6 +98,12 @@ cd app-simulator && npm install && npm run dev
 
 **Pitch deck:** open `docs/deck/index.html` in any browser.
 
+## Tests
+
+120 tests across the Python/JS components (`uv run pytest` in `backend/` and
+`raspberrypi/`, `npm test` in `app-simulator/`), plus the Android JVM suite
+(`./gradlew test`). See [`docs/TESTING.md`](docs/TESTING.md) for the full map.
+
 ## Team
 
 | Member | Email |

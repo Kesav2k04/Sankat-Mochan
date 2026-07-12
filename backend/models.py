@@ -43,7 +43,10 @@ def parse_envelope(raw: bytes | str | dict) -> dict[str, Any]:
     if isinstance(raw, (bytes, bytearray)):
         if len(raw) > PARSE_MAX_BYTES:
             raise InvalidEnvelope("oversized payload")
-        raw = raw.decode("utf-8", errors="strict")
+        try:
+            raw = raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as e:
+            raise InvalidEnvelope("not valid utf-8") from e
     if isinstance(raw, str):
         try:
             o = json.loads(raw)

@@ -18,7 +18,7 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/ modules
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # backend/ modules
 
 import app as cp
 import intelligence
