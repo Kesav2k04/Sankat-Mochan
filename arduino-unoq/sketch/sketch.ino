@@ -45,10 +45,10 @@
 
 // --- radio settings: keep in lock-step with pi-code/config.example.json ------
 #define LORA_FREQ_HZ   433000000L   // frequency_hz
-#define LORA_SF        7            // spreading_factor
+#define LORA_SF        9            // spreading_factor — 5 km target: +6 dB sensitivity over SF7, 4x airtime
 #define LORA_BW_HZ     125000L      // bandwidth_hz
 #define LORA_CR4       5            // coding_rate (4/5)
-#define LORA_TX_POWER  17           // tx_power_dbm (PA_BOOST) — 1 km target; SX1278 max before the +20 dBm PA_DAC mode
+#define LORA_TX_POWER  20           // tx_power_dbm (PA_BOOST +20 dBm PA_DAC mode; the LoRa lib raises OCP to 140 mA for it)
 #define LORA_SYNC      0x12         // sync_word (18 decimal in the JSON)
 #define LORA_PREAMBLE  8            // preamble_len
 

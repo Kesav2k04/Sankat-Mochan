@@ -16,16 +16,18 @@
 
   "lora": {
     "frequency_hz": 433000000,
-    "spreading_factor": 7,
+    "spreading_factor": 9,
+    "_spreading_factor_comment": "SF9 for the 5 km link: ~+6 dB sensitivity over SF7 (floor ~-129 dBm) at 4x the airtime. Must match LORA_SF in arduino-unoq/sketch/sketch.ino — an SF mismatch makes the two radios mutually deaf.",
     "bandwidth_hz": 125000,
     "coding_rate": 5,
-    "tx_power_dbm": 17,
+    "tx_power_dbm": 20,
+    "_tx_power_dbm_comment": "PA_BOOST +20 dBm PA_DAC mode (the driver raises OCP to ~140 mA for it). Never transmit without the antenna attached at this level.",
     "sync_word": 18,
     "preamble_len": 8,
     "crc": true,
     "tx_repeats": 2,
-    "voice_tx_repeats": 2,
-    "_voice_tx_repeats_comment": "How many times each VOICE chunk is sent on the air (text/SOS use tx_repeats). A voice clip is all-or-nothing — every one of its ~16-45 chunks must arrive or it is unplayable — so a single shot per chunk loses whole clips on a lossy hop. 2 gets most chunks across on the first pass while leaving airtime headroom (chunks arrive over BLE about once a second and each send is ~350 ms on air; 3+ repeats saturates the channel and the modem starts refusing frames as busy). The NACK repair loop recovers the rest. SOS is unaffected (exempt critical lane + mid-clip yield).",
+    "voice_tx_repeats": 1,
+    "_voice_tx_repeats_comment": "How many times each VOICE chunk is sent on the air (text/SOS use tx_repeats). A voice clip is all-or-nothing — every one of its ~16-45 chunks must arrive or it is unplayable. At SF7 a chunk was ~350 ms on air and 2 blind repeats fit; at SF9 a chunk is ~1.2 s on air while chunks arrive over BLE about once a second, so even 2 repeats saturates the channel and the modem starts refusing frames as busy. 1 repeat + the NACK repair loop is the SF9 budget. SOS is unaffected (exempt critical lane + mid-clip yield).",
     "max_payload": 255,
     "startup_probe": true,
     "csma": {
