@@ -9,3 +9,4 @@ aihub_out/
 # AI Hub compile staging: multi-GB ONNX weights, never track
 aihub_stage/
 fluers/
+deploy/npu/out/

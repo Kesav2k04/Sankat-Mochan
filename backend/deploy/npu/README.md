@@ -30,11 +30,11 @@ exclusively and repack it for the NPU internally. So the whole pipeline targets 
 ```
 kesav2k04/sahayak-e2b :: merged/         (download; already merged)
         ▼
-deploy/npu/build_gemma_gguf.py           convert → imatrix → llama-quantize Q4_0
+backend/deploy/npu/build_gemma_gguf.py           convert → imatrix → llama-quantize Q4_0
         ▼
-deploy/npu/eval_gguf.py                   host-side quality review (CLAUDE.md #6)
+backend/deploy/npu/eval_gguf.py                   host-side quality review (CLAUDE.md #6)
         ▼
-deploy/npu/run_gemma_npu.sh               adb push + llama.cpp on D=HTP0  (Hexagon NPU)
+backend/deploy/npu/run_gemma_npu.sh               adb push + llama.cpp on D=HTP0  (Hexagon NPU)
 ```
 
 ## Step 0 — build llama.cpp
@@ -53,7 +53,7 @@ win-arm64 release (no compiler needed); the phone still needs the Android Snapdr
 
 ```bash
 git clone https://github.com/ggml-org/llama.cpp && cd llama.cpp     # MIT
-pip install -r requirements/requirements-convert_hf_to_gguf.txt      # converter deps
+uv pip install -r requirements/requirements-convert_hf_to_gguf.txt      # converter deps
 
 # Host build (CPU is fine — convert & quantize are CPU ops):
 cmake -B build && cmake --build build -j
@@ -74,26 +74,26 @@ huggingface-cli download kesav2k04/sahayak-e2b --include 'merged/*' --local-dir 
 ## Step 2 — convert + quantize to Q4_0
 
 ```bash
-python deploy/npu/build_gemma_gguf.py \
+python backend/deploy/npu/build_gemma_gguf.py \
     --merged-checkpoint out/sahayak-e2b/merged \
     --llama-cpp /path/to/llama.cpp
-# → deploy/npu/out/sahayak-gemma-Q4_0.gguf   (with an in-domain imatrix from train.jsonl)
+# → backend/deploy/npu/out/sahayak-gemma-Q4_0.gguf   (with an in-domain imatrix from train.jsonl)
 
 # audit the exact commands without running:  add --dry-run
 # higher fidelity option:                    --quant Q8_0
 # skip the importance matrix (faster):       --no-imatrix
 ```
 
-The importance matrix is built from `finetune/data/train.jsonl`, so the 4-bit encodings are
+The importance matrix is built from `backend/finetune/data/train.jsonl`, so the 4-bit encodings are
 calibrated on the emergency-response distribution rather than generic text.
 
 ## Step 3 — review the quantized model (do not skip)
 
 ```bash
-python deploy/npu/eval_gguf.py \
-    --gguf deploy/npu/out/sahayak-gemma-Q4_0.gguf \
+python backend/deploy/npu/eval_gguf.py \
+    --gguf backend/deploy/npu/out/sahayak-gemma-Q4_0.gguf \
     --llama-cpp /path/to/llama.cpp \
-    --eval finetune/data/eval_holdout.jsonl --limit 10
+    --eval backend/finetune/data/eval_holdout.jsonl --limit 10
 ```
 
 Prints model answer vs reference per holdout prompt, auto-flagging empty/degraded outputs.
@@ -103,8 +103,8 @@ A human confirms first-aid answers are still correct and safe before shipping (C
 
 ```bash
 export LLAMA_CPP=/path/to/llama.cpp
-bash deploy/npu/run_gemma_npu.sh \
-    deploy/npu/out/sahayak-gemma-Q4_0.gguf \
+bash backend/deploy/npu/run_gemma_npu.sh \
+    backend/deploy/npu/out/sahayak-gemma-Q4_0.gguf \
     "A wall collapsed and someone is bleeding badly. What do I do?"
 ```
 
@@ -115,7 +115,7 @@ the user turn only (CLAUDE.md #7). GenieX alternative: `geniex infer <gguf> --de
 ### Confirm it's actually on the NPU
 
 ```bash
-GGML_HEXAGON_VERBOSE=1 bash deploy/npu/run_gemma_npu.sh <gguf> "test"
+GGML_HEXAGON_VERBOSE=1 bash backend/deploy/npu/run_gemma_npu.sh <gguf> "test"
 ```
 
 The Hexagon backend has limited op coverage; unsupported ops fall back to CPU. Check the log

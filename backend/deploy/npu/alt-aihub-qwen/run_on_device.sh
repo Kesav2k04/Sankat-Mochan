@@ -3,7 +3,7 @@
 # a prompt on the Hexagon NPU via genie-t2t-run. Mirrors Qualcomm's public llm_on_genie
 # README (BSD/Apache, CLAUDE.md #3): https://github.com/qualcomm/ai-hub-apps
 #
-# Usage:  bash deploy/npu/run_on_device.sh <genie_bundle_dir> "your prompt"
+# Usage:  bash backend/deploy/npu/run_on_device.sh <genie_bundle_dir> "your prompt"
 #
 # Prereqs on the HOST:
 #   * adb on PATH, phone in USB-debugging mode (`adb devices` shows it).

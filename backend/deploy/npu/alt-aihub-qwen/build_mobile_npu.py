@@ -22,15 +22,15 @@ WHY NOT GEMMA (important):
   the optimized QNN Hexagon path. Qwen3-4B (Apache-2.0) and Llama-3.2-3B DO expose the
   QNN path (`geniex_qairt`/`genie`, w4a16). So the finetune is re-based onto Qwen3-4B —
   a one-flag change to sahayak_finetune.py (`--model Qwen/Qwen3-4B`), because the LoRA
-  targets (q/k/v/o/gate/up/down_proj) exist identically in Qwen. See deploy/npu/README.md.
+  targets (q/k/v/o/gate/up/down_proj) exist identically in Qwen. See backend/deploy/npu/README.md.
 
 This script does NOT download weights or train. Its input is a local directory of
 *merged* finetuned weights (LoRA already merged into the Qwen3-4B base). Produce that
-with:  python finetune/sahayak_finetune.py --model Qwen/Qwen3-4B ... --export-merged
+with:  python backend/finetune/sahayak_finetune.py --model Qwen/Qwen3-4B ... --export-merged
 
 Prereqs (see README.md for the long version):
   * A CUDA GPU for the quantize step (AIMET calibration of a 4B model is not a CPU job).
-  * `pip install -U "qai-hub-models[qwen3-4b]"`  (extras name matches the model id, dashes)
+  * `uv pip install -U "qai-hub-models[qwen3-4b]"`  (extras name matches the model id, dashes)
   * A configured AI Hub token for the export/compile step:  qai-hub configure --api_token …
     (never hardcode it — CLAUDE.md #2; the token lives in ~/.qai_hub/client.ini)
 """
@@ -91,7 +91,7 @@ def preflight(args) -> None:
     ckpt = Path(args.merged_checkpoint)
     if not ckpt.is_dir():
         sys.exit(f"[error] --merged-checkpoint is not a directory: {ckpt}\n"
-                 "        Produce it first: python finetune/sahayak_finetune.py "
+                 "        Produce it first: python backend/finetune/sahayak_finetune.py "
                  "--model Qwen/Qwen3-4B ... --export-merged  (use the out/*/merged dir)")
     if not (ckpt / "config.json").exists():
         sys.exit(f"[error] {ckpt} has no config.json — not a merged HF checkpoint. "
@@ -102,7 +102,7 @@ def preflight(args) -> None:
             import qai_hub_models  # noqa: F401
         except Exception:
             sys.exit('[error] qai-hub-models not installed. Run:\n'
-                     f'        pip install -U "qai-hub-models[{args.model.replace("_", "-")}]"')
+                     f'        uv pip install -U "qai-hub-models[{args.model.replace("_", "-")}]"')
 
     # The export/compile step needs a configured AI Hub token. We only CHECK for it; we
     # never read or print it (CLAUDE.md #2). Absence is a warning, not a hard stop, so
@@ -173,7 +173,7 @@ def main(argv=None) -> int:
                    help="Sequential-MSE calibration (recommended for accuracy at 4-bit).")
     p.add_argument("--no-seq-mse", dest="use_seq_mse", action="store_false",
                    help="Disable sequential-MSE (faster, slightly worse 4-bit quality).")
-    p.add_argument("--work-dir", default="deploy/npu/out",
+    p.add_argument("--work-dir", default="backend/deploy/npu/out",
                    help="Where the calibrated checkpoint and Genie bundle are written.")
     p.add_argument("--stop-after", choices=["quantize", "export"], default="export",
                    help="Stop after the quantize stage (no AI Hub token / offline) or run through export.")
@@ -219,7 +219,7 @@ def main(argv=None) -> int:
     _run(build_export_cmd(args, calibrated, bundle), dry_run=args.dry_run)
 
     print(f"\n[done] Genie bundle at {bundle}")
-    print("Push and run on the OnePlus 15:  bash deploy/npu/alt-aihub-qwen/run_on_device.sh "
+    print("Push and run on the OnePlus 15:  bash backend/deploy/npu/alt-aihub-qwen/run_on_device.sh "
           f"{bundle} \"What are the first-aid steps for a deep cut?\"")
     return 0
 

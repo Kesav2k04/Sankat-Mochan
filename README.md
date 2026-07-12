@@ -29,7 +29,7 @@ One folder per device, `app-simulator/` for the browser demo, and `docs/` for ev
 | `mobile-application/` | Android phones | **Native Android (Kotlin) BLE mesh app** — Victim / Responder / Relay roles; every phone is a full mesh node (GATT server + scanner); store-and-forward; on-device STT; native-language status ladder. |
 | `raspberrypi/` | Raspberry Pi | **LoRa gateway** — phone ⇄ BLE ⇄ board ⇄ 433 MHz ⇄ board ⇄ phone; uplinks accepted envelopes to the command post. `server.sh` here supervises the whole Pi side. |
 | `arduino-uno-q/` | Arduino UNO Q | **Field node**: the STM32 LoRa-modem sketches plus `field-node/` (a synced copy of the `raspberrypi/` mesh code) for the board's Linux side. See `arduino-uno-q/README.md`. |
-| `backend/` | The "AI PC" | The **offline AI command post** (FastAPI + React dashboard) — receives envelopes, triages/translates on the NPU, serves the offline map. Also holds `finetune/` (Sahayak model training). |
+| `backend/` | The "AI PC" | The **offline AI command post** (FastAPI + React dashboard) — receives envelopes, triages/translates on the NPU, serves the offline map. Also holds `finetune/` (Sahayak model training) and `deploy/npu/` (packaging the finetuned model for the phone NPU). |
 | `app-simulator/` | any browser | **Demo simulator** (React + Vite) — plays the whole victim → mesh → LoRa → triage → dispatch story on the real Wayanad basemap, reusing the map assets from `backend/static/`. |
 | `docs/` | — | All markdown: planning, research, specs, guides — plus `docs/deck/` (the pitch deck) and `docs/assets/`. |
 | `CLAUDE.md` / `AGENTS.md` | — | AI-tool usage rules for this repo (permissive-license deps only, no secrets, prompt-injection discipline, untrusted-input validation). |

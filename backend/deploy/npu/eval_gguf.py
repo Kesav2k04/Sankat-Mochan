@@ -12,10 +12,10 @@ ones to read first.
 This is a review AID, not an automatic grader — it does not decide pass/fail for you.
 
 Usage:
-  python deploy/npu/eval_gguf.py \
-      --gguf deploy/npu/out/sahayak-gemma-Q4_0.gguf \
+  python backend/deploy/npu/eval_gguf.py \
+      --gguf backend/deploy/npu/out/sahayak-gemma-Q4_0.gguf \
       --llama-cpp /path/to/llama.cpp \
-      --eval finetune/data/eval_holdout.jsonl --limit 10
+      --eval backend/finetune/data/eval_holdout.jsonl --limit 10
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 # Sahayak's fixed system prompt — must match training/inference byte-for-byte (finetune spec
-# §1.1). Imported concept mirrors finetune/sahayak_finetune.py SYSTEM_PROMPT.
+# §1.1). Imported concept mirrors backend/finetune/sahayak_finetune.py SYSTEM_PROMPT.
 SYSTEM_PROMPT = (
     "You are Sahayak, an offline emergency-response assistant running on a local device in a "
     "disaster zone. You help with first aid, message relay, resource allocation, and navigation. "
@@ -80,7 +80,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Human-review harness for the quantized Sahayak GGUF.")
     p.add_argument("--gguf", required=True, help="The quantized GGUF to review.")
     p.add_argument("--llama-cpp", required=True, help="Built llama.cpp checkout (host build).")
-    p.add_argument("--eval", default="finetune/data/eval_holdout.jsonl")
+    p.add_argument("--eval", default="backend/finetune/data/eval_holdout.jsonl")
     p.add_argument("--limit", type=int, default=10, help="How many records to run.")
     p.add_argument("--n-predict", type=int, default=256)
     p.add_argument("--ctx", type=int, default=2048)

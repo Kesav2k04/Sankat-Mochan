@@ -3,7 +3,7 @@
 # llama.cpp's Hexagon backend. Mirrors llama.cpp's public Snapdragon docs (MIT, CLAUDE.md #3):
 # https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/snapdragon/README.md
 #
-# Usage:  bash deploy/npu/run_gemma_npu.sh <model-Q4_0.gguf> "your prompt"
+# Usage:  bash backend/deploy/npu/run_gemma_npu.sh <model-Q4_0.gguf> "your prompt"
 #
 # Prereqs:
 #   * llama.cpp built with the Snapdragon preset AND pushed to the phone:
@@ -12,7 +12,7 @@
 #     Set LLAMA_CPP to that checkout root.
 #   * adb; phone in USB-debugging mode; QAIRT/Hexagon libs bundled by the preset install.
 #
-# The HTP wants Q4_0/Q8_0 — build the GGUF with deploy/npu/build_gemma_gguf.py, not Q4_K_M.
+# The HTP wants Q4_0/Q8_0 — build the GGUF with backend/deploy/npu/build_gemma_gguf.py, not Q4_K_M.
 
 set -euo pipefail
 
