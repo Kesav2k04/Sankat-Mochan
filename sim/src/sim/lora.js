@@ -289,7 +289,8 @@ export function buildTimeline(nodes) {
   segs.push({ kind: 'respond', ranger: responder.id, from: responder, to: victim, t0: goAt, dur: 11 })
   events.push({ t: goAt + 11, text: `${responder.label} reached the victim`, tone: 'good' })
 
-  const total = Math.max(goAt + 11, victimAckAt) + 0.5
+  // hold the shot on the rescue — let it land before any card covers the map
+  const total = Math.max(goAt + 11, victimAckAt) + 2.4
   events.sort((a, b) => a.t - b.t)
 
   return {
