@@ -1,0 +1,102 @@
+{
+  "_comment": "Sankat-Mochan LoRa gateway. Copy to config.json and edit. Every value here can be overridden by an env var of the same dotted path, upper-cased with '.' -> '__' and prefixed SANKAT_ (e.g. SANKAT_LORA__TX_POWER_DBM=10).",
+
+  "log": {
+    "level": "INFO",
+    "dir": "logs",
+    "chain_file": "chain.jsonl",
+    "text_file": "gateway.log",
+    "console": true
+  },
+
+  "run": {
+    "_comment": "Which radio node(s) THIS board runs. A single Pi holding both radios lists both (the original bench setup). Once radio A moves to the UNO Q, that board lists only 'field' and the Pi lists only 'gateway' — same code, two boxes, still bridged only by 433 MHz. Each name here must have a matching block under 'radios'. The RF startup probe (which needs both radios on one board) auto-disables when only one node runs.",
+    "nodes": ["field", "gateway"]
+  },
+
+  "lora": {
+    "frequency_hz": 433000000,
+    "spreading_factor": 9,
+    "_spreading_factor_comment": "SF9 for the 5 km link: ~+6 dB sensitivity over SF7 (floor ~-129 dBm) at 4x the airtime. Must match LORA_SF in arduino-uno-q/sketch/sketch.ino — an SF mismatch makes the two radios mutually deaf.",
+    "bandwidth_hz": 125000,
+    "coding_rate": 5,
+    "tx_power_dbm": 20,
+    "_tx_power_dbm_comment": "PA_BOOST +20 dBm PA_DAC mode (the driver raises OCP to ~140 mA for it). Never transmit without the antenna attached at this level.",
+    "sync_word": 18,
+    "preamble_len": 8,
+    "crc": true,
+    "tx_repeats": 2,
+    "voice_tx_repeats": 1,
+    "_voice_tx_repeats_comment": "How many times each VOICE chunk is sent on the air (text/SOS use tx_repeats). A voice clip is all-or-nothing — every one of its ~16-45 chunks must arrive or it is unplayable. At SF7 a chunk was ~350 ms on air and 2 blind repeats fit; at SF9 a chunk is ~1.2 s on air while chunks arrive over BLE about once a second, so even 2 repeats saturates the channel and the modem starts refusing frames as busy. 1 repeat + the NACK repair loop is the SF9 budget. SOS is unaffected (exempt critical lane + mid-clip yield).",
+    "max_payload": 255,
+    "startup_probe": true,
+    "csma": {
+      "enabled": true,
+      "rssi_threshold_dbm": -90,
+      "max_wait_ms": 500,
+      "max_backoff_ms": 120
+    },
+    "spi": {
+      "bus": 0,
+      "speed_hz": 1000000
+    }
+  },
+
+  "radios": {
+    "field": {
+      "_comment": "Radio A. Each radio has a 'transport': \"spi\" (wired to THIS board's SPI, the original single-Pi bench), \"serial\" (a separate Arduino LoRa modem on USB, /dev/ttyACM*), or \"bridge\" (the Arduino UNO Q's OWN on-board MCU, reached over the Router Bridge socket — the single-board field node, see arduino-uno-q/). On the UNO Q field board set transport=\"bridge\" in config.json (no serial_port needed). cs/rst_gpio/dio0_gpio are used only by the \"spi\" transport and ignored for serial/bridge; they stay here so the old two-radio Pi bench still runs unchanged.",
+      "transport": "spi",
+      "serial_port": "/dev/ttyACM0",
+      "serial_baud": 115200,
+      "cs": 0,
+      "rst_gpio": 25,
+      "dio0_gpio": 24
+    },
+    "gateway": {
+      "_comment": "Radio B — stays at the relief camp with the Pi, wired to its SPI. Verified wiring.",
+      "transport": "spi",
+      "cs": 1,
+      "rst_gpio": 17,
+      "dio0_gpio": 27
+    }
+  },
+
+  "ble": {
+    "_comment": "UUIDs must match mobile-application/.../MeshUuids.kt byte-for-byte.",
+    "service_uuid": "6b1d0a01-4c2f-4b9c-9d2f-2a7c5e3f1a01",
+    "char_uuid": "6b1d0a02-4c2f-4b9c-9d2f-2a7c5e3f1a01",
+    "enabled": true,
+    "wait_for_peers": true,
+    "peer_retry_s": 10.0,
+    "scan_timeout_s": 12.0,
+    "_peers_comment": "There is no peer list any more. Phones are matched by the role they picked in the app, which they broadcast in their advertisement: every RESPONDER attaches to the gateway radio, everyone else to the field radio. Pinning by MAC would not work anyway — Android rotates its Bluetooth address between runs.",
+    "reconnect_backoff_s": [1, 2, 4, 8, 15]
+  },
+
+  "uplink": {
+    "_comment": "POST each envelope the gateway node accepts to the AI-PC dashboard. Never put secrets here; use env vars. outbox_max caps the durable SOS queue: on overflow we REFUSE new low-urgency envelopes and raise an alarm, but NEVER drop an already-accepted one (see mesh-transmission.md D4).",
+    "enabled": false,
+    "url": null,
+    "timeout_s": 3.0,
+    "outbox_max": 5000
+  },
+
+  "voice": {
+    "_comment": "Pi-side of the voice NACK repair loop. When gateway reassembly stalls, we ask the victim phone to resend the pieces the LoRa hop dropped. node_id is this gateway's 4-char requester id on the mesh (alnum, <=4 chars; keep it distinct from any phone id). nack_quiet_s is how long a clip must be silent before we ask again (a touch longer than the phone's 3s so phone-to-phone repair goes first). upload_concurrency is BOTH the voice HTTP thread-pool size AND the per-pass upload semaphore (signed-off cross-owner contract: default pool stays radio-only, voice gets its own bounded pool of this many workers). upload_connect_s/upload_read_s bound each POST so a dead AI-PC can't pin a worker.",
+    "node_id": "PiG1",
+    "nack_quiet_s": 4.0,
+    "sweep_interval_s": 1.0,
+    "outbox_ttl_s": 180.0,
+    "_outbox_ttl_s_comment": "How long a reassembled voice clip may sit in the upload queue before it is retired. A clip whose SOS never reached the command post keeps getting a 409 ('awaiting_sos'); rather than retry — and log — forever, drop it after this long. A fresh recording's clock starts only when it is enqueued, so raising/lowering this never affects new clips.",
+    "upload_concurrency": 2,
+    "upload_connect_s": 5.0,
+    "upload_read_s": 30.0
+  },
+
+  "ingest": {
+    "_comment": "All inbound mesh frames (BLE + LoRa) are untrusted (CLAUDE.md #8). Each MeshNode drains a bounded queue; frames over queue_max are dropped-and-logged rather than spawning unbounded tasks. global_frames_per_s is a spoof-proof ceiling on TOTAL accepted frames/sec (origins are unauthenticated, so a per-origin cap is bypassable — the global cap is the real DoS defence, see mesh-transmission.md D1/M4). seen_max bounds the dedup ring.",
+    "queue_max": 256,
+    "global_frames_per_s": 50.0,
+    "seen_max": 4096
+  }
+}

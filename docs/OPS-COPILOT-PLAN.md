@@ -14,7 +14,7 @@ Operator-side agent whose tools are the command post's own deterministic functio
 
 ## Build order (~7-9h)
 
-1. **(1.5h) Deterministic spine** — new `command-post/copilot.py`: keyword fast-path for the rehearsed utterances → direct `Store` calls; `POST /copilot` in app.py; new WS card kinds.
+1. **(1.5h) Deterministic spine** — new `backend/copilot.py`: keyword fast-path for the rehearsed utterances → direct `Store` calls; `POST /copilot` in app.py; new WS card kinds.
 2. **(1h) Capability filter on `Store.propose()`** (intelligence.py:369-394) — optional substring match on `responder["capability"]` (e.g. "medic"); preserve existing callers + dashboard propose button. Makes "assign the nearest medic" real (propose() today ignores capability and can't take a responder).
 3. **(2h) One-call LLM turn, 3 tools** — `query_incidents(filters)`, `propose_assign(incident_id, capability?)`, `generate_sitrep()`. Full store summary serialized in-prompt with `<sos_data>` tagging; capacity folded into context (not a tool). Approve card → existing `/accept` → the LoRa → victim-phone-flip payoff is already shipped (app.py:508-517).
 4. **(1.5h) SITREP code-first** — deterministic table computed instantly from `capacity()` + `metrics` + incident states; ≤120-tok LLM prose streams in after (~8-10s). A 300-tok LLM SITREP = 25-30s frozen screen — never. Fallback = table alone.

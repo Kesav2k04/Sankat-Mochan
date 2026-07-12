@@ -1,0 +1,19 @@
+# Sankat-Mochan mesh node (Raspberry Pi gateway / Arduino UNO Q field node).
+# run.sh consumes this via uv (`uv pip install -r pyproject.toml`); it is synced to
+# arduino-uno-q/field-node/ by sync-from-raspberrypi.sh. All permissive licenses
+# (project rule #1). spidev + RPi.GPIO deliberately come from the distro packages
+# (the venv is created with --system-site-packages), never from pip.
+[project]
+name = "sankat-mesh-node"
+version = "0.1.0"
+description = "Sankat-Mochan LoRa/BLE mesh node — BLE to phones, LoRa across the gaps"
+requires-python = ">=3.9"
+dependencies = [
+    "bleak",     # MIT — BLE central/peripheral to the victim phones
+    "requests",  # Apache-2.0 — durable uplink to the command post
+    "pyserial",  # BSD-3 — serial LoRa modem link
+    "msgpack",   # Apache-2.0 — envelope encoding
+]
+
+[tool.uv]
+package = false

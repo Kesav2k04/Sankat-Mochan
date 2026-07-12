@@ -1,6 +1,6 @@
 # Voice pipeline spec — playback, faithful translation, model swap
 
-Scope: `command-post/` voice SOS path. Three defects, ranked. File:function + why for each.
+Scope: `backend/` voice SOS path. Three defects, ranked. File:function + why for each.
 Trust the lead's grounding; verified against the actual code below.
 
 Ground truth (verified in code):

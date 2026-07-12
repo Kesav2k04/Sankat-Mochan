@@ -2,7 +2,7 @@
 
 End-to-end: dataset → QLoRA fine-tune on Kaggle → merged checkpoint + GGUF → artifacts
 downloaded locally → handoff to Qualcomm AI Hub for NPU. Companion to
-`docs/SAHAYAK_DATASET_SPEC.md` (dataset) and `finetune/` (code).
+`docs/SAHAYAK_DATASET_SPEC.md` (dataset) and `backend/finetune/` (code).
 
 ---
 
@@ -35,8 +35,9 @@ downloaded locally → handoff to Qualcomm AI Hub for NPU. Companion to
 ```python
 # ── Cell 1: code + deps ────────────────────────────────────────────────
 !git clone https://github.com/SivaNithishKumar/sankat-mochan.git
-%cd sankat-mochan/finetune
-!pip install -q -r requirements.txt
+%cd sankat-mochan/backend/finetune
+!pip install -q uv
+!uv pip install --system -q -r pyproject.toml
 # If pip warns about preinstalled-package conflicts: Runtime → Restart, rerun this cell.
 
 # ── Cell 2: auth ───────────────────────────────────────────────────────
@@ -136,7 +137,7 @@ python -m qai_hub_models.models.<gemma_4_e2b_recipe>.export \
 
 - Kaggle can't run the quantize step (VRAM + AIMET-Linux constraints) — use the venue
   X Elite / Linux box, per the existing plan in `PLAN.md`.
-- Venue gotchas (from `command-post/aihub_out/RESULTS.md` prep): add
+- Venue gotchas (from `backend/aihub_out/RESULTS.md` prep): add
   `--compile-options="--qairt_version=default" --profile-options="--qairt_version=default"`;
   device strings are `Snapdragon X Elite CRD` / `Snapdragon 8 Elite Gen 5 QRD`.
 - **Verify tonight (5 min):** `pip install qai-hub-models` then

@@ -22,17 +22,22 @@ messengers are illegal and cell networks fail within hours of a disaster.
 
 ## Repository layout
 
-| Path | What's inside |
-| --- | --- |
-| `mesh-app/` | **Native Android (Kotlin) BLE mesh app** — the working T0 transport slice. Victim / Responder / Relay roles; every phone is a full mesh node (GATT server + scanner); store-and-forward; native-language status ladder. |
-| `pi-code/` | **LoRa gateway** — phone ⇄ BLE ⇄ board ⇄ 433 MHz ⇄ board ⇄ phone. Runs on the Raspberry Pi (gateway node, uplinks to the command post) and, split across boxes, on the Arduino UNO Q (field node). Same code both sides; `run.nodes` + each radio's `transport` (`spi`/`serial`) pick the role. |
-| `arduino-unoq/` | **Field-side LoRa modem** for the Arduino UNO Q. The STM32 sketch (`lora_modem/`) drives the Ra-02; the UNO Q's Linux side runs the `pi-code` field node over a serial link. See `arduino-unoq/README.md`. |
-| `command-post/` | The **offline AI command post** (FastAPI) — receives envelopes, triages/translates, serves the dashboard. |
-| `deck/` | The pitch **presentation** (`deck/index.html`) — a self-contained HTML deck; open in any browser. |
-| `docs/planning/` | Architecture, build plan, demo/stage scripts, prep plan, and the team source-of-truth doc. |
-| `docs/research/` | Fact-checked disaster evidence, model/AI-stack research, competitive analysis, and critiques. |
-| `docs/reference/` | The official Qualcomm event guide (PDF). |
-| `CLAUDE.md` / `AGENTS.md` | AI-tool usage rules for this repo (permissive-license deps only, no secrets, prompt-injection discipline, untrusted-input validation). |
+One folder per device, `app-simulator/` for the browser demo, and `docs/` for everything written:
+
+| Path | Runs on | What's inside |
+| --- | --- | --- |
+| `mobile-application/` | Android phones | **Native Android (Kotlin) BLE mesh app** — Victim / Responder / Relay roles; every phone is a full mesh node (GATT server + scanner); store-and-forward; on-device STT; native-language status ladder. |
+| `raspberrypi/` | Raspberry Pi | **LoRa gateway** — phone ⇄ BLE ⇄ board ⇄ 433 MHz ⇄ board ⇄ phone; uplinks accepted envelopes to the command post. `server.sh` here supervises the whole Pi side. |
+| `arduino-uno-q/` | Arduino UNO Q | **Field node**: the STM32 LoRa-modem sketches plus `field-node/` (a synced copy of the `raspberrypi/` mesh code) for the board's Linux side. See `arduino-uno-q/README.md`. |
+| `backend/` | The "AI PC" | The **offline AI command post** (FastAPI + React dashboard) — receives envelopes, triages/translates on the NPU, serves the offline map. Also holds `finetune/` (Sahayak model training). |
+| `app-simulator/` | any browser | **Demo simulator** (React + Vite) — plays the whole victim → mesh → LoRa → triage → dispatch story on the real Wayanad basemap, reusing the map assets from `backend/static/`. |
+| `docs/` | — | All markdown: planning, research, specs, guides — plus `docs/deck/` (the pitch deck) and `docs/assets/`. |
+| `CLAUDE.md` / `AGENTS.md` | — | AI-tool usage rules for this repo (permissive-license deps only, no secrets, prompt-injection discipline, untrusted-input validation). |
+
+All Python in this repo is managed with **[uv](https://docs.astral.sh/uv/)** — each Python
+folder (`backend/`, `backend/finetune/`, `raspberrypi/`, `arduino-uno-q/field-node/`) has a
+`pyproject.toml`; `uv sync` / `uv run` replace the old venv+pip flow (the board scripts keep
+a pip fallback for already-provisioned hardware).
 
 ## Team
 
@@ -52,19 +57,19 @@ messengers are illegal and cell networks fail within hours of a disaster.
 Requires Android Studio + the Android SDK.
 
 ```bash
-cd mesh-app
+cd mobile-application
 ./gradlew assembleDebug          # build the debug APK
 # or open the folder in Android Studio and Run on 2+ physical Android devices
 ```
 
 Install on **two or more physical phones** (BLE peripheral/central needs real hardware, not an
 emulator). Pick a role on each (Victim / Responder / Relay), send an SOS from the Victim, and watch
-it hop the mesh and the status ladder advance. See `mesh-app/README.md` for details.
+it hop the mesh and the status ladder advance. See `mobile-application/README.md` for details.
 
 ## View the deck
 
 ```bash
-open deck/index.html            # macOS — or open the file in any browser
+open docs/deck/index.html       # macOS — or open the file in any browser
 ```
 
 ## License
@@ -75,4 +80,4 @@ open deck/index.html            # macOS — or open the file in any browser
 
 *This is the team's private working repo (includes internal strategy/research under `docs/`).
 The official hackathon submission must be a **public** repo — when you create it, publish only the
-code, `deck/`, and a clean README, and leave the internal strategy/critique docs out.*
+code, `docs/deck/`, and a clean README, and leave the internal strategy/critique docs out.*

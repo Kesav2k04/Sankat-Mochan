@@ -1,0 +1,33 @@
+# Sahayak fine-tuning dependencies — pure transformers + PEFT (no Unsloth, no TRL).
+# All Apache-2.0 (CLAUDE.md #1). Managed with uv:  uv sync  (or uv pip install -r pyproject.toml)
+#
+# torch: install the build matching your platform/accelerator FIRST, from https://pytorch.org
+#   - CUDA (recommended for real training)         e.g. uv pip install torch --index-url .../cu121
+#   - CPU / Windows-ARM / Surface (pipeline test)  uv pip install torch
+#   - Apple Silicon (MPS)                          uv pip install torch
+#
+# Versions are UPPER-BOUNDED, not open-ended, so an unattended install can't silently
+# resolve to a future release that breaks the API surface the trainer uses. These bounds
+# are a compatibility window, NOT a GPU-smoke-tested lock — after your first successful
+# CUDA run, pin the exact versions here (`uv pip freeze`) to make the run reproducible.
+#
+# Floor rationale: transformers gained the gemma4 architecture on 2026-04-02
+# (huggingface.co/blog/gemma4); 5.6.0 is the first release guaranteed to include it.
+[project]
+name = "sankat-finetune"
+version = "0.1.0"
+description = "Sahayak victim-agent fine-tuning (Gemma 4, QLoRA)"
+requires-python = ">=3.10"
+dependencies = [
+    "transformers>=5.6,<6",
+    "datasets>=3.6,<6",
+    "peft>=0.16,<1",
+    "accelerate>=1.6,<2",
+
+    # 4-bit QLoRA + the paged 8-bit optimizer. CUDA-only — skipped off Linux (the
+    # trainer detects the missing GPU and falls back to an unquantized smoke-test path).
+    'bitsandbytes>=0.46,<1; platform_system == "Linux"',
+]
+
+[tool.uv]
+package = false

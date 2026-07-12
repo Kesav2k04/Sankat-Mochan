@@ -1,0 +1,5 @@
+node_modules
+dist
+dist-ssr
+# copied from ../backend/static by scripts/copy-assets.mjs
+public/

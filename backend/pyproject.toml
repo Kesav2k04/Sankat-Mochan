@@ -1,0 +1,43 @@
+# Sankat-Mochan backend (offline AI command post). Managed with uv:
+#   uv sync            # create .venv and install everything below
+#   uv run uvicorn app:app --host 0.0.0.0 --port 9000
+# All MIT/BSD/Apache-2.0 (project rule #1).
+[project]
+name = "sankat-backend"
+version = "0.1.0"
+description = "Sankat-Mochan offline AI command post — FastAPI backend + dashboard"
+# 3.11 floor: onnxruntime 1.27 ships no wheels for older interpreters.
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.0",           # MIT
+    "uvicorn[standard]==0.30.6",  # BSD
+    "httpx==0.27.2",              # BSD — backend-agnostic OpenAI-compatible client
+    "python-dotenv==1.0.1",       # BSD
+    "python-multipart==0.0.12",   # BSD — FastAPI form/file uploads
+
+    # app.py imports `stt` at module scope, which imports both of these. Without them
+    # the server does not start at all.
+    "numpy==2.1.1",               # BSD-3
+    "soundfile==0.12.1",          # BSD-3 (bundles libsndfile, LGPL, as a separate shared lib)
+
+    # raspberrypi/uplink.py speaks the /gateway WebSocket to this server.
+    "websockets==13.1",           # BSD-3
+    "asyncpg==0.30.0",            # Apache-2.0 — PostgreSQL session/audio persistence
+
+    # Optional: only the offline basemap endpoint imports this, and it does so lazily.
+    "pmtiles==3.4.0",             # BSD-3
+
+    # --- Speech-to-text: AI4Bharat IndicConformer-600M (see stt.py) ---------------
+    # Heavy ML stack, pinned so a fresh sync transcribes without manual installs.
+    # onnxruntime is REQUIRED: the model's trust_remote_code modeling file
+    # (model_onnx.py) imports it. These are the CPU builds (STT runs on CPU by
+    # design; the NPU stays free for the triage LLM).
+    "torch==2.13.0",              # BSD-3 — CPU build; loads the conformer weights
+    "transformers==5.13.1",       # Apache-2.0 — AutoModel(trust_remote_code) loader
+    "huggingface-hub==1.23.0",    # Apache-2.0 — model download/cache
+    "onnxruntime==1.27.0",        # MIT — CPU EP; required by the model's remote code
+]
+
+[tool.uv]
+# Plain flat-module app (app.py, stt.py, …), not an installable package.
+package = false

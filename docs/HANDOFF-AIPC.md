@@ -5,7 +5,7 @@ Everything needed to run the **command post** on the Snapdragon X Elite laptop
 
 This PC's job: receive SOS + voice from the Pi gateway over Wi-Fi, run triage +
 faithful translation (NPU LLM) and Indic speech-to-text, and serve the live
-dashboard. The Pi + radios + phones are a separate handoff (`pi-code/`, phones).
+dashboard. The Pi + radios + phones are a separate handoff (`raspberrypi/`, phones).
 
 ```
 victim phone ──BLE──► Pi gateway ──433 MHz──► Pi ──Wi-Fi (WS/HTTP)──► THIS PC (command post)
@@ -41,9 +41,9 @@ cd sankat-mochan
 ```
 
 ## 2. LLM on the NPU (GenieX)
-From `command-post\`:
+From `backend\`:
 ```powershell
-cd command-post
+cd backend
 ./setup-geniex.ps1        # pulls heretic 8B @ Q4_0, serves NPU on :18181, writes .env
 ```
 This pulls `bartowski/p-e-w_Llama-3.1-8B-Instruct-heretic-GGUF` at **Q4_0** (best Hexagon-NPU
@@ -56,10 +56,9 @@ support), starts `geniex serve` at `http://127.0.0.1:18181/v1`, health-checks it
 
 ## 3. Python env + deps
 ```powershell
-# still in command-post\
-python -m venv .venv
+# still in backend\
+uv sync                                  # creates .venv from pyproject.toml (FastAPI, uvicorn, httpx, numpy, soundfile, websockets…)
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt          # FastAPI, uvicorn, httpx, numpy, soundfile, websockets…
 
 # Voice speech-to-text (Indic-Conformer) — heavy, but needed for voice TRANSCRIPTS:
 pip install torch transformers           # CPU build is fine; first run downloads the model
@@ -68,7 +67,7 @@ Without `torch`/`transformers` the server still starts and everything works **ex
 transcription (audio still plays; text SOS + translation still work).
 
 ## 4. Configure `.env`
-`setup-geniex.ps1` already wrote the `LLM_*` lines. Confirm `command-post\.env` has:
+`setup-geniex.ps1` already wrote the `LLM_*` lines. Confirm `backend\.env` has:
 ```
 LLM_BASE_URL=http://127.0.0.1:18181/v1
 LLM_MODEL=bartowski/p-e-w_Llama-3.1-8B-Instruct-heretic-GGUF
@@ -78,7 +77,7 @@ LLM_TIMEOUT_S=60
 **Database — pick one:**
 - **DB-less (simplest for the demo):** do nothing. Leave `DATABASE_URL` unset and do **not**
   set `SANKAT_DATABASE_REQUIRED=true`. Sessions are in-memory; voice/audio is stored as files
-  under `command-post\audio_store\`. Everything works.
+  under `backend\audio_store\`. Everything works.
 - **PostgreSQL (persistent sessions/audio):** needs Docker. Bring up the container and put its
   `DATABASE_URL` in `.env` (`SANKAT_DATABASE_REQUIRED=true`). See `setup-postgres.sh` for the
   values; on Windows run the equivalent `docker compose -f compose.yaml up -d postgres`.
@@ -95,7 +94,7 @@ cd ..
 
 ## 6. Run the command post
 ```powershell
-# in command-post\ with the venv active and GenieX serving
+# in backend\ with the venv active and GenieX serving
 uvicorn app:app --host 0.0.0.0 --port 9000
 ```
 Open **http://localhost:9000** — the dashboard is served by FastAPI itself. It has an

@@ -2,7 +2,7 @@
 
 > The punch: don't present the system — PERFORM it. Three teammates embody the three people in a
 > real disaster; the judges live it from each POV. The tech does real work behind the actors; the
-> deck (deck/index.html) is the cinematic backdrop that cues each act. Under 5 minutes, total.
+> deck (docs/deck/index.html) is the cinematic backdrop that cues each act. Under 5 minutes, total.
 
 ## Cast & staging
 - **VICTIM** — teammate (Tamil-speaking). Off to one side, phone in hand, crouched/low. Their phone

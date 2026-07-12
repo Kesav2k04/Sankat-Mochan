@@ -17,7 +17,7 @@ matches the audio.
 
 ---
 
-## A. Pi transmission + all-comms reliability (owner: Mesh) — `pi-code/`
+## A. Pi transmission + all-comms reliability (owner: Mesh) — `raspberrypi/`
 
 ### A1 (BLOCKER) Split voice upload off the SOS/WS path — `uplink.py`
 - `_sender` does WS only: `_flush` (envelopes) → `_flush_peer_states` → `_flush_status`.
@@ -66,7 +66,7 @@ matches the audio.
 
 ---
 
-## B. Command-post voice pipeline (owner: Voice) — `command-post/`
+## B. Command-post voice pipeline (owner: Voice) — `backend/`
 
 ### B1 (BLOCKER) Browser-playable audio — `stt.py`, `app.py`, `intelligence.py`
 - New `stt.transcode_for_web(data)->(bytes,ctype)|None`: reuse the safe shell-free

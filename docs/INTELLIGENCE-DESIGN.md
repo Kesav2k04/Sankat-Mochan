@@ -1,7 +1,7 @@
 # Command-Post Intelligence — Build Spec
 
 > The backend "brain" of the AI PC, designed component-by-component. This is the
-> BUILD SPEC — decisions here drive the code in `command-post/`. It also defines
+> BUILD SPEC — decisions here drive the code in `backend/`. It also defines
 > what the time-compressed simulation ([[SIMULATION-DEMO]]) visualizes.
 > Status: brainstorm in progress (started 10 Jul 2026). Components added as we go.
 

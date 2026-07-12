@@ -9,7 +9,7 @@
 .gradle/
 *.iml
 .kotlin/
-mesh-app/local.properties
+mobile-application/local.properties
 local.properties
 
 # IDE
@@ -36,16 +36,15 @@ node_modules/
 *.hprof
 
 # Compiled AI Hub model artifacts + local model cache (build outputs, not source; too large for git)
-command-post/export_assets/
-command-post/pretrained_models/
+backend/export_assets/
+backend/pretrained_models/
 
 # Transient test data / benchmark artifacts (not source)
-command-post/fleurs/
-command-post/audio/
-command-post/audio_store/
-command-post/.postgres.env
-audio/
-command-post/backends.json
+backend/fleurs/
+backend/audio/
+backend/audio_store/
+backend/.postgres.env
+backend/backends.json
 *.output
 /Lottie-icons/
 # Durable outbox / local DBs (runtime state, e.g. the Pi edge-link outbox)
@@ -54,3 +53,6 @@ command-post/backends.json
 
 # External tools
 ruflo/
+
+# leftover locked copies from the restructure (delete finetune/ once unlocked)
+/finetune/

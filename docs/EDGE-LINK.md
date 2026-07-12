@@ -46,7 +46,7 @@ Link state + outbox depth surfaced on the dashboard and the Pi chainlog:
 - Verified: UP ack ✓, cluster→propose(NDRF ALPHA 0.6km)→accept ✓, DOWN dispatch (ACCEPTED,
   refId, lang) ✓, health ✓.
 
-**Pi (`pi-code/`) — module written, wiring pending:**
+**Pi (`raspberrypi/`) — module written, wiring pending:**
 - [x] `uplink.py` — `DurableOutbox` (SQLite, ack-to-delete) + `EdgeUplink` WS client
       (auto-reconnect/backoff, priority flush, HTTP-POST /sos fallback, downlink handler).
 - [x] Wired into `gateway.py`: `EdgeUplink.send_envelope` on the gateway node's `on_accept`

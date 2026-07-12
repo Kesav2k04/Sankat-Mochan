@@ -1,8 +1,8 @@
 # Sankat-Mochan — Single System Architecture
 
-> One picture of everything in this repo: the Android BLE mesh app (`mesh-app/`),
-> the Pi LoRa gateway (`pi-code/`), the AI-PC command post (`command-post/`),
-> and the flow simulator (`sim/`) — plus the frozen wire contracts that glue them.
+> One picture of everything in this repo: the Android BLE mesh app (`mobile-application/`),
+> the Pi LoRa gateway (`raspberrypi/`), the AI-PC command post (`backend/`),
+> and the flow simulator (`app-simulator/`) — plus the frozen wire contracts that glue them.
 > Use the Mermaid blocks directly (GitHub / Obsidian / mermaid.live render them),
 > or use this doc as the source spec for a drawn (Figma/Excalidraw) diagram.
 
@@ -26,7 +26,7 @@ in their own language. No towers. No internet. Nothing leaves the mesh.
 flowchart LR
     subgraph DZ["🌊 DISASTER ZONE — offline (kill-switch: airplane mode, BLE only)"]
         direction TB
-        V["📱 Victim phone<br/><i>mesh-app (Kotlin)</i><br/>speak SOS → on-device STT →<br/>CONTRACT-1 envelope ≤244 B<br/>+ voice chunks (AMR)"]
+        V["📱 Victim phone<br/><i>mobile-application (Kotlin)</i><br/>speak SOS → on-device STT →<br/>CONTRACT-1 envelope ≤244 B<br/>+ voice chunks (AMR)"]
         R1["📱 Relay phone(s)<br/>GATT server + scanner<br/>dedup by id · hop+1 ·<br/>store-and-forward"]
         RP["📱 Responder phone<br/>one-tap Accept ·<br/>status ladder in native language"]
         S["📟 UNO Q sensor node<br/>(event hw) water/tilt<br/>auto-alerts, category=sensor"]
@@ -58,7 +58,7 @@ flowchart LR
         API -- "WS /ws live feed" --> DASH
     end
 
-    subgraph SIM["🎬 DEMO LAYER — sim/ (React flow simulator)"]
+    subgraph SIM["🎬 DEMO LAYER — app-simulator/ (React flow simulator)"]
         direction TB
         SENG["engine.js — journeys over the real<br/>topology · real envelope bytes ·<br/>real LoRa airtime (Semtech formula) ·<br/>mirrors intelligence.py tunables"]
         SMODE["Trace mode: 1 Tamil SOS, every hop<br/>Surge mode: 40 multilingual SOS / 24 h compressed"]
@@ -83,10 +83,10 @@ flowchart LR
 
 | Tier | Path | Runtime | Role |
 |---|---|---|---|
-| **Field mesh** | `mesh-app/` | Native Android (Kotlin, Compose) | One app, 3 roles (Victim / Responder / Relay). Every phone is a full BLE mesh node: GATT server **and** scanner, dedup + store-and-forward, optional GPS, voice SOS recording + chunking, victim status ladder, LoRa-only toggle, offline map tiles. |
-| **Bridge** | `pi-code/` | Raspberry Pi (Python) | Two Ra-02 LoRa radios as **two isolated `MeshNode`s** (field + gateway) — the only edge between them is RF, provable via `chainlog.py` (payload hash on TX radio + RX radio + real RSSI/SNR). BLE central (`bleak`) toward phones; `uplink.py` durable outbox toward the AI PC. |
-| **Command post** | `command-post/` | FastAPI + React (Mac dev → Snapdragon X Elite at event) | Ingest + dedup, deterministic intelligence services (cluster/rank/dispatch/de-conflict/audit), backend-agnostic LLM triage + translation (NPU via GenieX), Whisper/Indic-Conformer STT, live WebSocket dashboard on an offline basemap, session persistence. |
-| **Demo layer** | `sim/` | Standalone React (Vite) | Plays the whole flow on the real Wayanad basemap. Honest simulation: real envelope wire format + 244-byte budget, real LoRa airtime math, roster/tunables copied from `intelligence.py`, cached triage per the SIMULATION-DEMO decision. Trace + Surge modes. |
+| **Field mesh** | `mobile-application/` | Native Android (Kotlin, Compose) | One app, 3 roles (Victim / Responder / Relay). Every phone is a full BLE mesh node: GATT server **and** scanner, dedup + store-and-forward, optional GPS, voice SOS recording + chunking, victim status ladder, LoRa-only toggle, offline map tiles. |
+| **Bridge** | `raspberrypi/` | Raspberry Pi (Python) | Two Ra-02 LoRa radios as **two isolated `MeshNode`s** (field + gateway) — the only edge between them is RF, provable via `chainlog.py` (payload hash on TX radio + RX radio + real RSSI/SNR). BLE central (`bleak`) toward phones; `uplink.py` durable outbox toward the AI PC. |
+| **Command post** | `backend/` | FastAPI + React (Mac dev → Snapdragon X Elite at event) | Ingest + dedup, deterministic intelligence services (cluster/rank/dispatch/de-conflict/audit), backend-agnostic LLM triage + translation (NPU via GenieX), Whisper/Indic-Conformer STT, live WebSocket dashboard on an offline basemap, session persistence. |
+| **Demo layer** | `app-simulator/` | Standalone React (Vite) | Plays the whole flow on the real Wayanad basemap. Honest simulation: real envelope wire format + 244-byte budget, real LoRa airtime math, roster/tunables copied from `intelligence.py`, cached triage per the SIMULATION-DEMO decision. Trace + Surge modes. |
 
 ---
 
@@ -94,8 +94,8 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    C1["<b>CONTRACT 1 — Envelope</b><br/>compact JSON ≤ 244 bytes<br/>keys: i,t,o,r,u,c,l,g,ln,la,lo,ts,h<br/>dedup by i · h+1 per relay hop<br/>source of truth: model/SosMessage.kt<br/>ports: pi-code/envelope.py · sim/src/sim/envelope.js"]
-    C2["<b>CONTRACT 2 — BLE GATT</b><br/>service 6b1d0a01-… · char 6b1d0a02-…<br/>(WRITE + NOTIFY) · CCCD 00002902-…<br/>implemented: mesh-app BleMeshService ·<br/>pi-code/ble_link.py"]
+    C1["<b>CONTRACT 1 — Envelope</b><br/>compact JSON ≤ 244 bytes<br/>keys: i,t,o,r,u,c,l,g,ln,la,lo,ts,h<br/>dedup by i · h+1 per relay hop<br/>source of truth: model/SosMessage.kt<br/>ports: raspberrypi/envelope.py · app-simulator/src/sim/envelope.js"]
+    C2["<b>CONTRACT 2 — BLE GATT</b><br/>service 6b1d0a01-… · char 6b1d0a02-…<br/>(WRITE + NOTIFY) · CCCD 00002902-…<br/>implemented: mobile-application BleMeshService ·<br/>raspberrypi/ble_link.py"]
     C3["<b>CONTRACT 3 — Edge link (Pi ⇄ AI PC)</b><br/>WS /gateway, ACK-by-id, heartbeat/pong<br/>up: {type:envelope, env:{…}}<br/>down: {type:dispatch, env:{t:ACCEPTED,…}}<br/>durable SQLite outbox both ends ·<br/>HTTP POST /sos fallback"]
     C1 --> C2 --> C3
 ```
@@ -226,9 +226,9 @@ The sim is **a driver + playback UI on top of the real design, not a parallel fa
 
 | Sim element | Real counterpart it reuses |
 |---|---|
-| `sim/src/sim/envelope.js` | CONTRACT-1 short-key wire format + 244-byte budget (`SosMessage.kt` / `envelope.py`) |
+| `app-simulator/src/sim/envelope.js` | CONTRACT-1 short-key wire format + 244-byte budget (`SosMessage.kt` / `envelope.py`) |
 | LoRa hop timing | Semtech airtime formula (SF9/BW125 ≈ 1.2 s per full envelope) |
-| Cluster / rank / dispatch tunables | Copied 1:1 from `command-post/intelligence.py` (eps 100 m, aging cap 0.5, 12 km/h ETA…) |
+| Cluster / rank / dispatch tunables | Copied 1:1 from `backend/intelligence.py` (eps 100 m, aging cap 0.5, 12 km/h ETA…) |
 | Wayanad basemap | The same offline PMTiles extract the command post serves (`copy-assets.mjs`) |
 | Triage outputs | Pre-computed/cached per the SIMULATION-DEMO hybrid decision — with one **live** SOS dropped mid-demo through the real NPU to prove it's not a recording |
 
@@ -252,5 +252,5 @@ If you're redrawing this as one poster-style diagram, the load-bearing elements 
 
 Source docs for deeper detail: `PLAN.md` (hardware + day plan) ·
 `docs/INTELLIGENCE-DESIGN.md` (C1–C18) · `docs/EDGE-LINK.md` (CONTRACT 3) ·
-`docs/HANDOFF-AIPC.md` (X Elite / GenieX setup) · `pi-code/README.md` (LoRa proof) ·
-`sim/README.md` (demo layer).
+`docs/HANDOFF-AIPC.md` (X Elite / GenieX setup) · `raspberrypi/README.md` (LoRa proof) ·
+`app-simulator/README.md` (demo layer).

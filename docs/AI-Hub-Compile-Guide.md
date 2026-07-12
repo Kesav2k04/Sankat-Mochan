@@ -24,7 +24,7 @@ to the X Elite (change one device string).
 ## 1. Prerequisites
 
 ```bash
-# Python env (we used command-post/.venv, Python 3.11)
+# Python env (we used backend/.venv, Python 3.11)
 pip install "qai-hub==0.52.0" onnx onnxruntime soundfile numpy
 # One-time AI Hub auth — get the token from https://app.aihub.qualcomm.com/ (Account → Settings)
 qai-hub configure --api_token <YOUR_TOKEN>     # writes ~/.qai_hub/client.ini
@@ -42,7 +42,7 @@ Verify: `python -c "import qai_hub as h; print(h.Device('Snapdragon 8 Elite Gen 
 
 ## 2. The compile pipeline (what the scripts do)
 
-Scripts live in `command-post/`:
+Scripts live in `backend/`:
 - `aihub_precompiled_stt.py` — compile both graphs as `precompiled_qnn_onnx` and download.
 - `aihub_compile_stt.py` / `aihub_resubmit_stt.py` — earlier `qnn_context_binary` variants + the
   external-data packaging helper.
@@ -84,7 +84,7 @@ job.download_target_model("out/encoder")              # writes a .zip (model.onn
 - **Static input specs are required** — pick a fixed window (we used 15 s → 1501 mel frames) and
   pad shorter audio in app code; pass the real valid length so the encoder masks the pad.
 - Derive exact static shapes empirically by running the preprocessor once (see
-  `command-post/dump_mel_golden.py`).
+  `backend/dump_mel_golden.py`).
 
 ### 2c. Profile + download
 ```python
@@ -123,7 +123,7 @@ pj.wait(); prof = pj.download_profile()
 to the `.onnx`; keep both in the same folder.
 
 ## 5. Deploying the model files
-`mesh-app/tools/push_stt_model.sh` — extracts the AI Hub zips, downgrades IR to 10, and
+`mobile-application/tools/push_stt_model.sh` — extracts the AI Hub zips, downgrades IR to 10, and
 `adb push`es `model.onnx`+`model.bin` per graph into the **app-created** external dir
 (`Android/data/<pkg>/files/stt/<graph>/`). Open the app once first so `SttEngine`'s ctor creates
 the (app-owned) dirs.
@@ -146,4 +146,4 @@ the (app-owned) dirs.
 - QNN EP (ONNX Runtime): https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html
 - IndicConformer: https://huggingface.co/ai4bharat/indic-conformer-600m-multilingual
 - GenieX chat reference app: github.com/qualcomm/ai-hub-apps → `apps/geniex_chat_android`
-- `qai-hub` 0.52.0, `qai-hub-models` 0.48.0; prior profiling in `command-post/aihub_out/RESULTS.md`
+- `qai-hub` 0.52.0, `qai-hub-models` 0.48.0; prior profiling in `backend/aihub_out/RESULTS.md`

@@ -1,6 +1,6 @@
 # Mesh Transmission Spec — Pi uplink priority + parallelism
 
-**Scope:** `pi-code/uplink.py`, `node.py`, `ble_link.py`, `gateway.py` — ALL Pi-side comms
+**Scope:** `raspberrypi/uplink.py`, `node.py`, `ble_link.py`, `gateway.py` — ALL Pi-side comms
 (RX ingest, envelope uplink, dispatch/NACK return path, voice, peer/status).
 **Goal:** every channel is parallel, fast, RELIABLE ("always gets through, never wedged")
 and DoS-resistant ("degrades gracefully under flood"); SOS is always first; no regressions.

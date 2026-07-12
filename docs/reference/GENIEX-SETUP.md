@@ -42,7 +42,7 @@ Download and run `geniex-cli-setup.exe` from `github.com/qualcomm/GenieX`, then 
 terminal so `geniex` is on PATH.
 
 ### 2. Pull + serve + wire the command post (one script)
-From `command-post/` (PowerShell):
+From `backend/` (PowerShell):
 ```powershell
 ./setup-geniex.ps1                     # heretic 8B @ Q4_0 on the NPU, serves :18181, writes .env
 ./setup-geniex.ps1 -Precision Q8_0     # int8 instead (GPU/CPU)
@@ -50,7 +50,7 @@ From `command-post/` (PowerShell):
 ```
 The script pulls the model, starts `geniex serve` as a background job, health-checks
 `/v1/models`, smoke-tests `/v1/chat/completions`, and writes `LLM_BASE_URL/LLM_MODEL/
-LLM_TIMEOUT_S` into `command-post/.env`. (Flags echo before running — the dev-preview CLI
+LLM_TIMEOUT_S` into `backend/.env`. (Flags echo before running — the dev-preview CLI
 may rename them; confirm with `geniex pull --help` / `geniex serve --help`.)
 
 ### 2-alt. Manual
@@ -58,7 +58,7 @@ may rename them; confirm with `geniex pull --help` / `geniex serve --help`.)
 geniex pull bartowski/p-e-w_Llama-3.1-8B-Instruct-heretic-GGUF --precision Q4_0
 geniex serve --device npu            # → http://127.0.0.1:18181/v1
 ```
-Then set in `command-post/.env`:
+Then set in `backend/.env`:
 ```
 LLM_BASE_URL=http://127.0.0.1:18181/v1
 LLM_MODEL=bartowski/p-e-w_Llama-3.1-8B-Instruct-heretic-GGUF

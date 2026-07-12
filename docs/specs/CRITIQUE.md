@@ -1,8 +1,8 @@
 # CRITIQUE — mesh-transmission.md & voice-pipeline.md
 
 Reviewer: Critic. Both specs treated as guilty until proven. Claims verified against
-actual code (`pi-code/uplink.py`, `node.py`, `ble_link.py`, `gateway.py`, `envelope.py`;
-`command-post/app.py`, `intelligence.py`, `triage.py`, `stt.py`, `database.py`,
+actual code (`raspberrypi/uplink.py`, `node.py`, `ble_link.py`, `gateway.py`, `envelope.py`;
+`backend/app.py`, `intelligence.py`, `triage.py`, `stt.py`, `database.py`,
 `web/src/components/IncidentDetail.jsx`). Findings ranked BLOCKER / MAJOR / MINOR.
 Line refs are from the code as read today.
 
@@ -230,7 +230,7 @@ is in the room. Auto-restart is post-demo. This is over-engineering for the even
 
 ## DIFF REVIEW — command-post (Voice's actual implementation)
 
-Reviewed the uncommitted working-tree diff (`git diff -- command-post/`) file-by-file
+Reviewed the uncommitted working-tree diff (`git diff -- backend/`) file-by-file
 against the running code, not the summary. Verdict: **the four command-post BLOCKERs
 (B1/B3/B4 + M5) are correctly and cleanly implemented; no new BLOCKER introduced.**
 Findings below are MAJOR/MINOR polish + one behaviour change worth a conscious sign-off.
@@ -316,9 +316,9 @@ specified and I could not find a correctness, injection, traversal, or render de
 
 ---
 
-## DIFF REVIEW — pi-code (Mesh's actual implementation)
+## DIFF REVIEW — raspberrypi (Mesh's actual implementation)
 
-Reviewed the uncommitted pi-code diff (`git diff -- pi-code/`, 6 files) line-by-line against
+Reviewed the uncommitted raspberrypi diff (`git diff -- raspberrypi/`, 6 files) line-by-line against
 the running code, with focus on threading/loop-safety of the new RX intake path. Verdict:
 **the #1 risk (thread-safety of the intake queue) is handled CORRECTLY — no BLOCKER found.**
 The threading is right. Findings are two MAJORs (a life-safety semantics gap + a forwarding
