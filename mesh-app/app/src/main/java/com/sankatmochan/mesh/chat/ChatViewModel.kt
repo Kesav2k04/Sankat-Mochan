@@ -206,7 +206,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         // .litertlm / .task / .tflite are LiteRT/MediaPipe bundles - a different
                         // runtime that this build doesn't ship. Only GGUF runs on the wired-up
                         // llama.cpp engine, so say so plainly instead of letting it fail deep in
-                        // the native loader (CLAUDE.md #4/#10).
+                        // the native loader (DOCS.md #4/#10).
                         statusMessage = "This build runs GGUF models only. Formats like .litertlm, " +
                             ".task or .tflite need a different engine that isn't included, so they " +
                             "can't be loaded here."
@@ -347,7 +347,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** @param replyLanguage English name of the language to answer in (from voice LID); null for
      *   typed input, where the model infers from the message per the system prompt. */
     fun send(rawText: String, replyLanguage: String? = null) {
-        // Size-cap untrusted input before it reaches the model (CLAUDE.md #8) - a huge paste
+        // Size-cap untrusted input before it reaches the model (DOCS.md #8) - a huge paste
         // would otherwise eat the whole context window in one turn.
         val text = rawText.trim().take(MAX_INPUT_CHARS)
         if (text.isEmpty() || isGenerating || phase != Phase.READY) return

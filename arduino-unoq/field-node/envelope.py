@@ -5,7 +5,7 @@ This is a faithful port of the Android side (`model/SosMessage.kt`), which is th
 source of truth. The wire format is compact small-key JSON, UTF-8, <= 244 bytes so
 one envelope fits a single BLE write at a 247-byte MTU AND a 255-byte LoRa frame.
 
-Every envelope arriving from BLE or LoRa is UNTRUSTED (CLAUDE.md #8): we validate
+Every envelope arriving from BLE or LoRa is UNTRUSTED (DOCS.md #8): we validate
 size, type and field ranges before touching it, cap string lengths, and never
 interpret any field as a command. `decode()` returning None means "drop it".
 """
@@ -222,7 +222,7 @@ def _origin_of(raw: bytes) -> Optional[str]:
 
 
 def _decode_voice(raw: bytes):
-    """Parse + validate a binary voice frame. Untrusted input (CLAUDE.md #8): every
+    """Parse + validate a binary voice frame. Untrusted input (DOCS.md #8): every
     field is range-checked and the declared length must match the frame exactly."""
     if len(raw) < VOICE_HEADER or len(raw) > VOICE_HEADER + MAX_VOICE_CHUNK:
         return None
@@ -354,7 +354,7 @@ _CTRL[0x7F] = None
 
 
 def preview(text: str, limit: int = 60) -> str:
-    """One-line, length-capped rendering of untrusted free text (CLAUDE.md #8).
+    """One-line, length-capped rendering of untrusted free text (DOCS.md #8).
 
     Control characters are stripped, not escaped: a gist arriving off the air that
     contained "\\n02:09:13 INFO sankat: probe OK" would otherwise forge a log line.

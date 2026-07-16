@@ -18,7 +18,7 @@ import java.util.UUID
  * ANDROID_ID when available (stable per device + app signing key, no permission required), with a
  * random UUID fallback for the rare device that reports the known-buggy emulator value or none at
  * all. Because we ship only the SHA-256-derived 12 hex chars, the raw ANDROID_ID never leaves the
- * phone. Persisted in a private SharedPreferences file (flagged for review per CLAUDE.md #6:
+ * phone. Persisted in a private SharedPreferences file (flagged for review per DOCS.md #6:
  * this is device-storage handling).
  */
 object DeviceId {

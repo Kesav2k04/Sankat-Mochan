@@ -66,7 +66,7 @@ fun reunionMarker(res: Resources, greenArgb: Int, sizePx: Int): Drawable {
 /**
  * Overlay the bundled safe-reunion points (always) and general landmarks (optional) onto a map.
  * Each reunion point gets a translucent green "safe zone" circle under a radar beacon; landmarks
- * get small neutral pins. Titles/snippets are plain text (CLAUDE.md #9). Call from a map
+ * get small neutral pins. Titles/snippets are plain text (DOCS.md #9). Call from a map
  * `update` block after clearing/adding your own SOS/position markers.
  *
  * @param safeZoneRadiusM radius of the safe-zone ring in metres.

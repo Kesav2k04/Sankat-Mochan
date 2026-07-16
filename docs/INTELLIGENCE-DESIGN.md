@@ -13,7 +13,7 @@
 - **Human-in-the-loop for life-safety**: agent *proposes*, responder *confirms*
   (one-tap Accept). Auto-act only on high-confidence, always with an audit log.
 - **Untrusted input**: SOS text is DATA, never instructions — must never trigger or
-  parametrize a tool call (CLAUDE.md #7). Load-bearing once the agent has dispatch tools.
+  parametrize a tool call (DOCS.md #7). Load-bearing once the agent has dispatch tools.
 - **Explainability**: every automated decision is logged with its *why* (audit log) —
   for trust, for the sim's AI-activity panel, and for judges.
 

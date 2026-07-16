@@ -183,7 +183,7 @@ private fun drawPins(
                 position = p
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                 icon = dotMarker(criticalArgb, 34)
-                // Untrusted incoming text, shown as a plain title (CLAUDE.md #9).
+                // Untrusted incoming text, shown as a plain title (DOCS.md #9).
                 title = "${sos.origin} · ${sos.category.ifBlank { "SOS" }}"
                 snippet = "%.6f, %.6f".format(sos.lat, sos.lng)
             }

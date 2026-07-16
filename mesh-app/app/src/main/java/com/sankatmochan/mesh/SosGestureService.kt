@@ -48,7 +48,7 @@ import kotlin.math.sqrt
  * On a device with no wake-up accelerometer we fall back to the standard one (reliable screen-on
  * and while this service is alive; the OS may batch or pause it in deep sleep).
  *
- * Safety (CLAUDE.md #6 - this is user-safety code a human must review): detecting the gesture only
+ * Safety (DOCS.md #6 - this is user-safety code a human must review): detecting the gesture only
  * *raises the confirmation countdown*; it never sends an SOS by itself. The SOS goes out only if
  * the 30s countdown elapses or the user taps "Send now" (see [MainActivity.sendAutoSos] and
  * [com.sankatmochan.mesh.ui.SosCountdownOverlay]). Background Activity launch is restricted on

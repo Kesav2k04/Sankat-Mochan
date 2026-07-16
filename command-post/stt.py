@@ -119,9 +119,9 @@ def transcode_for_web(data: bytes) -> tuple[bytes, str] | None:
     """Transcode raw mesh audio (AMR-NB in 3GP, which browsers cannot decode) into a
     universally-playable WAV (PCM s16le, mono, 16 kHz). Returns (bytes, content_type) or
     None if ffmpeg is unavailable / the input can't be decoded — callers then keep the raw
-    clip and surface a quiet "not playable" status (CLAUDE.md #10), never a crash.
+    clip and surface a quiet "not playable" status (DOCS.md #10), never a crash.
 
-    Security (CLAUDE.md #8): the input is attacker-influenced bytes. We invoke ffmpeg with
+    Security (DOCS.md #8): the input is attacker-influenced bytes. We invoke ffmpeg with
     a fixed list-argv (no shell), feed the bytes via pipe:0 / read via pipe:1 (no
     attacker-controlled paths), quiet stderr, and bound wall-clock time so a malformed clip
     cannot hang a worker.

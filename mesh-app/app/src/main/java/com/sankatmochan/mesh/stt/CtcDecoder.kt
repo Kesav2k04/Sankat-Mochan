@@ -13,7 +13,7 @@ import kotlin.math.ln
 
 /**
  * Greedy CTC decode for IndicConformer, ported 1:1 from the model's own
- * `model_onnx.py::_ctc_decode` (AI4Bharat, MIT - CLAUDE.md #3/#4):
+ * `model_onnx.py::_ctc_decode` (AI4Bharat, MIT - DOCS.md #3/#4):
  *
  *   logprobs = ctc_decoder(encoder_out)            # (1, T, 5633)
  *   logprobs = logprobs[:, :, language_masks[lang]] # keep only this language's classes

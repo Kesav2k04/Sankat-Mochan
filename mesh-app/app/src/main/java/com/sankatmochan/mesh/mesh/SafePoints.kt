@@ -11,9 +11,9 @@ import org.json.JSONObject
  *
  * These are read from a bundled asset ([SafePoints]) rather than fetched over the network -
  * the whole app is offline-first, so map context has to travel inside the APK. Every field is
- * treated as untrusted data even though it ships with the build (CLAUDE.md #8): coordinates
+ * treated as untrusted data even though it ships with the build (DOCS.md #8): coordinates
  * are range-checked and the human-readable strings are only ever rendered as plain text
- * (CLAUDE.md #9), never as markup.
+ * (DOCS.md #9), never as markup.
  */
 data class MapPoint(
     val name: String,

@@ -5,7 +5,7 @@ Build an offline Bengaluru raster .mbtiles for the mesh app, with no external to
 Tiles are pulled from CARTO's OpenStreetMap-based basemaps, which are free to reuse with
 attribution - appropriate for a small, one-off city cache, unlike the main OSM tile server
 whose policy discourages bulk downloads. Map data © OpenStreetMap contributors, tiles ©
-CARTO. OSM data is ODbL; CARTO basemaps are free-to-use (CLAUDE.md #1: open licence).
+CARTO. OSM data is ODbL; CARTO basemaps are free-to-use (DOCS.md #1: open licence).
 
 The default style is **voyager** - CARTO's colourful, fully-labelled basemap (roads, place
 names, POIs and landmarks baked into the raster). It reads like a standard consumer map

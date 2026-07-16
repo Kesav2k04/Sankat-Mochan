@@ -95,7 +95,7 @@ data class SosMessage(
         /** ATT payload budget for a 247-byte MTU (247 - 3 bytes ATT header). */
         const val MAX_BYTES = 244
 
-        // Field caps - all incoming mesh data is untrusted (CLAUDE.md #8).
+        // Field caps - all incoming mesh data is untrusted (DOCS.md #8).
         private const val MAX_ID = 32
         private const val MAX_TEXT = 200
 
@@ -140,7 +140,7 @@ data class SosMessage(
 
         /**
          * Strip control characters (newlines, carriage returns, tabs, escapes, NUL, …) from an
-         * untrusted free-text field, collapsing them to spaces. Two reasons (CLAUDE.md #8/#9/#10):
+         * untrusted free-text field, collapsing them to spaces. Two reasons (DOCS.md #8/#9/#10):
          *  - the mesh event log is a single line per entry, so an embedded '\n' would let a
          *    crafted SOS inject fake log lines a reader can't distinguish from real ones;
          *  - the text is later shown on-screen; keeping it to printable characters means what a

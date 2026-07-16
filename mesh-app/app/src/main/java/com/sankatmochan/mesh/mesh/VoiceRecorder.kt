@@ -9,7 +9,7 @@ import java.io.File
 /**
  * Records a short AMR-NB clip with the platform encoder - no third-party codec, so no new
  * dependency. (Codec2, the obvious alternative at 700 bps, is LGPL-2.1 and outside
- * CLAUDE.md #1's allowlist. AMR-NB is patent-encumbered, but we are calling the OS codec
+ * DOCS.md #1's allowlist. AMR-NB is patent-encumbered, but we are calling the OS codec
  * the device vendor already licensed, not shipping one - flagged for review per #6.)
  *
  * Why not Opus: MediaRecorder ignores setAudioEncodingBitRate for OPUS on most devices.

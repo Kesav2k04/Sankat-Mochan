@@ -242,7 +242,7 @@ private fun SosCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            // gist is untrusted incoming text - rendered as plain text only (CLAUDE.md #9).
+            // gist is untrusted incoming text - rendered as plain text only (DOCS.md #9).
             if (sos.gist.isNotBlank()) {
                 Text(
                     sos.gist,
@@ -253,7 +253,7 @@ private fun SosCard(
 
             // Situation summary harvested by the victim's on-phone Sahayak agent — the
             // responder arrives knowing what they're walking into. Humanized, never the
-            // raw wire string; plain text only (CLAUDE.md #9).
+            // raw wire string; plain text only (DOCS.md #9).
             if (!agentTags.isNullOrEmpty()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(

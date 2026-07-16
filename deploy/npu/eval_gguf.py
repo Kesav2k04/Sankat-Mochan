@@ -3,7 +3,7 @@
 Quality-review harness for the quantized Sahayak GGUF.
 
 4-bit quantization shifts outputs, and Sahayak gives first-aid guidance — so before a Q4_0
-GGUF goes near the phone, a human must read what it now says on held-out prompts (CLAUDE.md
+GGUF goes near the phone, a human must read what it now says on held-out prompts (DOCS.md
 #6: security-sensitive output gets human review). This runs each eval record through the
 quantized model with `llama-cli` (MIT) and prints the model's answer next to the reference,
 plus cheap automatic flags (empty output, truncation, big length blow-ups) to triage which
@@ -141,7 +141,7 @@ def main(argv=None) -> int:
 
     print("\n" + "=" * 48)
     print(f"[done] reviewed {shown} record(s); {flagged} auto-flagged for a closer read.")
-    print("Human review required before shipping (CLAUDE.md #6): confirm first-aid steps are "
+    print("Human review required before shipping (DOCS.md #6): confirm first-aid steps are "
           "correct, safe, and not degraded vs the reference.")
     return 0
 

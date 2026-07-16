@@ -20,7 +20,7 @@ RPC contract — matches the sketch in `../sketch/sketch.ino`. Payloads are raw 
                           lora_ping()    -> "<freq> <sf> <bw> <cr> <sync-hex> <ok|down>"
     MCU  -> host (notify): lora_rx(bytes payload, int rssi, float snr)
 
-Every inbound frame is still untrusted (CLAUDE.md #8); this layer only moves bytes.
+Every inbound frame is still untrusted (DOCS.md #8); this layer only moves bytes.
 Validation/dedup/size-capping happen unchanged in `envelope.py` / `node.py` downstream.
 
 Dependency: msgpack (via the vendored `bridge_client`) — permissive (project rule 1).

@@ -85,7 +85,7 @@ Each answer scored 0–2 on five axes (10 total). Greedy decoding, so answers ar
 *Why the gaps:* the tuned model gave duration ("press for 10 minutes"), "elevate above the heart",
 and the field-critical "don't remove anything stuck in the wound — press around it" plus a
 tendon/artery warning. Stock E2B was correct but generic (no durations, no embedded-object guidance)
-and its reasoning broke persona ("*As an AI, I cannot replace a doctor*"). Stock E4B matched the
+and its reasoning broke persona ("*As a virtual assistant, I cannot replace a doctor*"). Stock E4B matched the
 tuned model's specificity but at half the speed and +1.7 GB.
 
 ## Answers (verbatim, final answer after the `[thinking]` block)
@@ -148,5 +148,5 @@ adb shell "cd /data/local/tmp/sh/npu-hexagon-v81 && sh run-npu.sh 'first-aid for
 
 - Model weights (`sahayak-gemma-Q4_0.gguf`) are a derivative of Google Gemma → governed by the
   [Gemma Terms of Use](https://ai.google.dev/gemma/terms) (not OSI-approved). A human should confirm
-  the Gemma Terms are acceptable before shipping (CLAUDE.md #1).
+  the Gemma Terms are acceptable before shipping (DOCS.md #1).
 - The `npu-hexagon-v81` llama.cpp binaries are **MIT** (© ggml-org / llama.cpp contributors).

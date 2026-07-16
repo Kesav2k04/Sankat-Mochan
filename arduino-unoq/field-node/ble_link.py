@@ -255,7 +255,7 @@ class MeshPhone:
 def parse_beacon(payload: bytes) -> Optional[tuple]:
     """Decode the app's service-data beacon: [role byte][node id ascii].
 
-    Untrusted input (CLAUDE.md #8): every field is length- and range-checked, and a
+    Untrusted input (DOCS.md #8): every field is length- and range-checked, and a
     beacon that fails any check is discarded rather than half-trusted.
     """
     if not payload or len(payload) < 2 or len(payload) > 1 + MAX_NODE_ID:

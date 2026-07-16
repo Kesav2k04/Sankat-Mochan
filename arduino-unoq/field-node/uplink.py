@@ -166,7 +166,7 @@ class VoiceAssembler:
             self._clips[chunk.clip_id] = state
             started = True
         # A frame whose shape disagrees with the clip we are holding is corruption or a
-        # stray (untrusted input, CLAUDE.md #8): drop the frame, keep the good clip.
+        # stray (untrusted input, DOCS.md #8): drop the frame, keep the good clip.
         if state["total"] != chunk.total or state["codec"] != chunk.codec:
             return AcceptOutcome(None, started, False, chunk.attempt > 0,
                                  sum(1 for p in state["parts"] if p is None))

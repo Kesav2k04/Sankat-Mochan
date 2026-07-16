@@ -3,7 +3,7 @@ package com.sankatmochan.mesh.mesh
 /**
  * A per-peer token-bucket rate limiter - a DoS backstop on the mesh ingress path.
  *
- * Every byte arriving from a peer is untrusted (CLAUDE.md #8). Each accepted packet costs a
+ * Every byte arriving from a peer is untrusted (DOCS.md #8). Each accepted packet costs a
  * decode plus, for a fresh id, a re-broadcast to every *other* peer - so one flooding peer is
  * amplified across the whole mesh and can burn the channel, CPU and battery of every node it
  * reaches. This limiter caps the *sustained* rate any single peer can push through, while a

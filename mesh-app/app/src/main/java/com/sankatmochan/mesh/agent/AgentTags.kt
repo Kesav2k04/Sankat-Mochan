@@ -9,7 +9,7 @@ package com.sankatmochan.mesh.agent
  * Mirrors `parse_tags` / `TAG_ENUMS` in command-post/intelligence.py — keep the two in sync.
  * Every value is an enum or a small int; `lm` (landmark) is the only free text, always LAST
  * so it may contain spaces, and length-capped. All parsing treats input as untrusted data
- * (CLAUDE.md #8) — unknown keys and out-of-range values are dropped, never stored.
+ * (DOCS.md #8) — unknown keys and out-of-range values are dropped, never stored.
  */
 object AgentTags {
 

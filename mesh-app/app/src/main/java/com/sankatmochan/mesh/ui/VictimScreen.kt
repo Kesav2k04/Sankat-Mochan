@@ -389,7 +389,7 @@ private fun ReassuranceNote() {
 /**
  * The device fingerprint that went out with the call. Stable per handset and sent inside every
  * SOS, so a control room can recognise repeat calls from the same phone. Plain text only
- * (CLAUDE.md #9).
+ * (DOCS.md #9).
  */
 @Composable
 private fun DeviceIdNote(deviceId: String) {

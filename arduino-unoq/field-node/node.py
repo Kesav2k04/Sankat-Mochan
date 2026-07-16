@@ -228,7 +228,7 @@ class MeshNode:
         # still lets a queued SOS grab the air between chunks.
         self.voice_tx_repeats = max(1, int(voice_tx_repeats))
         # Dedup ring: an OrderedDict used as an LRU. Bounded so a flood of forged ids over
-        # untrusted RF (CLAUDE.md #8) can't grow it without limit. The mesh TTL (MAX_HOPS)
+        # untrusted RF (DOCS.md #8) can't grow it without limit. The mesh TTL (MAX_HOPS)
         # bounds how long a genuine duplicate can loop, so a recent window is all we need.
         self._seen: "OrderedDict[str, None]" = OrderedDict()
         self._seen_max = max(1, seen_max)

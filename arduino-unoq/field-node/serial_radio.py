@@ -18,7 +18,7 @@ line can never carry a raw newline; the UNO Q Linux host is the initiator:
                       "Y"  pong                 |  "I ..."  boot banner
                       "# ..."  human log (ignored)
 
-Every inbound frame is still untrusted (CLAUDE.md #8); this layer only moves bytes.
+Every inbound frame is still untrusted (DOCS.md #8); this layer only moves bytes.
 Validation/dedup/size-capping happen unchanged in `envelope.py` / `node.py` downstream.
 
 Dependency: pyserial (`import serial`) — BSD-3-Clause, permissive (project rule 1).

@@ -374,7 +374,7 @@ class SahayakAgent(
     }
 
     /**
-     * Constrained extraction call: victim's words (DATA, wrapped in tags per CLAUDE.md #7) →
+     * Constrained extraction call: victim's words (DATA, wrapped in tags per DOCS.md #7) →
      * strict JSON → enum-whitelisted facts. One retry with error feedback. The LLM's output
      * never reaches the wire directly — [AgentTags.isValid] gates every pair.
      */

@@ -96,7 +96,7 @@ Note the envelopes themselves are already durable + WS-fast (`send_envelope` →
 
 ### C5 — `MeshNode._seen` is unbounded (MAJOR — DoS / memory)
 **`node.py: MeshNode._seen: set[str]`** grows forever; every distinct envelope id (incl.
-attacker-forged ids over BLE/LoRa, untrusted per CLAUDE.md #8) is retained for the
+attacker-forged ids over BLE/LoRa, untrusted per DOCS.md #8) is retained for the
 process lifetime.
 - Bound it: LRU/ring (e.g. `OrderedDict` capped at N=4096, evict oldest) or age-based
   prune. Dedup only needs a recent window — mesh TTL/hops bound how long a dup can loop.
@@ -113,7 +113,7 @@ process lifetime.
   forced alnum by `_origin_of` (`envelope.py:214`) and `seq` is a `struct`-unpacked int, so
   `clip_id` can only be `[A-Za-z0-9]+-v<int>` — no `/`, `..`, or NUL reaches the filesystem.
   Nothing to sanitise. (Documented so a future refactor that loosens `clip_id` re-triggers
-  the review — CLAUDE.md #6.)
+  the review — DOCS.md #6.)
 
 ### C7 — Voice uploader wake on reconnect (MINOR)
 **`uplink.py: run` reconnect block** currently calls `_flush_voices()` inline after connect
@@ -175,7 +175,7 @@ phone (or spoofed peripheral) firing notifications in a tight loop spawns unboun
   fairness measure so one *honest* origin can't crowd others. (Critic M4.)
 - Size is already bounded (`envelope.decode` caps `MAX_BYTES` + field clamps; voice
   `MAX_VOICE_CHUNK`/`MAX_VOICE_CHUNKS`); malformed dropped pre-dedup (`node.py:187`) — keep.
-- **Security-sensitive (CLAUDE.md #6, #8) — human review.**
+- **Security-sensitive (DOCS.md #6, #8) — human review.**
 
 ### D3 — Voice-vs-SOS air contention (MAJOR — CONVERGED CONTRACT w/ Voice owner)
 **`node.py: LoRaLink` + `_AIRWAVES` (`node.py:35`); voice repeats via `LoRaLink.set_repeats`

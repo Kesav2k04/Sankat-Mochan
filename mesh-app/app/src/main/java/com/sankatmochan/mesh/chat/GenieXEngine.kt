@@ -32,11 +32,11 @@ import kotlin.coroutines.resume
 /**
  * All Qualcomm GenieX on-device-LLM calls live behind this one class, so the rest of the app
  * never imports `com.geniex.sdk.*` and there is a single place to review the AI runtime
- * (CLAUDE.md #5/#6). The SDK runs small GGUF chat models through its llama.cpp runtime on the
+ * (DOCS.md #5/#6). The SDK runs small GGUF chat models through its llama.cpp runtime on the
  * Snapdragon NPU/GPU/CPU, fully offline once the weights are on the phone.
  *
  * The GenieX call sequence is taken directly from Qualcomm's BSD-3-Clause reference app
- * (CLAUDE.md #3/#4):
+ * (DOCS.md #3/#4):
  *   https://github.com/qualcomm/ai-hub-apps/blob/main/geniex_chat_android/src/main/java/com/geniex/demo/MainActivity.kt
  *   init → ModelManagerWrapper.pullFlow (download) → getPaths → LlmWrapper.build (load) →
  *   applyChatTemplate → generateStreamFlow (stream tokens).
@@ -90,7 +90,7 @@ class GenieXEngine(context: Context) {
             initialized = true
             InitResult.Ready
         } else {
-            // Generic, user-safe message - the real reason is only in Logcat (CLAUDE.md #10).
+            // Generic, user-safe message - the real reason is only in Logcat (DOCS.md #10).
             InitResult.Unsupported("On-device AI is not available on this device.")
         }
     }
@@ -244,7 +244,7 @@ class GenieXEngine(context: Context) {
      * is wired up for side-loaded files (see [load]), and llama.cpp only reads GGUF - so this is
      * the full list, not a partial one. Formats like `.litertlm`/`.tflite`/`.task` belong to a
      * different runtime plugin (LiteRT/MediaPipe) that isn't wired into this app; adding them here
-     * without a real integration would just mislabel unusable files as models (CLAUDE.md #4: don't
+     * without a real integration would just mislabel unusable files as models (DOCS.md #4: don't
      * fabricate SDK behavior beyond what's actually documented/wired up).
      */
     private val SUPPORTED_LOCAL_EXTENSIONS = setOf("gguf")
@@ -255,7 +255,7 @@ class GenieXEngine(context: Context) {
      * doesn't guarantee the bytes actually are one - an older build of this app used to
      * force-rename *any* picked file to `.gguf`, so a stale side-loaded file can still have a
      * `.gguf` name while actually being, say, a `.litertlm` bundle. Checking the extension alone
-     * (CLAUDE.md #8: validate untrusted input, don't just trust its label) let those through and
+     * (DOCS.md #8: validate untrusted input, don't just trust its label) let those through and
      * they'd fail deep inside the native loader with an opaque "could not start" error.
      */
     private val GGUF_MAGIC = byteArrayOf(0x47, 0x47, 0x55, 0x46) // "GGUF"
@@ -335,7 +335,7 @@ class GenieXEngine(context: Context) {
         val path = model.localPath ?: return@withContext false
         val f = File(path)
         // Refuse to follow a path that escapes the models dir - a side-loaded name is
-        // untrusted (CLAUDE.md #8); we only ever delete inside our own folder.
+        // untrusted (DOCS.md #8); we only ever delete inside our own folder.
         val insideModelsDir = runCatching {
             f.canonicalPath.startsWith(localModelsDir.canonicalPath + File.separator)
         }.getOrDefault(false)
@@ -447,7 +447,7 @@ class GenieXEngine(context: Context) {
         // template with pure-ASCII placeholders and substitute the real (sanitized) content into
         // the returned string here in Kotlin, where UTF-8 handling is correct. Mechanical
         // substitution only - user text is still data, never spliced into instructions
-        // (CLAUDE.md #7).
+        // (DOCS.md #7).
         val placeholders = window.mapIndexed { i, m ->
             ChatMessage(role = m.role, content = "@@SANKAT_MSG_$i@@")
         }
@@ -696,7 +696,7 @@ class GenieXEngine(context: Context) {
         /**
          * The assistant's brief. Kept deliberately short and factual for a small on-device
          * model. This is a fixed system instruction; the user's own typed questions are the
-         * only other input and are never spliced into these instructions (CLAUDE.md #7).
+         * only other input and are never spliced into these instructions (DOCS.md #7).
          */
         const val SYSTEM_PROMPT =
             "You are Sahayak, a calm offline safety assistant inside the Sankat-Mochan mesh " +

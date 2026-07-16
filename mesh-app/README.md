@@ -15,7 +15,7 @@ victim's phone shows an honest native-language status ladder.
 - **Store-and-forward**: messages are deduped by id and re-broadcast once, so dropping a
   3rd "Relay" phone between victim and responder needs zero code changes.
 - **Status ladder**: `Sending…` → `Message reached the control room` → `Help is on the way`.
-- **Untrusted-input hygiene** (CLAUDE.md #8/#9): incoming envelopes are size/type/range
+- **Untrusted-input hygiene** (DOCS.md #8/#9): incoming envelopes are size/type/range
   validated, free text is stripped of control characters (no forged log lines), and
   everything is rendered as plain text only.
 - **Flood / DoS protection**: dedup ids live in a capacity-bounded LRU (`BoundedIdSet`) and
@@ -77,7 +77,7 @@ voice framing, dedup, the DoS caps and the rate limiter. No device or emulator n
 
 The suite is hermetic: `SosMessage` (which uses `org.json`) runs against the Apache-2.0
 AOSP `android-json` - the same parser as on device - rather than Crockford's reference jar,
-whose licence is disallowed by CLAUDE.md #1. See the `LICENSE FLAG` note in
+whose licence is disallowed by DOCS.md #1. See the `LICENSE FLAG` note in
 `app/build.gradle.kts` about JUnit 4 (EPL-1.0, test-only) awaiting human sign-off.
 
 ## Offline map tiles (responder screen)

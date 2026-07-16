@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Push a Genie bundle to an Android phone (OnePlus 15 / Snapdragon 8 Elite Gen 5) and run
 # a prompt on the Hexagon NPU via genie-t2t-run. Mirrors Qualcomm's public llm_on_genie
-# README (BSD/Apache, CLAUDE.md #3): https://github.com/qualcomm/ai-hub-apps
+# README (BSD/Apache, DOCS.md #3): https://github.com/qualcomm/ai-hub-apps
 #
 # Usage:  bash deploy/npu/run_on_device.sh <genie_bundle_dir> "your prompt"
 #
@@ -47,7 +47,7 @@ adb push "${SDK_SKEL}/." "${DEVICE_DIR}/" >/dev/null
 SYSTEM_PROMPT="You are Sahayak, an offline emergency-response assistant running on a local device in a disaster zone. You help with first aid, message relay, resource allocation, and navigation. Be brief, calm, and practical. You are not a doctor; for medical guidance give first-aid steps only and tell the user to reach professional care when possible. Never transmit information that could endanger people if intercepted."
 
 # Build the Qwen chat-formatted prompt. NOTE: untrusted end-user text (PROMPT) is placed
-# only inside the user turn, never concatenated next to system instructions (CLAUDE.md #7).
+# only inside the user turn, never concatenated next to system instructions (DOCS.md #7).
 FULL_PROMPT="<|im_start|>system
 ${SYSTEM_PROMPT}<|im_end|>
 <|im_start|>user

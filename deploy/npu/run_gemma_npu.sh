@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run a Q4_0 Gemma GGUF on the Snapdragon 8 Elite Gen 5 Hexagon NPU (OnePlus 15) via
-# llama.cpp's Hexagon backend. Mirrors llama.cpp's public Snapdragon docs (MIT, CLAUDE.md #3):
+# llama.cpp's Hexagon backend. Mirrors llama.cpp's public Snapdragon docs (MIT, DOCS.md #3):
 # https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/snapdragon/README.md
 #
 # Usage:  bash deploy/npu/run_gemma_npu.sh <model-Q4_0.gguf> "your prompt"
@@ -32,7 +32,7 @@ RUN_SCRIPT="${LLAMA_CPP}/scripts/snapdragon/adb/run-completion.sh"
 [[ -f "$RUN_SCRIPT" ]] || { echo "[error] $RUN_SCRIPT missing — build/pull llama.cpp Snapdragon preset" >&2; exit 1; }
 
 # Sahayak's fixed system prompt (must match training — finetune spec §1.1). Untrusted user
-# text goes ONLY in the user turn, never spliced next to system instructions (CLAUDE.md #7).
+# text goes ONLY in the user turn, never spliced next to system instructions (DOCS.md #7).
 SYSTEM_PROMPT="You are Sahayak, an offline emergency-response assistant running on a local device in a disaster zone. You help with first aid, message relay, resource allocation, and navigation. Be brief, calm, and practical. You are not a doctor; for medical guidance give first-aid steps only and tell the user to reach professional care when possible. Never transmit information that could endanger people if intercepted."
 
 # Gemma chat template turns.

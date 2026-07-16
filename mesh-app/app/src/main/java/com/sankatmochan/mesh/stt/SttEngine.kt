@@ -16,7 +16,7 @@ import java.nio.IntBuffer
 /**
  * On-device speech-to-text for the OnePlus 15 (Snapdragon 8 Elite Gen 5), behind one class
  * so the rest of the app never imports `ai.onnxruntime.*` and there's a single place to review
- * the AI runtime (mirrors [com.sankatmochan.mesh.chat.GenieXEngine] - CLAUDE.md #5/#6).
+ * the AI runtime (mirrors [com.sankatmochan.mesh.chat.GenieXEngine] - DOCS.md #5/#6).
  *
  * Pipeline (all offline):
  *   PCM 16 kHz ─▶ [MelFrontend] (1,80,1501) ─▶ encoder QNN graph ─▶ (1,1024,188)
@@ -91,7 +91,7 @@ class SttEngine(context: Context) {
         data class Failed(val message: String) : LoadResult
     }
 
-    /** Sealed result so callers never see a raw exception/stack trace (CLAUDE.md #10). */
+    /** Sealed result so callers never see a raw exception/stack trace (DOCS.md #10). */
     sealed interface SttResult {
         data class Ok(val text: String, val lang: String, val latencyMs: Long) : SttResult
         data object Failed : SttResult
@@ -113,7 +113,7 @@ class SttEngine(context: Context) {
                 mel = MelFrontend.fromAssets(appContext) // mel_window512.f32 + mel_fb.f32 (bundled)
                 LoadResult.Ok as LoadResult
             }.getOrElse { e ->
-                Log.e(TAG, "STT load failed", e)   // detail to Logcat only (CLAUDE.md #10)
+                Log.e(TAG, "STT load failed", e)   // detail to Logcat only (DOCS.md #10)
                 unloadInternal()
                 LoadResult.Failed("On-device transcription isn't available on this device.")
             }
@@ -172,7 +172,7 @@ class SttEngine(context: Context) {
                 audioTensor.close(); lenTensor.close(); encOut.close(); ctcOut.close()
                 SttResult.Ok(text, chosen, (System.nanoTime() - t0) / 1_000_000) as SttResult
             }.getOrElse { e ->
-                Log.e(TAG, "transcription failed", e)   // CLAUDE.md #10
+                Log.e(TAG, "transcription failed", e)   // DOCS.md #10
                 SttResult.Failed
             }
         }

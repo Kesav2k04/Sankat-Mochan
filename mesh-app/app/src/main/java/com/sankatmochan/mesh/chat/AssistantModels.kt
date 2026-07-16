@@ -7,7 +7,7 @@ package com.sankatmochan.mesh.chat
  * runtime, which schedules tensors across the Snapdragon NPU, GPU, or CPU. GGUF models are
  * pulled at runtime and are chipset-agnostic, so the same build works on any device.
  *
- * Licensing (CLAUDE.md #1): Granite and Phi-4-mini are Apache-2.0 / MIT. **Gemma ships under
+ * Licensing (DOCS.md #1): Granite and Phi-4-mini are Apache-2.0 / MIT. **Gemma ships under
  * Google's Gemma Terms of Use - NOT an OSI-approved licence** - and its weights are gated on
  * Hugging Face, so a token is required to download them (see [gated]). It is included here at
  * the user's explicit request; a human should confirm the Gemma Terms are acceptable for this
@@ -47,7 +47,7 @@ object AssistantModels {
             displayName = "Sahayak E2B (tuned)",
             // Our own Gemma E2B fine-tune for disaster-response chat, published as a public
             // (non-gated) Q4_0 GGUF. Base weights remain under Google's Gemma Terms of Use -
-            // same licence caveat as the stock Gemma entries below (CLAUDE.md #1).
+            // same licence caveat as the stock Gemma entries below (DOCS.md #1).
             modelName = "kesav2k04/sahayak-e2b-gguf",
             quant = "Q4_0",
             approxSize = "~3.3 GB",

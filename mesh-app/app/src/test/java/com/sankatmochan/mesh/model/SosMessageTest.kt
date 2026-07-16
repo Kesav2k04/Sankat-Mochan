@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets
 
 /**
  * Envelope parsing is the app's primary trust boundary: every field crossing [SosMessage.decode]
- * is untrusted mesh input (CLAUDE.md #8). Runs on the local JVM against the Apache-2.0 AOSP
+ * is untrusted mesh input (DOCS.md #8). Runs on the local JVM against the Apache-2.0 AOSP
  * `org.json` (the same parser used on device); `android.util.Log` calls no-op via the test
  * runner's returnDefaultValues, so the parser is exercised exactly as written.
  */

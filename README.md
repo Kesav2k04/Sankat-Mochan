@@ -1,78 +1,86 @@
-# Sankat-Mochan — Off-Grid Disaster Rescue Mesh
+<div align="center">
+  <h1>Sankat-Mochan</h1>
+  <p><strong>Off-Grid Disaster Rescue Mesh | Snapdragon Multiverse Hackathon National Finalist</strong></p>
 
-> When floods, quakes, or blackouts knock out cell towers and the internet, phones and small
-> IoT nodes form their own radio network to get SOS calls out — no towers, no internet, and
-> nothing leaving the mesh. An offline AI command post triages, translates, and dispatches.
->
-> Built for the **Snapdragon Multiverse Hackathon**, Bengaluru (11–12 July 2026).
+  <p>
+    <img src="https://img.shields.io/badge/Award-National%20Finalist-gold?style=for-the-badge&logo=qualcomm" alt="National Finalist" />
+    <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Raspberry%20Pi-blue?style=for-the-badge" alt="Platforms" />
+    <img src="https://img.shields.io/badge/AI-Snapdragon%20NPU%20%7C%20Whisper-orange?style=for-the-badge" alt="AI Tech Stack" />
+  </p>
+</div>
 
 ---
 
-## What this is
+## 🌪️ The Problem
 
-A victim just **speaks** an SOS. Their phone transcribes and compresses it on-device, relays it
-**phone-to-phone over Bluetooth LE**, and a **LoRa** radio bridges the kilometre gaps no phone can.
-At a forward relief camp, an **offline AI command post** (Snapdragon NPU: Whisper + Qwen3-4B)
-triages urgency, translates between Indian languages, plots victims on an offline map, and dispatches
-the nearest responder — who accepts with one tap, and the victim hears, in their own language, that
-help is on the way.
+When floods, earthquakes, or blackouts knock out cell towers and the internet, communication is severed when it's needed most. In regions where satellite messengers are inaccessible or restricted, a localized, resilient communication fallback is critical for survival.
 
-The through-line: **legal, subscription-free, offline SOS coordination for India**, where satellite
-messengers are illegal and cell networks fail within hours of a disaster.
+## 📡 The Solution
 
-## Repository layout
+**Sankat-Mochan** is a highly resilient, offline mesh network where smartphones and localized IoT nodes autonomously form an independent radio network. 
 
-| Path | What's inside |
-| --- | --- |
-| `mesh-app/` | **Native Android (Kotlin) BLE mesh app** — the working T0 transport slice. Victim / Responder / Relay roles; every phone is a full mesh node (GATT server + scanner); store-and-forward; native-language status ladder. |
-| `pi-code/` | **LoRa gateway** — phone ⇄ BLE ⇄ board ⇄ 433 MHz ⇄ board ⇄ phone. Runs on the Raspberry Pi (gateway node, uplinks to the command post) and, split across boxes, on the Arduino UNO Q (field node). Same code both sides; `run.nodes` + each radio's `transport` (`spi`/`serial`) pick the role. |
-| `arduino-unoq/` | **Field-side LoRa modem** for the Arduino UNO Q. The STM32 sketch (`lora_modem/`) drives the Ra-02; the UNO Q's Linux side runs the `pi-code` field node over a serial link. See `arduino-unoq/README.md`. |
-| `command-post/` | The **offline AI command post** (FastAPI) — receives envelopes, triages/translates, serves the dashboard. |
-| `deck/` | The pitch **presentation** (`deck/index.html`) — a self-contained HTML deck; open in any browser. |
-| `docs/planning/` | Architecture, build plan, demo/stage scripts, prep plan, and the team source-of-truth doc. |
-| `docs/research/` | Fact-checked disaster evidence, model/AI-stack research, competitive analysis, and critiques. |
-| `docs/reference/` | The official Qualcomm event guide (PDF). |
-| `CLAUDE.md` / `AGENTS.md` | AI-tool usage rules for this repo (permissive-license deps only, no secrets, prompt-injection discipline, untrusted-input validation). |
+1. **Voice-First SOS:** A victim simply speaks an SOS. Their phone compresses and transcribes it on-device.
+2. **BLE & LoRa Mesh Relay:** The message relays phone-to-phone via **Bluetooth Low Energy (BLE)**. For kilometer-scale gaps, a **LoRa** hardware bridge spans the distance.
+3. **Offline AI Triage:** At a forward relief camp, an **offline AI command post** powered by **Snapdragon NPUs (Whisper + Qwen3-4B)** triages urgency, translates regional Indian languages, and plots victims on a fully offline map.
+4. **Responder Dispatch:** The nearest responder is dispatched with a single tap, sending a native-language confirmation back through the mesh to reassure the victim.
 
-## Team
+The result is a **legal, subscription-free, completely offline SOS coordination system** built specifically for high-density environments like India.
 
-| Member | Email |
-| --- | --- |
-| Krishna (lead) | _TODO_ |
-| Isha | _TODO_ |
-| Karthi | _TODO_ |
-| Keshav | _TODO_ |
-| Siva | _TODO_ |
+---
 
-> **Note:** the official hackathon submission requires the full name **and email** of every member in
-> the README. Fill the emails above before submitting.
+## 🏆 Achievements
 
-## Run the mesh app
+* **National Finalist:** Snapdragon Multiverse Hackathon (Bengaluru, 11–12 July 2026).
+* **Hardware Acceleration:** Native on-device inference leveraging Qualcomm's Hexagon NPU.
+* **Zero-Internet Architecture:** 100% operational without external dependencies or cloud connectivity.
 
-Requires Android Studio + the Android SDK.
+---
+
+## 📁 Repository Architecture
+
+| Component | Path | Description |
+| :--- | :--- | :--- |
+| **Android Mesh App** | `mesh-app/` | Native Android (Kotlin) BLE mesh app forming the T0 transport slice. Supports Victim, Responder, and Relay roles with complete store-and-forward routing. |
+| **LoRa Gateway** | `pi-code/` | Python-based gateway bridging phone ⇄ BLE ⇄ LoRa ⇄ mesh. Runs on a Raspberry Pi serving as the command post uplink. |
+| **Field Node Modem** | `arduino-unoq/` | Field-side LoRa modem logic for the Arduino UNO Q, enabling the STM32 sketch to drive the Ra-02 transceiver. |
+| **AI Command Post** | `command-post/` | Offline FastAPI backend receiving envelopes, executing NLP triage/translation, and serving the tactical dashboard. |
+| **Pitch Deck** | `deck/` | Self-contained HTML presentation highlighting our vision and architecture. |
+| **Hackathon Docs** | `docs/reference/` | Official guidelines and reference material for the Qualcomm event. |
+
+---
+
+## 🚀 Getting Started
+
+### 1. Run the Mesh Application
+
+The core Android application requires Android Studio and the Android SDK.
 
 ```bash
 cd mesh-app
-./gradlew assembleDebug          # build the debug APK
-# or open the folder in Android Studio and Run on 2+ physical Android devices
+./gradlew assembleDebug 
 ```
+*Note: The application must be installed on **two or more physical Android devices** (emulators do not support the required BLE peripheral/central features).*
 
-Install on **two or more physical phones** (BLE peripheral/central needs real hardware, not an
-emulator). Pick a role on each (Victim / Responder / Relay), send an SOS from the Victim, and watch
-it hop the mesh and the status ladder advance. See `mesh-app/README.md` for details.
+### 2. View the Pitch Deck
 
-## View the deck
+The pitch deck is completely self-contained. Open it directly in any modern browser:
 
 ```bash
-open deck/index.html            # macOS — or open the file in any browser
+open deck/index.html 
 ```
-
-## License
-
-[MIT](LICENSE). All code is open source, per hackathon rules.
 
 ---
 
-*This is the team's private working repo (includes internal strategy/research under `docs/`).
-The official hackathon submission must be a **public** repo — when you create it, publish only the
-code, `deck/`, and a clean README, and leave the internal strategy/critique docs out.*
+## 👥 The Team
+
+* **Krishna (Lead)** - krishnapraichura@gmail.com
+* **Isha** - ishashankar39@gmail.com
+* **Karthi** - karthiksuthraye@gmail.com
+* **Keshav** - kesavk659@gmail.com
+* **Siva** - sivanithishkumar12@gmail.com
+
+---
+
+## 📄 License
+
+This project is open-sourced under the **[MIT License](LICENSE)** in accordance with hackathon regulations.

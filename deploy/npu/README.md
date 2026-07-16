@@ -32,7 +32,7 @@ kesav2k04/sahayak-e2b :: merged/         (download; already merged)
         ▼
 deploy/npu/build_gemma_gguf.py           convert → imatrix → llama-quantize Q4_0
         ▼
-deploy/npu/eval_gguf.py                   host-side quality review (CLAUDE.md #6)
+deploy/npu/eval_gguf.py                   host-side quality review (DOCS.md #6)
         ▼
 deploy/npu/run_gemma_npu.sh               adb push + llama.cpp on D=HTP0  (Hexagon NPU)
 ```
@@ -97,7 +97,7 @@ python deploy/npu/eval_gguf.py \
 ```
 
 Prints model answer vs reference per holdout prompt, auto-flagging empty/degraded outputs.
-A human confirms first-aid answers are still correct and safe before shipping (CLAUDE.md #6).
+A human confirms first-aid answers are still correct and safe before shipping (DOCS.md #6).
 
 ## Step 4 — run on the phone (Hexagon NPU)
 
@@ -110,7 +110,7 @@ bash deploy/npu/run_gemma_npu.sh \
 
 `run_gemma_npu.sh` pushes the GGUF, runs llama.cpp with `M=<model> D=HTP0 NDEV=1` (one NPU
 session suits a 2B-class model), injects Sahayak's system prompt, and keeps user text inside
-the user turn only (CLAUDE.md #7). GenieX alternative: `geniex infer <gguf> --device npu`.
+the user turn only (DOCS.md #7). GenieX alternative: `geniex infer <gguf> --device npu`.
 
 ### Confirm it's actually on the NPU
 
@@ -131,7 +131,7 @@ measured it faster than pinned-NPU on some models (~90 vs ~60 tok/s prefill).
 | `run_gemma_npu.sh`    | adb push + run on the Hexagon NPU |
 | `alt-aihub-qwen/`     | reference-only: AI Hub QNN path (requires re-base to Qwen3-4B) |
 
-## Sources (all open-license, per CLAUDE.md #3)
+## Sources (all open-license, per DOCS.md #3)
 
 - llama.cpp Snapdragon/Hexagon backend — https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/snapdragon/README.md
 - llama.cpp quantize tool — https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md

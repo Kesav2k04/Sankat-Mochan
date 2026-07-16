@@ -2,7 +2,7 @@
 
 **Purpose:** Fine-tune Gemma 4 (E2B/E4B) via Unsloth for an offline, on-device emergency/disaster-relief mesh communication assistant (Qualcomm Snapdragon X Elite hackathon project). Evaluated by Qualcomm engineers — prioritize on-device behavior, latency-appropriate outputs, and judgment under adversarial/noisy conditions over conversational polish.
 
-**How to use this file:** Paste this whole file into Claude Code with: *"Generate the dataset following this spec, starting with category A. Follow §8 (generation workflow) exactly."*
+**How to use this file:** Paste this whole file into Assistant Code with: *"Generate the dataset following this spec, starting with category A. Follow §8 (generation workflow) exactly."*
 
 ---
 
@@ -197,9 +197,9 @@ Written so each batch is self-contained and the axes don't overlap:
 | 18 | **Gap-fill** — composed from accumulated critic batch-notes + distribution-drift report: whatever categories/tiers/languages are underweight, plus retries of scenario types the critic kept flagging |
 | H1 | **Holdout, 150** — written from scratch after all training batches, ~15/category, deliberately novel scenarios; separate file, never trained on |
 
-### 8.4 Running it in Claude Code
+### 8.4 Running it in Assistant Code
 
-Preferred: run the loop as a **Workflow** (ask Claude to "run this as a workflow"). Sketch — generator/critic/fixer as agents, one pipeline pass per batch, sequential because each batch depends on the committed fingerprint index:
+Preferred: run the loop as a **Workflow** (ask Assistant to "run this as a workflow"). Sketch — generator/critic/fixer as agents, one pipeline pass per batch, sequential because each batch depends on the committed fingerprint index:
 
 ```
 for each batch in PLAN (sequential):

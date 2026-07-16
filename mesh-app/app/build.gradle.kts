@@ -7,7 +7,7 @@ plugins {
 }
 
 // Hugging Face token for gated model pulls (Gemma). Read from the gitignored local.properties
-// so the secret never lands in version control (CLAUDE.md #2). Absent locally → empty string,
+// so the secret never lands in version control (DOCS.md #2). Absent locally → empty string,
 // and only gated models fail to download (non-gated ones still work).
 val huggingFaceToken: String = run {
     val props = Properties()
@@ -114,11 +114,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    // Offline map rendering. Apache-2.0 (CLAUDE.md #1). Renders only from a local tile
+    // Offline map rendering. Apache-2.0 (DOCS.md #1). Renders only from a local tile
     // archive - we never let it reach the network.
     implementation("org.osmdroid:osmdroid-android:6.1.20")
 
-    // LICENSE FLAG (CLAUDE.md #1): Google Play services is NOT OSI open-source - it ships under
+    // LICENSE FLAG (DOCS.md #1): Google Play services is NOT OSI open-source - it ships under
     // the proprietary Google APIs Terms of Service. It's included ONLY for the one-tap "turn on
     // GPS" system dialog (SettingsClient) so we can enable location without kicking the user out
     // to Settings. No location data leaves the device through it. A human should confirm this
@@ -128,7 +128,7 @@ dependencies {
 
     // On-device LLM for the offline assistant. Qualcomm GenieX Android binding, published to
     // Maven Central (BSD-3-Clause per the ai-hub-apps geniex_chat_android sample it mirrors -
-    // CLAUDE.md #1/#4). Runs small GGUF chat models on the Snapdragon NPU/GPU/CPU fully
+    // DOCS.md #1/#4). Runs small GGUF chat models on the Snapdragon NPU/GPU/CPU fully
     // offline; the model itself is downloaded once at runtime, not bundled in the APK.
     // Docs: https://github.com/qualcomm/ai-hub-apps/tree/main/geniex_chat_android
     implementation("com.qualcomm.qti:geniex-android:0.3.5")
@@ -138,7 +138,7 @@ dependencies {
 
     // On-device STT (IndicConformer CTC) runtime. ONNX Runtime with the QNN execution provider
     // runs the AI-Hub-compiled encoder + ctc_decoder QNN context binaries on the Hexagon NPU.
-    // MIT-licensed (CLAUDE.md #1). See stt/README.md. 1.27.0 bundles qnn-runtime 2.42, whose QNN
+    // MIT-licensed (DOCS.md #1). See stt/README.md. 1.27.0 bundles qnn-runtime 2.42, whose QNN
     // EP knows the Snapdragon 8 Elite Gen 5 (SM8850 / Hexagon V81) - 1.22 (QAIRT 2.33) did not and
     // failed device creation with QNN_DEVICE_ERROR_INVALID_CONFIG + missing V81 skel on-device.
     // Docs: https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html
@@ -149,9 +149,9 @@ dependencies {
     // ── JVM unit tests (./gradlew testDebugUnitTest) ────────────────────────────────────────
     // These run the pure mesh/model/security logic on the local JVM - no device, no emulator -
     // so the dedup, envelope-parsing, rate-limiting and voice-framing code that guards untrusted
-    // input (CLAUDE.md #8) is exercised on every build.
+    // input (DOCS.md #8) is exercised on every build.
     //
-    // LICENSE FLAG (CLAUDE.md #1/#6, test-only): JUnit 4 is Eclipse Public License 1.0, which is
+    // LICENSE FLAG (DOCS.md #1/#6, test-only): JUnit 4 is Eclipse Public License 1.0, which is
     // outside the MIT/Apache-2.0/BSD allow-list. It is not GPL/AGPL/proprietary, it ships ONLY in
     // the test classpath (never in the APK), and it is the runner Robolectric and the Android
     // Gradle plugin require - there is no MIT/BSD/Apache substitute for it. Flagged here for a

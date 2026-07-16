@@ -74,7 +74,7 @@ class MessageStore {
         _receivedSos.update { current ->
             // Most urgent first, then newest - a fresh CRITICAL must never sort
             // below a stale one the responder has already read past.
-            // Capped so a flood of unique-id SOS packets (untrusted input, CLAUDE.md #8) can't
+            // Capped so a flood of unique-id SOS packets (untrusted input, DOCS.md #8) can't
             // grow this list - and the O(n log n) re-sort it drives - without bound. The cap
             // keeps the highest-urgency, most-recent messages, which is exactly what a
             // responder must not lose; it sits far above any real incident's volume.
@@ -119,7 +119,7 @@ class MessageStore {
          *  enough that a flood can never blow up memory or the per-message re-sort. */
         const val MAX_RECEIVED_SOS = 300
 
-        /** Cap on distinct origins holding agent-tag state (untrusted mesh, CLAUDE.md #8). */
+        /** Cap on distinct origins holding agent-tag state (untrusted mesh, DOCS.md #8). */
         const val MAX_TAG_ORIGINS = 300
     }
 }

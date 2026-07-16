@@ -10,7 +10,7 @@ suboptimal quant for HTP — it prefers Q4_0 / Q8_0", and llama.cpp's Snapdragon
 exclusively (it repacks Q4_0 internally for the NPU). So we quantize to Q4_0, not the usual
 Q4_K_M.
 
-Pipeline (all local, llama.cpp — MIT, CLAUDE.md #1):
+Pipeline (all local, llama.cpp — MIT, DOCS.md #1):
   1. convert_hf_to_gguf.py  : merged Gemma HF weights → f16 GGUF
   2. llama-imatrix (optional): importance matrix from an IN-DOMAIN corpus built from the
                                training data — meaningfully steadier low-bit quality for a
@@ -28,7 +28,7 @@ Gemma4ForConditionalGeneration (multimodal); for this text-only assistant the co
 the LLM GGUF (vision/audio mmproj not needed). The repo already ships merged weights under
 merged/ — download that dir and pass it as --merged-checkpoint (no re-merge required).
 
-Command shapes from public docs (CLAUDE.md #3), all open-license:
+Command shapes from public docs (DOCS.md #3), all open-license:
   - llama.cpp docs/backend/snapdragon/README.md, tools/quantize/README.md  (MIT)
   - Qualcomm GenieX notes/run.md                                           (BSD/Apache)
 """
@@ -70,7 +70,7 @@ def build_calibration_corpus(train_jsonl: Path, out_txt: Path, max_records: int)
 
     In-domain calibration: the importance matrix reflects the emergency-response distribution
     the model is actually quantized for, not generic web text. Untrusted-input hygiene still
-    applies (CLAUDE.md #8) — we only READ the local training file and emit text, no execution.
+    applies (DOCS.md #8) — we only READ the local training file and emit text, no execution.
     """
     n = 0
     with train_jsonl.open("r", encoding="utf-8") as fin, out_txt.open("w", encoding="utf-8") as fout:
@@ -173,7 +173,7 @@ def main(argv=None) -> int:
     _run(quantize_cmd + [str(f16), str(quant_out), args.quant], dry_run=args.dry_run)
 
     print(f"\n[done] NPU-ready GGUF: {quant_out}")
-    print("Review quality before shipping (CLAUDE.md #6):")
+    print("Review quality before shipping (DOCS.md #6):")
     print(f"  python deploy/npu/eval_gguf.py --gguf {quant_out} --llama-cpp {args.llama_cpp}")
     print("Run on the OnePlus 15 (Hexagon NPU):")
     print(f"  bash deploy/npu/run_gemma_npu.sh {quant_out} \"first-aid for a deep cut?\"")

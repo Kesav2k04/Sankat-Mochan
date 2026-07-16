@@ -127,7 +127,7 @@ data class VoiceChunk(
         }
 
         /**
-         * Parse + validate. Untrusted input (CLAUDE.md #8): every field is range-checked
+         * Parse + validate. Untrusted input (DOCS.md #8): every field is range-checked
          * and the declared length must match the frame exactly. Returns null to drop.
          */
         fun decode(bytes: ByteArray): VoiceFrame? {

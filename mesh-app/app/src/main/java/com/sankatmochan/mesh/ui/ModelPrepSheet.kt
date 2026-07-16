@@ -263,7 +263,7 @@ private fun CenteredMini(text: String) {
     }
 }
 
-/** The rolling backend activity feed - shows what's happening in plain language (CLAUDE.md #10:
+/** The rolling backend activity feed - shows what's happening in plain language (DOCS.md #10:
  *  status, not stack traces). Newest lines at the bottom, older ones dimmed. */
 @Composable
 private fun ActivityLog(lines: List<String>) {

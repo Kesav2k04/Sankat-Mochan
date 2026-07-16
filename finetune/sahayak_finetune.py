@@ -3,7 +3,7 @@
 Sahayak emergency-assistant fine-tuner — Gemma 4 E2B QLoRA, pure transformers + PEFT.
 
 No Unsloth, no TRL: just `transformers` + `peft` + `datasets` (+ `bitsandbytes` on CUDA),
-all Apache-2.0 (CLAUDE.md #1). Gemma 4 is native in transformers >= 5.6, so nothing here
+all Apache-2.0 (DOCS.md #1). Gemma 4 is native in transformers >= 5.6, so nothing here
 needs remote code or third-party kernels.
 
 What it does (the training half of docs/SAHAYAK_DATASET_SPEC.md):
@@ -59,7 +59,7 @@ SYSTEM_PROMPT = (
 )
 
 VALID_ROLES = {"system", "user", "assistant"}
-MAX_RECORD_BYTES = 100_000  # CLAUDE.md #8: bound untrusted input size before processing.
+MAX_RECORD_BYTES = 100_000  # DOCS.md #8: bound untrusted input size before processing.
 LORA_TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
 
 
@@ -94,7 +94,7 @@ def detect_device() -> dict:
     return info
 
 
-# ── Dataset validation (CLAUDE.md #8: dataset lines are untrusted input) ─────────
+# ── Dataset validation (DOCS.md #8: dataset lines are untrusted input) ─────────
 
 def validate_jsonl(path: Path, label: str) -> int:
     """Structural validation with stdlib only, so --validate-only runs anywhere.

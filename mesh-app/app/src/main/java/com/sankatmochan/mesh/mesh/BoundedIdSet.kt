@@ -5,7 +5,7 @@ package com.sankatmochan.mesh.mesh
  *
  * Dedup is what makes store-and-forward loop-free - a node forwards a given id at most once.
  * A naive unbounded set is, however, a memory-exhaustion DoS: every incoming mesh packet is
- * untrusted (CLAUDE.md #8), and a buggy or hostile peer that streams packets with ever-changing
+ * untrusted (DOCS.md #8), and a buggy or hostile peer that streams packets with ever-changing
  * ids would grow the set without limit until this safety-critical app is killed by the OS.
  *
  * Capacity-bounding trades "remember every id forever" for "remember the most recent

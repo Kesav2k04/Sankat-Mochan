@@ -122,4 +122,4 @@ matches the recording. Plain text only.
 3. A1+A2 (voice decoupling + pool) — the core reliability BLOCKER.
 4. A3+A4+A5 (ingest cap, `_seen`, outbox cap) — DoS/reliability.
 5. A6 (airtime) + A7 (heartbeat) + A8/B4/B5 polish.
-Each domain landed as its own commit; **brutal Critic re-review of the actual diff before any PR** (CLAUDE.md gate).
+Each domain landed as its own commit; **brutal Critic re-review of the actual diff before any PR** (DOCS.md gate).

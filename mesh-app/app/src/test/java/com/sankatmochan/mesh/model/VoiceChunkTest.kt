@@ -5,7 +5,7 @@ import org.junit.Test
 
 /**
  * Binary voice-frame framing. Every [VoiceChunk.decode] path is an untrusted-input guard
- * (CLAUDE.md #8), so the negative cases matter as much as the round-trips.
+ * (DOCS.md #8), so the negative cases matter as much as the round-trips.
  */
 class VoiceChunkTest {
 

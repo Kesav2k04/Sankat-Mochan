@@ -94,7 +94,7 @@
   },
 
   "ingest": {
-    "_comment": "All inbound mesh frames (BLE + LoRa) are untrusted (CLAUDE.md #8). Each MeshNode drains a bounded queue; frames over queue_max are dropped-and-logged rather than spawning unbounded tasks. global_frames_per_s is a spoof-proof ceiling on TOTAL accepted frames/sec (origins are unauthenticated, so a per-origin cap is bypassable — the global cap is the real DoS defence, see mesh-transmission.md D1/M4). seen_max bounds the dedup ring.",
+    "_comment": "All inbound mesh frames (BLE + LoRa) are untrusted (DOCS.md #8). Each MeshNode drains a bounded queue; frames over queue_max are dropped-and-logged rather than spawning unbounded tasks. global_frames_per_s is a spoof-proof ceiling on TOTAL accepted frames/sec (origins are unauthenticated, so a per-origin cap is bypassable — the global cap is the real DoS defence, see mesh-transmission.md D1/M4). seen_max bounds the dedup ring.",
     "queue_max": 256,
     "global_frames_per_s": 50.0,
     "seen_max": 4096

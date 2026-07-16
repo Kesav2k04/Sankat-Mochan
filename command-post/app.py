@@ -300,7 +300,7 @@ async def inject() -> JSONResponse:
 async def transcribe_ep(audio: UploadFile = File(...), lang: str | None = Form(None)) -> JSONResponse:
     """Audio → text (IndicConformer). Runs off the event loop."""
     # Size-cap the upload before it lands in RAM, exactly like /voice_sos and /mesh_voice
-    # (CLAUDE.md #8). Reading without a bound let an unauthenticated multi-GB POST OOM the
+    # (DOCS.md #8). Reading without a bound let an unauthenticated multi-GB POST OOM the
     # command post. Read one byte past the cap so an over-size body is detectable, not silently
     # truncated into a partial (mis-transcribed) clip.
     data = await audio.read(MAX_BROWSER_AUDIO_BYTES + 1)
@@ -433,7 +433,7 @@ async def _transcribe_mesh_voice(*, clip_id: str, ref_id: str, origin: str,
         # 1. Browser-playable transcode (AMR/3GP → WAV). Runs eagerly here, AFTER the Pi
         #    was already ACKed, so it never blocks the upload. If ffmpeg is missing or the
         #    clip won't decode, we keep the raw url and the card shows a quiet unplayable
-        #    state — never a crash (CLAUDE.md #10).
+        #    state — never a crash (DOCS.md #10).
         web = await run_in_threadpool(stt.transcode_for_web, data)
         web_audio = web[0] if web else None
         web_content_type = web[1] if web else None
@@ -486,7 +486,7 @@ async def _transcribe_mesh_voice(*, clip_id: str, ref_id: str, origin: str,
 
 
 # Audio ids we generate are alnum with dashes; recordings carry one known extension.
-# Everything else is rejected before it can touch the filesystem or the DB (CLAUDE.md #8).
+# Everything else is rejected before it can touch the filesystem or the DB (DOCS.md #8).
 _AUDIO_SUFFIXES = {".3gp", ".ogg", ".webm", ".wav"}
 
 

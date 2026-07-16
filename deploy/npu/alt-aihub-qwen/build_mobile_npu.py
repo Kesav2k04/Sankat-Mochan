@@ -12,7 +12,7 @@ This is a thin, auditable orchestrator around Qualcomm's own `qai-hub-models` CL
                     calibrated checkpoint into QAIRT context binaries for the target
                     Hexagon version, and assembles a Genie bundle you push to the phone.
 
-Command shapes are taken verbatim from Qualcomm's public docs (Apache/BSD, CLAUDE.md #3):
+Command shapes are taken verbatim from Qualcomm's public docs (Apache/BSD, DOCS.md #3):
   - ai-hub-apps/tutorials/llm_on_genie/{README,export}.md
   - qai_hub_models/models/_shared/llm/{quantize,export}.py  (the argparse is the contract)
 
@@ -32,7 +32,7 @@ Prereqs (see README.md for the long version):
   * A CUDA GPU for the quantize step (AIMET calibration of a 4B model is not a CPU job).
   * `pip install -U "qai-hub-models[qwen3-4b]"`  (extras name matches the model id, dashes)
   * A configured AI Hub token for the export/compile step:  qai-hub configure --api_token …
-    (never hardcode it — CLAUDE.md #2; the token lives in ~/.qai_hub/client.ini)
+    (never hardcode it — DOCS.md #2; the token lives in ~/.qai_hub/client.ini)
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ def preflight(args) -> None:
                      f'        pip install -U "qai-hub-models[{args.model.replace("_", "-")}]"')
 
     # The export/compile step needs a configured AI Hub token. We only CHECK for it; we
-    # never read or print it (CLAUDE.md #2). Absence is a warning, not a hard stop, so
+    # never read or print it (DOCS.md #2). Absence is a warning, not a hard stop, so
     # --stop-after quantize still works on a box with no token.
     token_ini = Path.home() / ".qai_hub" / "client.ini"
     if not token_ini.exists() and args.stop_after != "quantize":
