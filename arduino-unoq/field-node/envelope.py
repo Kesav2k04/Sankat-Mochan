@@ -1,5 +1,5 @@
 """
-CONTRACT 1 — the SOS envelope, identical on both mesh tiers.
+CONTRACT 1 - the SOS envelope, identical on both mesh tiers.
 
 This is a faithful port of the Android side (`model/SosMessage.kt`), which is the
 source of truth. The wire format is compact small-key JSON, UTF-8, <= 244 bytes so
@@ -29,7 +29,7 @@ TYPES = ("SOS", "DELIVERED", "ACCEPTED")
 #
 # Audio cannot ride the JSON envelope: base64 would cost 33% of a channel that only
 # carries ~5 kbps. So a voice chunk is a binary frame, told apart from a JSON envelope
-# by its first byte — a JSON envelope always starts with '{' (0x7B), and 0xA5 is not a
+# by its first byte - a JSON envelope always starts with '{' (0x7B), and 0xA5 is not a
 # legal UTF-8 lead byte, so the two can never be confused.
 #
 #   0      magic    0xA5
@@ -46,7 +46,7 @@ TYPES = ("SOS", "DELIVERED", "ACCEPTED")
 #   17..            payload
 #
 # `attempt` is load-bearing. A resent chunk must carry a *different* id, or the mesh's
-# dedup — the thing that stops messages looping forever — silently drops the retry as a
+# dedup - the thing that stops messages looping forever - silently drops the retry as a
 # duplicate and the clip can never be repaired.
 #
 # A NACK's `origin` is the REQUESTER, not the clip's author, so two responders asking
@@ -58,7 +58,7 @@ VOICE_TYPE = 1
 NACK_TYPE = 2
 VOICE_HEADER = 17
 VOICE_STRUCT = ">BBB4sHHHBBBB"
-MAX_VOICE_CHUNK = 200    # keeps a frame at 217 B — inside LoRa's 255 and the BLE MTU
+MAX_VOICE_CHUNK = 200    # keeps a frame at 217 B - inside LoRa's 255 and the BLE MTU
 MAX_VOICE_CHUNKS = 512   # a clip longer than this is not a rescue message
 MAX_ATTEMPTS = 7         # first send plus six retries; then the clip is declared lost
 CODECS = {1: "ogg/opus", 2: "3gpp/amr-nb"}
@@ -116,14 +116,14 @@ class Envelope:
 
         Trims one CHARACTER at a time. The Kotlin original drops a *byte* count from a
         *character* string (`dropLast(bytes.size - MAX_BYTES)`), which throws away the
-        whole gist for Tamil/Hindi text where one character is three UTF-8 bytes — and
+        whole gist for Tamil/Hindi text where one character is three UTF-8 bytes - and
         those are exactly the languages this app exists to carry. Both produce a valid
         <= 244-byte envelope, so the wire contract is unchanged; this one just keeps as
         much of the victim's message as physically fits.
 
         `max_bytes` lets a link with a smaller frame budget than the 244-byte wire cap
         (the UNO Q Router-Bridge modem takes at most 234 B per call) shrink the envelope
-        to fit rather than refuse it — a shortened SOS delivered beats a full one lost.
+        to fit rather than refuse it - a shortened SOS delivered beats a full one lost.
         """
         gist = self.gist
         raw = self._raw(gist)
@@ -146,8 +146,8 @@ def _pack(vtype: int, origin: str, seq: int, index: int, total: int,
 class VoiceChunk:
     """One slice of a recorded voice message, in flight across the mesh.
 
-    Deliberately shaped like [Envelope] — it exposes `id`, `type`, `origin`, `hops`,
-    `bumped()` and `encode()` — so the mesh node forwards, deduplicates and logs it
+    Deliberately shaped like [Envelope] - it exposes `id`, `type`, `origin`, `hops`,
+    `bumped()` and `encode()` - so the mesh node forwards, deduplicates and logs it
     without knowing what it is. Only the phones ever reassemble a clip.
     """
     origin: str

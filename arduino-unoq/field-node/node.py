@@ -12,7 +12,7 @@ That last clause is the whole loop-freedom argument, and it is why the gateway r
 
 The two nodes share no dedup set and no link. Nothing inside this process connects
 phone A's BLE link to phone B's BLE link. The ONLY edge between the two halves is the
-433 MHz hop from radio A to radio B. If the RF link dies, phone B receives nothing —
+433 MHz hop from radio A to radio B. If the RF link dies, phone B receives nothing -
 by construction, not by convention.
 
 (A single node holding both radios would be worse than useless: radio A would mark the
@@ -36,11 +36,11 @@ from sx127x import LoraConfig, LoraError, Radio, RxPacket
 _AIRWAVES = threading.Lock()
 
 # A rescue-status envelope (ACCEPTED / DELIVERED) crosses the air exactly once, and its
-# back-to-back repeats fail together inside one fade or collision — after which every
+# back-to-back repeats fail together inside one fade or collision - after which every
 # copy the responder's phone replays is dropped by the seen-ring as a duplicate. So the
 # victim's "help is on the way" sometimes simply never arrived. Re-send the same frame
 # in WAVES a few seconds apart (time diversity): a fade that outlives both repeats
-# rarely outlives 20 s. The waves cost only airtime — the far node drops them as
+# rarely outlives 20 s. The waves cost only airtime - the far node drops them as
 # duplicates once any crossing lands, and status envelopes are rare (one Accept per
 # incident). LoRa links only: BLE already has ATT acks plus store-and-forward.
 STATUS_TYPES = ("ACCEPTED", "DELIVERED")
@@ -48,7 +48,7 @@ STATUS_RESEND_DELAYS_S = (6.0, 18.0)
 
 
 def signal_words(rssi_dbm: float, snr_db: float) -> str:
-    """`strong signal (-67 dBm, SNR 10.5 dB)` — the number, plus what it means."""
+    """`strong signal (-67 dBm, SNR 10.5 dB)` - the number, plus what it means."""
     if rssi_dbm >= -70:
         quality = "strong signal"
     elif rssi_dbm >= -90:
@@ -65,8 +65,8 @@ class Link:
     kind: str = "?"
     name: str = "?"
     # Largest single frame this link can carry, or None for "the wire cap is enough".
-    # The UNO Q Router-Bridge modem takes at most ~234 B per RPC — less than the
-    # 244-byte envelope cap — so the node shrinks a JSON envelope to fit before
+    # The UNO Q Router-Bridge modem takes at most ~234 B per RPC - less than the
+    # 244-byte envelope cap - so the node shrinks a JSON envelope to fit before
     # sending rather than letting the transport refuse it (see MeshNode._send_one).
     max_frame: Optional[int] = None
 
@@ -113,7 +113,7 @@ class LoRaLink(Link):
 
         Throttled: reviving a modem tears its transport down and up (on the UNO Q that is
         a router-socket close/reopen). Doing that in a tight loop is a storm that keeps the
-        radio too busy reconnecting to ever transmit — so consecutive revivals are spaced
+        radio too busy reconnecting to ever transmit - so consecutive revivals are spaced
         out by at least a second."""
         now = time.monotonic()
         since = now - getattr(self, "_last_reinit_mono", 0.0)
@@ -138,17 +138,17 @@ class LoRaLink(Link):
         for attempt in range(repeats):
             with _AIRWAVES:
                 if not self._wait_for_quiet():
-                    self._log.warning("[%s] the 433 MHz channel is busy — sending %s anyway",
+                    self._log.warning("[%s] the 433 MHz channel is busy - sending %s anyway",
                                       self._node, msg_id)
                 try:
                     airtime = self.radio.send(raw)
                 except LoraError as e:
                     if "busy" in str(e).lower():
                         # TRANSIENT: the modem is still draining the previous frame's
-                        # airtime. Wait roughly one frame and try again — tearing the
+                        # airtime. Wait roughly one frame and try again - tearing the
                         # radio down with reinit() here starts a storm (close -> reopen ->
                         # still busy -> close ...) that blocks every transmission.
-                        self._log.warning("[%s] radio busy mid-transmit — waiting one "
+                        self._log.warning("[%s] radio busy mid-transmit - waiting one "
                                           "airtime before retrying %s", self._node, msg_id)
                         time.sleep(self._cfg.airtime_s(len(raw)) + 0.1)
                         continue
@@ -178,8 +178,8 @@ class LoRaLink(Link):
     async def send(self, raw: bytes, msg_id: str, *,
                    repeats: Optional[int] = None, post_delay_s: float = 0.0) -> bool:
         # A 244-byte frame at SF7 is ~400 ms on air; never block the event loop with it.
-        # `repeats` overrides the link-global default per frame (voice sends once — its NACK
-        # loop repairs loss — while an SOS keeps its retries). `post_delay_s` yields the air
+        # `repeats` overrides the link-global default per frame (voice sends once - its NACK
+        # loop repairs loss - while an SOS keeps its retries). `post_delay_s` yields the air
         # briefly after a voice chunk so a queued SOS can win _AIRWAVES mid-clip rather than
         # waiting out all ~45 chunks (mesh-transmission.md A6/D3).
         n = self._repeats if repeats is None else max(1, repeats)
@@ -243,7 +243,7 @@ class MeshNode:
         # node (per-node, not global, preserves the two-MeshNode loop-freedom isolation this
         # file's module docstring depends on) services two bounded queues:
         #   - CRITICAL: SOS envelopes (any urgency). Drained FIRST and EXEMPT from the global
-        #     rate cap — an SOS is admitted, always ("never lose an SOS"). Overflow here is a
+        #     rate cap - an SOS is admitted, always ("never lose an SOS"). Overflow here is a
         #     LOUD alarm, never a silent drop; under real load it must never fill.
         #   - NORMAL: everything else (voice chunks, NACK, DELIVERED/ACCEPTED, dispatch
         #     echoes, malformed). Rate-limited + bounded; overflow is drop-and-log.
@@ -256,7 +256,7 @@ class MeshNode:
         self._drainer: Optional[asyncio.Task] = None
         # Spoof-proof global cap on the NORMAL lane: a ceiling on frames/sec ACROSS ALL
         # origins. Origins are unauthenticated, so a per-origin bucket is bypassable (forge a
-        # fresh origin per frame); a global token bucket cannot be evaded — it trusts no id
+        # fresh origin per frame); a global token bucket cannot be evaded - it trusts no id
         # (M4). The critical lane is deliberately NOT subject to it.
         self._rate = float(global_frames_per_s)
         self._tokens = float(global_frames_per_s)
@@ -350,7 +350,7 @@ class MeshNode:
             self.critical_alarm = True
             # Not rule-10-suppressed: losing an SOS is the one thing we promised never to do.
             self._log.error(
-                "[%s] CRITICAL INTAKE FULL — an SOS (%s from %s) could not be queued "
+                "[%s] CRITICAL INTAKE FULL - an SOS (%s from %s) could not be queued "
                 "(%d overflow). The gateway is overwhelmed; operator action needed. The "
                 "message is NOT confirmed delivered.",
                 self.name, getattr(item.msg, "id", "?"),
@@ -364,8 +364,8 @@ class MeshNode:
             self._norm_q.put_nowait(item)
         except asyncio.QueueFull:
             self._dropped_overrun += 1
-            if self._dropped_overrun & 0x3F == 1:   # log sparsely — no log-flood
-                self._log.warning("[%s] normal RX lane full — dropping frames (%d dropped "
+            if self._dropped_overrun & 0x3F == 1:   # log sparsely - no log-flood
+                self._log.warning("[%s] normal RX lane full - dropping frames (%d dropped "
                                   "so far). Shedding non-SOS load under a burst.",
                                   self.name, self._dropped_overrun)
 
@@ -392,7 +392,7 @@ class MeshNode:
 
     async def _drain(self, stop: asyncio.Event) -> None:
         """Single consumer. Empties the CRITICAL lane fully first (rate-exempt), then serves
-        ONE normal item (rate-limited), then loops — so an SOS can never queue behind a
+        ONE normal item (rate-limited), then loops - so an SOS can never queue behind a
         burst of ~45 voice chunks (MJ2) and can never be dropped by the rate cap (MJ1)."""
         assert self._crit_q is not None and self._norm_q is not None
         crit, norm = self._crit_q, self._norm_q
@@ -417,7 +417,7 @@ class MeshNode:
             if not self._allow():
                 self._dropped_rate += 1
                 if self._dropped_rate & 0x3F == 1:
-                    self._log.warning("[%s] over the %.0f frames/s ingest ceiling — "
+                    self._log.warning("[%s] over the %.0f frames/s ingest ceiling - "
                                       "dropping non-SOS (%d dropped). Flood protection.",
                                       self.name, self._rate, self._dropped_rate)
                 self._drop(getattr(item.link, "name", "?"), item.raw, "rate_limited")
@@ -425,7 +425,7 @@ class MeshNode:
             await self._handle(item)
 
     def _mark_seen(self, msg_id: str) -> bool:
-        """True the first time an id is seen — mirrors MessageStore.markSeen. Bounded LRU:
+        """True the first time an id is seen - mirrors MessageStore.markSeen. Bounded LRU:
         the oldest id is evicted once the ring is full."""
         with self._seen_lock:
             if msg_id in self._seen:
@@ -468,7 +468,7 @@ class MeshNode:
         await self._handle_lora(_RxItem(_RX_LORA, link, msg, pkt.payload, pkt))
 
     async def on_ble_bytes(self, link: Link, raw: bytes) -> None:
-        """Public entry decoding raw BLE bytes. See on_lora_frame — the live path decodes at
+        """Public entry decoding raw BLE bytes. See on_lora_frame - the live path decodes at
         classification and calls _handle_ble with the result."""
         msg = env.decode(raw)
         if msg is None:
@@ -478,7 +478,7 @@ class MeshNode:
 
     async def _handle_lora(self, item: "_RxItem") -> None:
         link, msg, pkt = item.link, item.msg, item.pkt
-        # rssi/snr come straight off the demodulator — this row is the proof of flight.
+        # rssi/snr come straight off the demodulator - this row is the proof of flight.
         self._chain.emit(
             clog.LORA_RX, self.name, radio=link.name, msg_id=msg.id, sha=env.digest(item.raw),
             size=len(item.raw), rssi_dbm=pkt.rssi_dbm, snr_db=pkt.snr_db,
@@ -504,7 +504,7 @@ class MeshNode:
         if not self._mark_seen(msg.id):
             self._chain.emit(clog.DROP, self.name, radio=getattr(source, "name", "local"),
                              msg_id=msg.id, reason="duplicate")
-            self._log.info("[%s] already handled %s before — not passing it on again "
+            self._log.info("[%s] already handled %s before - not passing it on again "
                            "(this is normal; it stops messages looping forever)",
                            self.name, msg.id)
             return
@@ -521,7 +521,7 @@ class MeshNode:
     async def _forward(self, msg: env.Envelope, source: Optional[Link]) -> None:
         targets = [l for l in self.links if l is not source]
         if not targets:
-            self._log.info("[%s] nowhere left to pass %s — this node is the end of the line",
+            self._log.info("[%s] nowhere left to pass %s - this node is the end of the line",
                            self.name, msg.id)
             return
         raw = msg.encode()
@@ -530,7 +530,7 @@ class MeshNode:
     def _tx_policy(self, msg) -> tuple[Optional[int], float]:
         """Per-frame LoRa airtime policy (A6). Voice chunks send `voice_tx_repeats` times
         (default 3): a clip is unplayable unless EVERY chunk arrives, so a single shot per
-        chunk loses whole clips on a lossy hop — the up-front repeats get most chunks across
+        chunk loses whole clips on a lossy hop - the up-front repeats get most chunks across
         on the first pass while the NACK repair loop still recovers the rest. Each chunk then
         yields the air briefly so a queued SOS can win _AIRWAVES mid-clip instead of waiting
         out ~45 chunks. Everything else (SOS, dispatch, NACK) keeps the link default."""
@@ -542,7 +542,7 @@ class MeshNode:
                         *, is_resend: bool = False) -> None:
         repeats, post_delay_s = self._tx_policy(msg)
         # A link with a tighter frame budget than the wire cap (the UNO Q bridge modem)
-        # gets the envelope re-encoded with its gist trimmed to fit — a shortened SOS
+        # gets the envelope re-encoded with its gist trimmed to fit - a shortened SOS
         # delivered beats a full one refused. Binary voice frames cannot be trimmed;
         # anything that still doesn't fit is dropped LOUDLY, never handed down to fail.
         cap = getattr(link, "max_frame", None)
@@ -551,14 +551,14 @@ class MeshNode:
                 raw = msg.encode(max_bytes=cap)
                 if len(raw) <= cap:
                     self._log.warning(
-                        "[%s] %s is over %s's %d-byte frame budget — trimmed its free "
+                        "[%s] %s is over %s's %d-byte frame budget - trimmed its free "
                         "text to fit (%d bytes). The structured fields are untouched.",
                         self.name, msg.id, link.name, cap, len(raw))
             if len(raw) > cap:
                 self._chain.emit(clog.DROP, self.name, radio=link.name, msg_id=msg.id,
                                  sha=env.digest(raw), size=len(raw), reason="too_large")
                 self._log.error(
-                    "[%s] LOST %s — %d bytes cannot fit %s's %d-byte frame budget "
+                    "[%s] LOST %s - %d bytes cannot fit %s's %d-byte frame budget "
                     "even after trimming. Not delivered on this link.",
                     self.name, msg.id, len(raw), link.name, cap)
                 return
@@ -572,7 +572,7 @@ class MeshNode:
             self._chain.emit(clog.DROP, self.name, radio=link.name, msg_id=msg.id,
                              sha=env.digest(raw), reason="send_failed")
         # Time-diversity waves for rescue-status envelopes on the air (see STATUS_TYPES).
-        # Scheduled even when the first send failed — a busy/resetting radio is exactly
+        # Scheduled even when the first send failed - a busy/resetting radio is exactly
         # the kind of trouble a later wave outlives. is_resend stops a wave from
         # re-waving, so each status envelope transmits at most 1 + len(delays) times.
         if (not is_resend and link.kind == "lora"
@@ -585,7 +585,7 @@ class MeshNode:
     async def _status_resend(self, link: Link, raw: bytes, msg: env.Envelope,
                              delay_s: float) -> None:
         await asyncio.sleep(delay_s)
-        self._log.info("[%s] re-sending %s over %s (+%.0fs wave — beating a fade takes "
+        self._log.info("[%s] re-sending %s over %s (+%.0fs wave - beating a fade takes "
                        "time apart, not more back-to-back repeats)",
                        self.name, msg.id, link.name, delay_s)
         await self._send_one(link, raw, msg, is_resend=True)

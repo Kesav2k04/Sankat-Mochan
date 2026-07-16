@@ -1,4 +1,4 @@
-# Handoff — AI PC (command post) on QCWorkshop
+# Handoff - AI PC (command post) on QCWorkshop
 
 Everything needed to run the **command post** on the Snapdragon X Elite laptop
 (QCWorkshop, Windows-on-ARM), with the LLM on the **Hexagon NPU via GenieX**.
@@ -25,10 +25,10 @@ victim phone ──BLE──► Pi gateway ──433 MHz──► Pi ──Wi-Fi
 | **ffmpeg** on PATH | voice: decode AMR + make WAV | winget install Gyan.FFmpeg (confirm `ffmpeg -version`) |
 | **GenieX** | LLM on the NPU | `geniex-cli-setup.exe` from github.com/qualcomm/GenieX |
 | Node.js 20+ | rebuild dashboard (only if UI changed) | winget install OpenJS.NodeJS.LTS |
-| Docker Desktop | *optional* — only if you want PostgreSQL persistence | else run DB-less |
+| Docker Desktop | *optional* - only if you want PostgreSQL persistence | else run DB-less |
 
 > Use **PowerShell** for everything below. `server.sh` / `setup-postgres.sh` are the
-> Mac/bash path — on Windows run `uvicorn` directly as shown.
+> Mac/bash path - on Windows run `uvicorn` directly as shown.
 
 ---
 
@@ -52,7 +52,7 @@ support), starts `geniex serve` at `http://127.0.0.1:18181/v1`, health-checks it
 `docs/reference/GENIEX-SETUP.md`. Leave that terminal/job running.
 
 > Dev-preview CLI: if a `geniex pull/serve` flag differs, the script echoes each command and
-> falls back to guidance — check `geniex serve --help`, then re-run with `-NoServe`.
+> falls back to guidance - check `geniex serve --help`, then re-run with `-NoServe`.
 
 ## 3. Python env + deps
 ```powershell
@@ -61,7 +61,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt          # FastAPI, uvicorn, httpx, numpy, soundfile, websockets…
 
-# Voice speech-to-text (Indic-Conformer) — heavy, but needed for voice TRANSCRIPTS:
+# Voice speech-to-text (Indic-Conformer) - heavy, but needed for voice TRANSCRIPTS:
 pip install torch transformers           # CPU build is fine; first run downloads the model
 ```
 Without `torch`/`transformers` the server still starts and everything works **except** voice
@@ -75,7 +75,7 @@ LLM_MODEL=bartowski/p-e-w_Llama-3.1-8B-Instruct-heretic-GGUF
 LLM_API_KEY=not-needed
 LLM_TIMEOUT_S=60
 ```
-**Database — pick one:**
+**Database - pick one:**
 - **DB-less (simplest for the demo):** do nothing. Leave `DATABASE_URL` unset and do **not**
   set `SANKAT_DATABASE_REQUIRED=true`. Sessions are in-memory; voice/audio is stored as files
   under `command-post\audio_store\`. Everything works.
@@ -98,7 +98,7 @@ cd ..
 # in command-post\ with the venv active and GenieX serving
 uvicorn app:app --host 0.0.0.0 --port 9000
 ```
-Open **http://localhost:9000** — the dashboard is served by FastAPI itself. It has an
+Open **http://localhost:9000** - the dashboard is served by FastAPI itself. It has an
 **Inject test SOS** button, so you can verify the board before the Pi is connected.
 
 ## 7. Point the Pi at this PC
@@ -115,10 +115,10 @@ New-NetFirewallRule -DisplayName "Sankat 9000" -Direction Inbound -LocalPort 900
 
 ## 8. Verify end-to-end
 1. Dashboard loads at `:9000`; **Inject test SOS** shows a card. ✓
-2. Pi connects — status bar shows the gateway link + the on-device LLM indicator.
+2. Pi connects - status bar shows the gateway link + the on-device LLM indicator.
 3. Send a **text SOS** from a phone → card appears, translated to English.
 4. Send a **Tamil voice SOS** ("hello mic testing one two three"):
-   - transcript in Tamil, **English faithful** ("hello, mic testing, one two three") — **not**
+   - transcript in Tamil, **English faithful** ("hello, mic testing, one two three") - **not**
      "trapped under debris",
    - the audio **plays** in the browser (WAV transcode of the phone's AMR),
    - `VOICE (EN) ·` label shows the translation matching the audio.
@@ -138,10 +138,10 @@ New-NetFirewallRule -DisplayName "Sankat 9000" -Direction Inbound -LocalPort 900
 - **No AI / everything rule-based:** GenieX not serving or `LLM_BASE_URL` wrong. Check the
   `geniex serve` job answers `http://127.0.0.1:18181/v1/models`.
 - **404 model-not-found:** `LLM_MODEL` must equal what `geniex serve` loaded.
-- **First triage call times out:** 8B cold-load; `LLM_TIMEOUT_S=60` covers it — one-time warm-up.
+- **First triage call times out:** 8B cold-load; `LLM_TIMEOUT_S=60` covers it - one-time warm-up.
 - **Voice card but no transcript:** ffmpeg and/or torch+transformers not installed.
 - **Pi can't reach the post:** firewall (step 7), wrong IP, or both not on the same Wi-Fi.
-- Errors go to the server log, never the dashboard — check the uvicorn console.
+- Errors go to the server log, never the dashboard - check the uvicorn console.
 
 ## More detail
 - LLM/NPU setup + quant options: `docs/reference/GENIEX-SETUP.md`

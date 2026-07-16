@@ -150,7 +150,7 @@ main { position: relative; min-height: 0; display: flex; }
 .tr-head { display: flex; align-items: center; gap: 9px; }
 .tr-lottie { width: 46px; height: 46px; flex: none; border-radius: 10px; background: rgba(69, 196, 232, 0.08); overflow: hidden; }
 
-/* the event feed — a broadcast lower-third, newest line loudest */
+/* the event feed - a broadcast lower-third, newest line loudest */
 .events {
   position: absolute; bottom: 14px; left: 14px; z-index: 5; max-width: 500px;
   background: linear-gradient(180deg, rgba(7, 12, 18, 0.62), rgba(7, 12, 18, 0.88));
@@ -204,7 +204,7 @@ main { position: relative; min-height: 0; display: flex; }
   opacity: 0; transition: opacity 1.6s ease;
 }
 
-/* ONE seismic impact, decaying — not a constant jitter */
+/* ONE seismic impact, decaying - not a constant jitter */
 .fx-shake { animation: fx-quake 1.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) 1; }
 @keyframes fx-quake {
   0% { transform: translate(0, 0); }
@@ -249,7 +249,7 @@ main { position: relative; min-height: 0; display: flex; }
 }
 .cine-skip:hover { color: #eef6fc; border-color: #93a9bb; }
 
-/* the illustrated shot, left of frame — the map plays on the right */
+/* the illustrated shot, left of frame - the map plays on the right */
 .cine-hero {
   position: absolute; left: 3.4%; top: 50%; transform: translateY(-56%);
   width: min(52%, 132vh);
@@ -323,7 +323,7 @@ main { position: relative; min-height: 0; display: flex; }
 }
 @keyframes dot-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
-/* the victim's phone — the real app screen */
+/* the victim's phone - the real app screen */
 .phone-panel {
   position: absolute; right: 4%; top: 50%; transform: translateY(-50%);
   z-index: 4; animation: phone-in 0.8s cubic-bezier(0.2, 0.9, 0.3, 1.08); cursor: default;

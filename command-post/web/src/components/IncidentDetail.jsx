@@ -63,13 +63,13 @@ function ReportRow({ r }) {
   );
 }
 
-// Centre pane — the selected incident: headline, why-rank, corroboration,
+// Centre pane - the selected incident: headline, why-rank, corroboration,
 // reports in the cluster, and the propose→confirm dispatch block.
 export default function IncidentDetail({ incident, responders, onPropose, onAccept, onResolve }) {
   if (!incident) {
     return (
       <section className="bg-card rounded-2xl shadow-sm flex items-center justify-center text-muted-foreground text-sm">
-        Select an incident — or inject a test SOS to begin.
+        Select an incident - or inject a test SOS to begin.
       </section>
     );
   }
@@ -108,7 +108,7 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
             {inc.headline}
           </h2>
           <div className="font-mono text-[10.5px] text-muted-foreground tracking-wide">
-            WHY THIS RANK — {inc.why}
+            WHY THIS RANK - {inc.why}
           </div>
 
           {(tagChips(inc.tags).length > 0 || inc.unresponsive) && (
@@ -136,7 +136,7 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
             <div className="flex items-start gap-2.5 mt-3 rounded-lg px-3.5 py-2.5 bg-[#2e7d32]/8 border border-[#2e7d32]/20">
               <span className="size-2 rounded-[2px] bg-[#2e7d32] mt-1.5 shrink-0" />
               <div className="text-[12.5px] leading-snug">
-                <b>Sensor corroborated</b> — {sensors[0] ? `UNO Q sensor (${sensors[0].origin}) agrees with these reports:` : "a fixed sensor agrees with these reports."}
+                <b>Sensor corroborated</b> - {sensors[0] ? `UNO Q sensor (${sensors[0].origin}) agrees with these reports:` : "a fixed sensor agrees with these reports."}
                 {sensors[0] ? ` “${sensors[0].english}”. ` : " "}Highest confidence.
               </div>
             </div>
@@ -145,7 +145,7 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
             <div className="flex items-start gap-2.5 mt-3 rounded-lg px-3.5 py-2.5 bg-[#d9a406]/10 border border-[#d9a406]/25">
               <TriangleAlert className="size-4 text-[#946200] mt-0.5 shrink-0" />
               <div className="text-[12.5px] leading-snug">
-                <b>Sensor alert — unconfirmed.</b> No human report yet; treat as
+                <b>Sensor alert - unconfirmed.</b> No human report yet; treat as
                 “possible, investigate”. A matching SOS will promote this incident.
               </div>
             </div>
@@ -201,20 +201,20 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
             </div>
           )}
 
-          {/* dispatch — C5 propose → C6 responder confirms */}
+          {/* dispatch - C5 propose → C6 responder confirms */}
           <div className="mt-4">
             <div className="font-mono text-[10px] tracking-[0.15em] text-muted-foreground mb-2">DISPATCH</div>
 
             {inc.status === "resolved" ? (
               <div className="flex items-center gap-2 rounded-xl px-4 py-3 bg-[#2e7d32]/8 text-[13px]">
                 <CheckCircle2 className="size-4 text-[#2e7d32]" />
-                Cleared{assigned ? ` by ${assigned.callsign}` : ""} — sector broadcast sent; new SOS from this area will not be suppressed.
+                Cleared{assigned ? ` by ${assigned.callsign}` : ""} - sector broadcast sent; new SOS from this area will not be suppressed.
               </div>
             ) : assigned ? (
               <div className="flex items-center gap-3 rounded-xl px-4 py-3 bg-[#d9a406]/10">
                 <Route className="size-4 text-[#946200]" />
                 <div className="text-[13px]">
-                  <b>{assigned.callsign}</b> en route — incident locked (no double dispatch).
+                  <b>{assigned.callsign}</b> en route - incident locked (no double dispatch).
                   Victims told “help is on the way” in their language.
                 </div>
                 <Button size="sm" variant="outline" className="ml-auto gap-1.5" onClick={() => onResolve(inc.id)}>
@@ -225,7 +225,7 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
               <div className="flex items-center gap-3 rounded-xl px-4 py-3 bg-destructive/10 border border-destructive/25">
                 <TriangleAlert className="size-4 text-destructive" />
                 <div className="text-[13px] font-semibold text-destructive">
-                  AWAITING RESPONDER — none available.
+                  AWAITING RESPONDER - none available.
                 </div>
                 <Button size="sm" variant="outline" className="ml-auto gap-1.5" onClick={() => onPropose(inc.id)}>
                   <Undo2 className="size-3.5" /> Retry
@@ -237,8 +237,8 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
                   <div className="text-[13.5px]">
                     <b>AI proposes: {inc.proposed.callsign}</b>
                     {inc.proposed.distance_km != null
-                      ? <> — nearest available, {inc.proposed.distance_km} km, ETA ~{inc.proposed.eta_min} min</>
-                      : <> — first available (no GPS on incident)</>}
+                      ? <> - nearest available, {inc.proposed.distance_km} km, ETA ~{inc.proposed.eta_min} min</>
+                      : <> - first available (no GPS on incident)</>}
                   </div>
                   <Button size="sm" className="ml-auto gap-1.5" onClick={() => onAccept(inc.id)}>
                     <CheckCircle2 className="size-3.5" /> Responder accepts
@@ -264,8 +264,8 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
           <div className="grid grid-cols-4 gap-px bg-border rounded-lg overflow-hidden mt-4">
             {[
               ["RECEIVED", fmtWait(inc.waited_s) + " ago"],
-              ["SOURCE", primary ? primary.origin.toUpperCase() : "—"],
-              ["MESH PATH", primary ? `${primary.hops} HOPS · LoRa` : "—"],
+              ["SOURCE", primary ? primary.origin.toUpperCase() : "-"],
+              ["MESH PATH", primary ? `${primary.hops} HOPS · LoRa` : "-"],
               ["LOCATION", inc.lat != null ? `${inc.lat.toFixed(5)}, ${inc.lng.toFixed(5)}` : (inc.location_hint || "UNKNOWN").toUpperCase()],
             ].map(([k, v]) => (
               <div key={k} className="bg-card px-3 py-2">
@@ -277,7 +277,7 @@ export default function IncidentDetail({ incident, responders, onPropose, onAcce
 
           {inc.lat == null && (
             <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground mt-2">
-              <SatelliteDish className="size-3" /> NO GPS — grouped by location hint; not pinned on the map, still dispatchable.
+              <SatelliteDish className="size-3" /> NO GPS - grouped by location hint; not pinned on the map, still dispatchable.
             </div>
           )}
         </div>

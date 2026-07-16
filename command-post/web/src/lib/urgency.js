@@ -1,4 +1,4 @@
-// Presentation helpers — single source of truth for the urgency ramp,
+// Presentation helpers - single source of truth for the urgency ramp,
 // priority chips, and lifecycle status treatment (matches the v2 design).
 
 export const URGENCY_COLOR = {
@@ -55,7 +55,7 @@ export function fmtWait(s) {
 }
 
 export function fmtClock(epoch) {
-  if (!epoch) return "—";
+  if (!epoch) return "-";
   return new Date(epoch * 1000).toLocaleTimeString("en-IN", {
     hour: "2-digit", minute: "2-digit", hour12: false,
   });

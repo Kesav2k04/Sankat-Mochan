@@ -1,4 +1,4 @@
-# Command-post language ID — FLEURS benchmark (before / after)
+# Command-post language ID - FLEURS benchmark (before / after)
 
 Language identification decides which vocabulary IndicConformer decodes an SOS clip with.
 Get it wrong and the transcript is garbage, so it's the highest-leverage accuracy lever in
@@ -9,8 +9,8 @@ the voice pipeline. On 2026-07-12 we replaced the language-ID scorer in `stt.py`
 
 | | Overall LID | Errors | Languages at 100% |
 |---|---|---|---|
-| **Before** — mass-based scorer | **90.6%** (163/180) | 17, across 5 languages | 7 / 12 |
-| **After** — peak-confidence + calibrated margin | **98.9%** (178/180) | 2, hi↔ur only | 11 / 12 |
+| **Before** - mass-based scorer | **90.6%** (163/180) | 17, across 5 languages | 7 / 12 |
+| **After** - peak-confidence + calibrated margin | **98.9%** (178/180) | 2, hi↔ur only | 11 / 12 |
 
 Error count dropped **17 → 2**, and every language except the genuinely-ambiguous
 Hindi/Urdu pair is now perfect.
@@ -19,13 +19,13 @@ Hindi/Urdu pair is now perfect.
 
 - **Set:** FLEURS test clips (CC-BY, 16 kHz, gold transcripts), **15 clips × 12 languages =
   180**, covering every language the LID sweeps (`hi ur bn ta te kn ml mr gu pa or as`).
-- **Measured code:** the real `stt._identify_from_wav` via `lid_bench.py` — not a
+- **Measured code:** the real `stt._identify_from_wav` via `lid_bench.py` - not a
   reimplementation. Ground truth = `fleurs/references.json` (`download_fleurs.py`).
 - **Latency:** ~900 ms/clip on the Snapdragon X Elite (CPU; the NPU stays free for triage).
 
 ## What changed
 
-Both scorers use the same trick — IndicConformer's acoustic encoder is language-agnostic,
+Both scorers use the same trick - IndicConformer's acoustic encoder is language-agnostic,
 so a language is just a mask over the 5633 CTC classes, and we score all languages off one
 CTC pass (no separate SLID model). Only the **scoring math** changed:
 
@@ -39,7 +39,7 @@ CTC pass (no separate SLID model). Only the **scoring math** changed:
 The mass metric rewards a script that soaks up diffuse probability, which is why it leaked
 across script families (Punjabi→Hindi, Gujarati→Hindi, Assamese→Bengali). Peak confidence
 instead asks *"assuming language X, how sharply does each frame decode to a single X
-token?"* — the correct language produces low-entropy CTC spikes, so those confusions
+token?"* - the correct language produces low-entropy CTC spikes, so those confusions
 disappear. Ported 1:1 from the mobile decoder (`CtcDecoder.pickLanguage`).
 
 ## Per-language
@@ -51,10 +51,10 @@ disappear. Ported 1:1 from the mobile decoder (`CtcDecoder.pickLanguage`).
 | as | 80.0% (12/15) | **100%** | →bn:3 |
 | gu | 80.0% (12/15) | **100%** | →hi:3 |
 | ur | 80.0% (12/15) | 93.3% (14/15) | →hi:3 |
-| bn, kn, ml, mr, or, ta, te | 100% | 100% | — |
+| bn, kn, ml, mr, or, ta, te | 100% | 100% | - |
 
 The peak-confidence scorer fixed **pa, gu, as outright** (100%). The only residual is the
-Hindi↔Urdu pair — they are the same spoken language (Hindustani), acoustically
+Hindi↔Urdu pair - they are the same spoken language (Hindustani), acoustically
 inseparable, so this is a real limit, not a scorer bug.
 
 ## Hindi/Urdu (Hindustani) margin calibration

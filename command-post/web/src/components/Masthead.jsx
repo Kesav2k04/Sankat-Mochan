@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import VoiceRecorder from "./VoiceRecorder.jsx";
 import BenchmarkDropdown from "./BenchmarkDropdown.jsx";
 
-// Top masthead — brand + camp identity, live clock, link-state chips.
+// Top masthead - brand + camp identity, live clock, link-state chips.
 export default function Masthead({ connected, gatewayConnected, aiEnabled }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {

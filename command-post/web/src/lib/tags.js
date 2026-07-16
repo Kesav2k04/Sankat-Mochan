@@ -1,4 +1,4 @@
-// Sahayak agent tag rendering — mirrors the enum whitelist in intelligence.py.
+// Sahayak agent tag rendering - mirrors the enum whitelist in intelligence.py.
 // Values arrive pre-validated by the server; unknown keys/values render nothing
 // (defense in depth). All output is plain text (project rule #9).
 const INJ_LABELS = {

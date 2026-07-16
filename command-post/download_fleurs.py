@@ -7,12 +7,12 @@ confusion matrix.
 
 Why this is written the awkward way: FLEURS's HF parquet stores each language's
 whole test split as ONE ~200-900 MB row group with no page index, so neither
-streaming, the datasets-server rows API, nor parquet range-reads can slice it —
+streaming, the datasets-server rows API, nor parquet range-reads can slice it -
 they all try to pull the entire row group and blow the 300 MB scan limit / RAM.
 The only robust option is to download each test shard fully (resumable via
 hf_hub_download), extract N rows, then DELETE the shard before moving on so peak
 disk stays ~one shard, not 7 GB. Reading the whole shard costs the same whether
-we keep 10 rows or 50, so we keep a lot — a richer baseline for free.
+we keep 10 rows or 50, so we keep a lot - a richer baseline for free.
 
 Run:  python download_fleurs.py            # 40 clips/lang
       python download_fleurs.py 20
@@ -45,7 +45,7 @@ os.makedirs(OUT, exist_ok=True)
 
 refs = {}
 for cfg, lc in LANGS.items():
-    print(f"— {cfg} ({lc}) …", flush=True)
+    print(f"- {cfg} ({lc}) …", flush=True)
     shard_path = None
     try:
         # Resumable full-shard download to a temp dir we control (so we can delete it).
@@ -58,7 +58,7 @@ for cfg, lc in LANGS.items():
         tbl = pq.ParquetFile(shard_path).read_row_group(
             0, columns=["audio", "transcription"]
         ).slice(0, N_PER_LANG)
-        # FLEURS nests audio as a struct column: audio: struct<bytes, path> — it used to
+        # FLEURS nests audio as a struct column: audio: struct<bytes, path> - it used to
         # be a top-level "bytes" column. Verified via schema_arrow on the HF parquet
         # (refs/convert/parquet) on 2026-07-12; reading "bytes" now KeyErrors per language.
         audio_rows = tbl.column("audio").to_pylist()  # [{"bytes":…, "path":…}, …]

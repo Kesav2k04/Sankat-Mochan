@@ -1,5 +1,5 @@
 """
-Language-ID benchmark for the CommandPost — measures the EXACT production code
+Language-ID benchmark for the CommandPost - measures the EXACT production code
 (stt._identify_from_wav), not a reimplementation. This is the thing that decides
 which vocabulary IndicConformer decodes with; if it's wrong the transcript is
 garbage, so it is the highest-leverage accuracy lever in the pipeline.
@@ -7,7 +7,7 @@ garbage, so it is the highest-leverage accuracy lever in the pipeline.
 Reports, brutally:
   · overall LID accuracy
   · per-language accuracy (where does it fail?)
-  · confusion matrix (what does it confuse for what? — hi/ur, mr/hi, etc.)
+  · confusion matrix (what does it confuse for what? - hi/ur, mr/hi, etc.)
   · top1−top2 score margin for correct vs wrong calls (is a confidence
     threshold + fallback worth adding?)
 
@@ -35,7 +35,7 @@ import stt
 # (raises UnicodeEncodeError mid-run). Force UTF-8 so the benchmark never crashes on output.
 try:
     sys.stdout.reconfigure(encoding="utf-8")
-except Exception:  # noqa: BLE001 — best-effort; older/redirected streams may lack reconfigure
+except Exception:  # noqa: BLE001 - best-effort; older/redirected streams may lack reconfigure
     pass
 
 BASE = Path(__file__).parent
@@ -60,7 +60,7 @@ def load_wav(path: Path) -> torch.Tensor:
 def main() -> None:
     refs_path = AUDIO_DIR / "references.json"
     if not refs_path.exists():
-        print(f"No references.json in {AUDIO_DIR} — run download_fleurs.py first.")
+        print(f"No references.json in {AUDIO_DIR} - run download_fleurs.py first.")
         return
     refs = json.loads(refs_path.read_text(encoding="utf-8"))
     clips = sorted((AUDIO_DIR / n, r) for n, r in refs.items() if (AUDIO_DIR / n).exists())
@@ -112,7 +112,7 @@ def main() -> None:
     print("      " + "".join(f"{l:>4}" for l in langs))
     for true in langs:
         if confusion[true].get(true, 0) == per_lang[true][1]:
-            continue  # every clip of this language was correct — skip the row
+            continue  # every clip of this language was correct - skip the row
         cells = "".join(f"{confusion[true].get(p, 0):>4}" for p in langs)
         print(f"  {true:>3} {cells}")
 

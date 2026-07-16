@@ -1,5 +1,5 @@
 """
-Unified STT benchmark — every model on one audio folder, scored by WER/CER.
+Unified STT benchmark - every model on one audio folder, scored by WER/CER.
 
 Models: faster-whisper (small, medium) + AI4Bharat IndicConformer (CTC, RNNT).
 Language is FORCED from references.json per clip (so Whisper can't misdetect).
@@ -30,7 +30,7 @@ FW_MODELS = ["small", "medium"]
 AUDIO_EXT = {".wav", ".m4a", ".mp3", ".flac", ".ogg", ".opus", ".aac"}
 INDIC_ID = "ai4bharat/indic-conformer-600m-multilingual"
 
-_PUNCT = re.compile(r"[.,!?;:।॥\"'`()\[\]{}—–\-]")
+_PUNCT = re.compile(r"[.,!?;:।॥\"'`()\[\]{}-–\-]")
 
 
 def norm(s: str) -> str:
@@ -134,8 +134,8 @@ def main():
     print(f"{'model':<26}{'WER%':>9}{'CER%':>9}{'avg ms':>10}")
     print("-" * 74)
     for r in results:
-        w = r["avg_wer"] if r["avg_wer"] is not None else "—"
-        c = r["avg_cer"] if r["avg_cer"] is not None else "—"
+        w = r["avg_wer"] if r["avg_wer"] is not None else "-"
+        c = r["avg_cer"] if r["avg_cer"] is not None else "-"
         print(f"{r['model']:<26}{str(w):>9}{str(c):>9}{r['avg_ms']:>10}")
     print("=" * 74)
     if have_refs:

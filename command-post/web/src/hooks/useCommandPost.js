@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 //              metrics, ai_enabled, stt_ready, gateway}
 // Actions: POST /inject, /propose/{id}, /accept/{id}, /resolve/{id}.
 // The backend is the single source of truth (C6): every action just triggers
-// a fresh snapshot broadcast — no client-side state mutation.
+// a fresh snapshot broadcast - no client-side state mutation.
 const EMPTY = {
   incidents: [],
   responders: [],
@@ -36,7 +36,7 @@ export function useCommandPost() {
       ws.onclose = () => {
         setConnected(false);
         // Drop the last snapshot the moment the socket closes. A disconnected board
-        // is not live, and — critically — when the server is restarted this guarantees
+        // is not live, and - critically - when the server is restarted this guarantees
         // the previous run's incidents/responders/logs vanish immediately instead of
         // lingering on screen until (or unless) a reconnect delivers the new, empty
         // session. The fresh backend then repopulates from its blank snapshot.
@@ -52,8 +52,8 @@ export function useCommandPost() {
           return;
         }
         // The backend is the single source of truth: every snapshot fully REPLACES
-        // local state (never merges). So a killed-and-restarted server — which starts a
-        // brand-new empty session — clears the dashboard the instant it reconnects, and
+        // local state (never merges). So a killed-and-restarted server - which starts a
+        // brand-new empty session - clears the dashboard the instant it reconnects, and
         // stale incidents/voice from the previous run can never linger. `database.session_id`
         // changes each process start; App watches it to drop transient per-session UI state.
         if (m.kind === "snapshot") setSnap(m);

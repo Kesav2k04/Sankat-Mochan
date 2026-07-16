@@ -1,4 +1,4 @@
-# LoRa gateway — phone ⇄ phone over 433 MHz
+# LoRa gateway - phone ⇄ phone over 433 MHz
 
 ```
 phone A ──BLE──► [field node]  ══ 433 MHz ══►  [gateway node] ──BLE──► phone B
@@ -19,7 +19,7 @@ gateway = MeshNode(links=[lora_B, ble_phone_B])
 ```
 
 Nothing in this process connects phone A's BLE link to phone B's. The only edge between the two
-halves is the radio hop. Unplug radio B's antenna and delivery stops — that is a structural
+halves is the radio hop. Unplug radio B's antenna and delivery stops - that is a structural
 property, not a convention. `selftest_lora.py` asserts it (scenario 6).
 
 Why two nodes and not one: a single node holding both radios would mark an envelope id "seen" when
@@ -30,9 +30,9 @@ radio A transmitted it, and then drop its own reception on radio B as a duplicat
 | File | What it is |
 | --- | --- |
 | `sx127x.py` | SX1276/78 driver: init, TX, RX-continuous, CAD, per-frame RSSI/SNR. Raw `spidev` + `RPi.GPIO`. |
-| `envelope.py` | CONTRACT 1 — the ≤244-byte JSON envelope. A port of `model/SosMessage.kt`, which is the source of truth. |
+| `envelope.py` | CONTRACT 1 - the ≤244-byte JSON envelope. A port of `model/SosMessage.kt`, which is the source of truth. |
 | `node.py` | CONTRACT 1 mesh semantics: validate → dedup → forward to every link except the source. |
-| `ble_link.py` | CONTRACT 2 — BLE central (`bleak`): subscribe to notifications, write envelopes back. |
+| `ble_link.py` | CONTRACT 2 - BLE central (`bleak`): subscribe to notifications, write envelopes back. |
 | `chainlog.py` | The two logs, and `summarise()` which answers "did this envelope really cross the air?" |
 | `gateway.py` | Entry point. |
 | `selftest_lora.py` | Hardware self-test, no phones needed. |
@@ -72,7 +72,7 @@ Run the pieces directly if you prefer: `../.venv/bin/python {preflight,selftest_
 ## Configuration
 
 `config.example.json` holds the defaults. Override by copying it to `config.json`, or per-run with
-env vars — dotted path, `.` written as `__`, prefixed `SANKAT_`:
+env vars - dotted path, `.` written as `__`, prefixed `SANKAT_`:
 
 ```bash
 SANKAT_LOG__LEVEL=DEBUG          ../.venv/bin/python gateway.py
@@ -86,7 +86,7 @@ An env var that doesn't match a real config key is a hard error, so a typo can't
 nothing. Secrets go in env vars only, never in the JSON (project rule 2).
 
 Radio pins live in `radios.field` / `radios.gateway`. When the UNO Q arrives, radio A moves to it
-and only its transport changes — the envelope, dedup and forwarding rules are identical on both
+and only its transport changes - the envelope, dedup and forwarding rules are identical on both
 tiers, which is the whole point of CONTRACT 1.
 
 ## Split deployment: Pi (gateway) + UNO Q (field)
@@ -97,16 +97,16 @@ now moved to the **Arduino UNO Q**. Each board runs the same code but only its o
 | Board | `run.nodes` | Radio transport | Setup |
 | --- | --- | --- | --- |
 | Raspberry Pi (relief camp) | `["gateway"]` | `spi` (radio wired to the Pi) | `cp config.gateway.example.json config.json`, then `../server.sh` as before |
-| Arduino UNO Q (field) | `["field"]` | `serial` (radio on the STM32 modem) | ships as the self-contained `../arduino-unoq/` folder — that carries its own copy of this code; see below |
+| Arduino UNO Q (field) | `["field"]` | `serial` (radio on the STM32 modem) | ships as the self-contained `../arduino-unoq/` folder - that carries its own copy of this code; see below |
 
 Each radio's `transport` decides how it is driven: `"spi"` (wired to that board's SPI) or `"serial"`
-(reached over the UNO Q's STM32 LoRa modem — see `../arduino-unoq/`). The two boards are still bridged
+(reached over the UNO Q's STM32 LoRa modem - see `../arduino-unoq/`). The two boards are still bridged
 **only** by 433 MHz, so the loop-freedom guarantee above is unchanged. The RF startup probe (which needs
 both radios on one board) auto-disables when a board runs a single node; the link is then proven by live
 traffic and each board's own radio watchdog.
 
 The Pi keeps running via `../server.sh` (gateway + uplink to the dashboard). The UNO Q does **not** run
-`server.sh` and does not uplink — it relays over LoRa and the Pi does the uplinking. Because only the
+`server.sh` and does not uplink - it relays over LoRa and the Pi does the uplinking. Because only the
 `arduino-unoq/` folder is uploaded to the UNO Q, that folder carries its own deployment copy of this code
 in `arduino-unoq/field-node/` (kept in sync with `arduino-unoq/sync-from-pi-code.sh`; this `pi-code/` stays
 the source of truth). Full UNO Q instructions: [`../arduino-unoq/README.md`](../arduino-unoq/README.md).
@@ -145,7 +145,7 @@ grep '"msg_id":"a3f9-4"' logs/chain.jsonl | ../.venv/bin/python -m json.tool --j
 
 ## Radio settings and range
 
-Defaults are `433.0 MHz, SF7, BW125k, CR4/5, 5 dBm` — deliberately low power, because in testing the
+Defaults are `433.0 MHz, SF7, BW125k, CR4/5, 5 dBm` - deliberately low power, because in testing the
 two antennas sit inches apart. **A 244-byte frame at SF7 takes ~310 ms on air.**
 
 For real distance raise `tx_power_dbm` (max 20) and `spreading_factor` (max 12). SF12 buys roughly
@@ -153,19 +153,19 @@ For real distance raise `tx_power_dbm` (max 20) and `spreading_factor` (max 12).
 so send fewer of them. Both radios must agree on frequency, SF, BW, CR and sync word or they will
 not hear each other at all.
 
-⚠️ **Never transmit without an antenna** — the PA reflects into itself and degrades. And confirm
+⚠️ **Never transmit without an antenna** - the PA reflects into itself and degrades. And confirm
 433 MHz ISM use is permitted in your region before running anything sustained.
 
 ## Untrusted input
 
 Every envelope off BLE or the air is untrusted (project rule 8). `envelope.decode()` returns `None`
-— meaning "drop it" — for anything oversized, non-UTF-8, non-JSON, non-object, missing `i`/`o`, or
+- meaning "drop it" - for anything oversized, non-UTF-8, non-JSON, non-object, missing `i`/`o`, or
 carrying an unknown `t`. Numeric fields are clamped (`u`→1..5, `h`→0..15, coords to valid ranges,
 non-finite coords dropped) and strings are length-capped. No field is ever interpreted as a command.
 
 ## Dependencies
 
 `bleak` (MIT), `requests` (Apache-2.0) on every board. Then per transport: the Pi's SPI radios use
-`spidev` (MIT) + `RPi.GPIO` (MIT) — from the system packages, hence the `--system-site-packages` venv;
+`spidev` (MIT) + `RPi.GPIO` (MIT) - from the system packages, hence the `--system-site-packages` venv;
 the UNO Q's serial modem uses `pyserial` (BSD-3-Clause). `gpio_compat.py` selects `RPi.GPIO`/`lgpio`
 (Unlicense) as available. All permissive, per rule 1.

@@ -1,4 +1,4 @@
-# Sahayak — Kaggle Fine-Tune Guide (Gemma 4 E2B, best-accuracy-that-fits settings)
+# Sahayak - Kaggle Fine-Tune Guide (Gemma 4 E2B, best-accuracy-that-fits settings)
 
 End-to-end: dataset → QLoRA fine-tune on Kaggle → merged checkpoint + GGUF → artifacts
 downloaded locally → handoff to Qualcomm AI Hub for NPU. Companion to
@@ -10,11 +10,11 @@ downloaded locally → handoff to Qualcomm AI Hub for NPU. Companion to
 
 - **Kaggle accelerator: "GPU T4 x2", never P100.** Unsloth requires CUDA compute capability
   ≥ 7.0; the T4 is 7.5, the P100 is 6.0 (Pascal, no tensor cores). On P100 the trainer drops to
-  the slow transformers fallback — which trains WITHOUT response masking and must not produce a
+  the slow transformers fallback - which trains WITHOUT response masking and must not produce a
   shipped model. The script is single-GPU; the second T4 idles (harmless).
 - **E2B QLoRA, not E4B (on a T4).** We wanted E4B (per Unsloth's guide it beats E2B at similar
   memory), but Gemma 4 has fp16-unsafe ops, so on a T4 (no native bf16, cc 7.5) Unsloth forces
-  the model to PURE float32 — and E4B-in-fp32 does not fit 16 GB (OOM during the upcast).
+  the model to PURE float32 - and E4B-in-fp32 does not fit 16 GB (OOM during the upcast).
   `device_map="balanced"` across both T4s doesn't rescue it either: the fp32 re-cast collides
   with sharding → "CUDA illegal memory access". E2B fits the fp32 path on a single T4.
   E4B remains the right choice on a native-bf16 GPU (Colab L4/A100, cc ≥ 8) where no fp32
@@ -28,7 +28,7 @@ downloaded locally → handoff to Qualcomm AI Hub for NPU. Companion to
    Persistence **Files only**.
 2. **Add-ons → Secrets**: add `HF_TOKEN` = a Hugging Face token whose account has accepted the
    Gemma license (huggingface.co/google/gemma-4-E2B-it → agree). Never paste the token in a cell.
-3. Session quota: this run uses ~1–1.5h of your ~30 GPU-hrs/week — you can afford 3–4 full runs.
+3. Session quota: this run uses ~1–1.5h of your ~30 GPU-hrs/week - you can afford 3–4 full runs.
 
 ## 2. Notebook cells
 
@@ -46,7 +46,7 @@ os.environ["HF_TOKEN"] = UserSecretsClient().get_secret("HF_TOKEN")
 
 # ── Cell 3: dataset in + gate ──────────────────────────────────────────
 # Upload the dataset (Kaggle: "Add Input" → your dataset, or upload files to data/).
-# The validator is a HARD GATE — do not train on a file that doesn't pass.
+# The validator is a HARD GATE - do not train on a file that doesn't pass.
 !python validate_dataset.py data/train/all.jsonl
 !python validate_dataset.py data/val/val.jsonl      # the 10% validation split (NOT the holdout)
 # Re-running after a `git pull`? Delete the stale compiled cache first:
@@ -73,25 +73,25 @@ api = HfApi(token=os.environ["HF_TOKEN"])
 repo = "SivaNithishKumar/sahayak-e2b"
 api.create_repo(repo, private=True, exist_ok=True)
 api.upload_folder(folder_path="/kaggle/working/sahayak-e2b", repo_id=repo)
-print("done — pull locally with: huggingface-cli download", repo, "--local-dir ./sahayak-e2b")
+print("done - pull locally with: huggingface-cli download", repo, "--local-dir ./sahayak-e2b")
 ```
 
 **Watch during training:** the loss should fall and *keep falling* on eval. Gemma 4 E2B/E4B
-starting losses of 13–15 are normal (per Unsloth) — judge the *trend*, not the absolute number.
+starting losses of 13–15 are normal (per Unsloth) - judge the *trend*, not the absolute number.
 
-## 3. Hyperparameters — what and why
+## 3. Hyperparameters - what and why
 
 | Param | Value | Why |
 |---|---|---|
 | `--lora-r` / `--lora-alpha` | **32 / 32** | Unsloth's Gemma 4 guide uses r=32 ("larger = higher accuracy"); alpha=r is the standard 1:1. With ~1,800 curated examples this is the accuracy setting. If eval loss climbs while train loss falls (overfit), drop to 16/16. |
 | `--lr` | **2e-4** | QLoRA standard and Unsloth's Gemma 4 default. First knob if overfitting: halve to 1e-4. |
-| `--epochs` | **3, pick best by eval** | Unsloth: 1–3 epochs; >3 = diminishing returns + overfit risk on instruction data. `eval_strategy="epoch"` logs eval loss each epoch — if epoch 3's eval loss is worse than epoch 2's, use the epoch-2 checkpoint from `checkpoints/`. |
-| `--batch-size` × `--grad-accum` | **2 × 4 (effective 8)** | Fits T4 16GB with headroom for E2B QLoRA (even in the forced-fp32 path). Effective batch 8 ≈ 450 steps/epoch on 1,800 rows — enough steps to converge. OOM? → `1 × 8` (identical math, less memory). |
+| `--epochs` | **3, pick best by eval** | Unsloth: 1–3 epochs; >3 = diminishing returns + overfit risk on instruction data. `eval_strategy="epoch"` logs eval loss each epoch - if epoch 3's eval loss is worse than epoch 2's, use the epoch-2 checkpoint from `checkpoints/`. |
+| `--batch-size` × `--grad-accum` | **2 × 4 (effective 8)** | Fits T4 16GB with headroom for E2B QLoRA (even in the forced-fp32 path). Effective batch 8 ≈ 450 steps/epoch on 1,800 rows - enough steps to converge. OOM? → `1 × 8` (identical math, less memory). |
 | `--max-seq-len` | **1024** | Spec-compliant records are ≤ ~600 output chars + short inputs; nothing legitimate approaches 1024 tokens. Halving from 2048 speeds training and wastes no accuracy. Keep 2048 only if two-turn examples run long. |
 | warmup / schedule / optim | 0.05 / linear / adamw_8bit *(fixed in script)* | Unsloth defaults; nothing to gain changing them at this scale. |
 | weight decay | 0.01 *(fixed)* | Mild regularizer, standard. |
 | `--seed` | 3407 *(default)* | Fixed seed → runs comparable across hyperparameter changes. |
-| Response masking | automatic | `train_on_responses_only` with template-derived markers — loss only on assistant turns. Confirm the `[markers]` log line prints Gemma 4 markers at startup. |
+| Response masking | automatic | `train_on_responses_only` with template-derived markers - loss only on assistant turns. Confirm the `[markers]` log line prints Gemma 4 markers at startup. |
 | 4-bit | **auto → OFF for E2B** | Mirrors Unsloth's official `Gemma4_(E2B)-Text` notebook: E2B 16-bit LoRA needs ~8-10GB (fits a T4) and skips the bitsandbytes path. E4B auto-stays QLoRA (its LoRA needs ~17GB). Override with `--four-bit on/off`. |
 
 **Best-accuracy protocol (uses ~3 of your weekly GPU-hours):**
@@ -99,12 +99,12 @@ starting losses of 13–15 are normal (per Unsloth) — judge the *trend*, not t
 2. Compare per-epoch eval losses; select the best epoch's checkpoint.
 3. Only if Run A overfits (eval loss rises after epoch 1): **Run B** with `--lora-r 16
    --lora-alpha 16 --lr 1e-4 --epochs 2`. Otherwise skip.
-4. Judge the winner on the **held-out** `eval_holdout.jsonl` by hand — spot-check ~30 outputs:
+4. Judge the winner on the **held-out** `eval_holdout.jsonl` by hand - spot-check ~30 outputs:
    packet-format compliance (`SOS|` grammar, no invented fields), refusal calibration (§1.6 of
    the spec), length budget, language consistency. Eval loss picks the checkpoint; the holdout
    review decides if it ships.
 
-**Inference settings (bake into the app — must match at demo):** Gemma 4's recommended
+**Inference settings (bake into the app - must match at demo):** Gemma 4's recommended
 sampling is `temperature=1.0, top_p=0.95, top_k=64`. And the runtime must apply the *same
 chat template* used in training, with the byte-identical system prompt from the spec.
 
@@ -115,12 +115,12 @@ pip install -U "huggingface_hub[cli]"
 huggingface-cli download SivaNithishKumar/sahayak-e2b --local-dir ./sahayak-e2b
 ```
 
-You get three artifacts — keep all three:
+You get three artifacts - keep all three:
 - `gguf/*.gguf` (~4GB, q4_k_m) → straight into the app's model import (llama.cpp CPU/GPU path).
 - `merged-16bit/` (~16GB safetensors) → the **AI Hub input** for NPU compilation.
 - adapter files at the root (~100–200MB) → re-merge anywhere later without retraining.
 
-## 5. NPU handoff (Qualcomm AI Hub) — NOT on Kaggle
+## 5. NPU handoff (Qualcomm AI Hub) - NOT on Kaggle
 
 AI Hub's LLM flow consumes the **HF checkpoint** (`merged-16bit/`), never GGUF. Per the
 qai-hub-models LLM tutorial the flow is quantize (AIMET, local, **Linux/WSL + ~40GB-VRAM GPU**
@@ -134,7 +134,7 @@ python -m qai_hub_models.models.<gemma_4_e2b_recipe>.export \
     --checkpoint ./quantized --device "Snapdragon X Elite CRD"
 ```
 
-- Kaggle can't run the quantize step (VRAM + AIMET-Linux constraints) — use the venue
+- Kaggle can't run the quantize step (VRAM + AIMET-Linux constraints) - use the venue
   X Elite / Linux box, per the existing plan in `PLAN.md`.
 - Venue gotchas (from `command-post/aihub_out/RESULTS.md` prep): add
   `--compile-options="--qairt_version=default" --profile-options="--qairt_version=default"`;

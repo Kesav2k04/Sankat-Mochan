@@ -1,7 +1,7 @@
 """
 Recompile IndicConformer CTC as precompiled_qnn_onnx (ORT-QNN loadable) and download.
 
-Same uploaded models as before (cached by hash — no re-upload), but target_runtime
+Same uploaded models as before (cached by hash - no re-upload), but target_runtime
 = precompiled_qnn_onnx: each graph becomes a small .onnx EPContext wrapper + a QNN
 context .bin that ONNX Runtime's QNN EP loads directly on the phone. That's what the
 Android mesh-app SttEngine consumes.
@@ -49,7 +49,7 @@ def main():
         graph_dir.mkdir(parents=True, exist_ok=True)
         try:
             saved = j.download_target_model(str(graph_dir))
-        except Exception as e:  # noqa: BLE001 — don't let one graph kill the other
+        except Exception as e:  # noqa: BLE001 - don't let one graph kill the other
             print(f"   download error: {type(e).__name__}: {e}", flush=True)
             jobs[name] = {"job_id": j.job_id, "compiled": True, "downloaded": False}
             continue

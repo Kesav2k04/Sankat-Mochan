@@ -5,7 +5,7 @@ import { Protocol } from 'pmtiles'
 import { layers, namedFlavor } from '@protomaps/basemaps'
 import { ZONE, OUTPOST, DANGER_SPOT, RANGE_KM } from '../sim/lora.js'
 
-// Real offline basemap — the same Wayanad PMTiles extract the command post
+// Real offline basemap - the same Wayanad PMTiles extract the command post
 // serves (data © OpenStreetMap contributors, ODbL; MapLibre + @protomaps/basemaps, BSD-3).
 // Dark flavor: the story happens at night, and the map is the set.
 const protocol = new Protocol()
@@ -32,10 +32,10 @@ const GREEN = '#3ddc84'
 const TEAL = '#45c4e8'
 const GREY = '#54697d'
 
-/** The damaged cell tower — the reason nothing else works tonight. */
+/** The damaged cell tower - the reason nothing else works tonight. */
 const TOWER = { lat: 11.679, lng: 76.155 }
 
-/** The landslide scar — a mud streak running down to the danger spot. */
+/** The landslide scar - a mud streak running down to the danger spot. */
 const SCAR = [
   [11.7148, 76.0448],
   [11.7162, 76.0532],
@@ -62,7 +62,7 @@ function ease(u) {
   return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2
 }
 
-/** A little human figure — victims and rangers are people, not arrows. */
+/** A little human figure - victims and rangers are people, not arrows. */
 function Person({ c, wave = false }) {
   return (
     <g filter="url(#glo)">
@@ -254,7 +254,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
             </g>
           )}
 
-          {/* village lights — warm in the dark, then dying one by one */}
+          {/* village lights - warm in the dark, then dying one by one */}
           {LIGHT_STATE[beatKey] &&
             VILLAGES.map(([la, ln], i) => {
               const p = px({ lat: la, lng: ln })
@@ -284,7 +284,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               )
             })()}
 
-          {/* the damaged cell tower — its aviation beacon still blinks */}
+          {/* the damaged cell tower - its aviation beacon still blinks */}
           {showTower &&
             (() => {
               const p = px(TOWER)
@@ -317,7 +317,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               )
             })()}
 
-          {/* the danger spot — where the SOS originates */}
+          {/* the danger spot - where the SOS originates */}
           {showZone &&
             (() => {
               const p = px(DANGER_SPOT)
@@ -344,7 +344,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               )
             })()}
 
-          {/* link preview only while BUILDING the mesh — during the story and
+          {/* link preview only while BUILDING the mesh - during the story and
               the run there are no wires on the map, only travelling signals */}
           {phase === 'setup' &&
             links.map((l) => {
@@ -375,7 +375,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               return <circle key={`rg${i}`} cx={p.x} cy={p.y} r={kmToPx(RANGE_KM)} fill={AMBER} fillOpacity="0.025" stroke={AMBER} strokeOpacity="0.28" strokeWidth="1" strokeDasharray="2 5" />
             })}
 
-          {/* LoRa modules — each pops in with a bounce and a wake-up ring */}
+          {/* LoRa modules - each pops in with a bounce and a wake-up ring */}
           {nodes.map((n, i) => {
             const p = px(n)
             const tx = txNodes.has(n)
@@ -399,7 +399,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
             )
           })}
 
-          {/* outpost — outside the zone */}
+          {/* outpost - outside the zone */}
           {(() => {
             const p = px(OUTPOST)
             const got = run && clock >= run.outpostAt
@@ -414,7 +414,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
             )
           })()}
 
-          {/* victim — a person at the spot; their first broadcast rings out all around */}
+          {/* victim - a person at the spot; their first broadcast rings out all around */}
           {(victimVisible || storyVictim) &&
             (() => {
               const p = px(run?.victim ?? DANGER_SPOT)
@@ -450,7 +450,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
               )
             })()}
 
-          {/* rangers — overhear the SOS (awareness), then one is TASKED by the camp */}
+          {/* rangers - overhear the SOS (awareness), then one is TASKED by the camp */}
           {rangers.map((r) => {
             const pos = rangerPos[r.id] ?? r
             const p = px(pos)
@@ -477,7 +477,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
                   <text y="-16" textAnchor="middle" className="svg-label" fill={c}>
                     {r.label}
                   </text>
-                  {tasking && <text y="20" textAnchor="middle" className="svg-label danger">TASKED — accepting…</text>}
+                  {tasking && <text y="20" textAnchor="middle" className="svg-label danger">TASKED - accepting…</text>}
                   {accepted && <text y="20" textAnchor="middle" className="svg-label" fill={GREEN}>✓ ACCEPTED · responding</text>}
                   {!tasking && !accepted && heard && <text y="20" textAnchor="middle" className="svg-label dim">overheard SOS · monitoring</text>}
                 </g>
@@ -492,7 +492,7 @@ function SimMap({ phase, nodes, links, path, rangers, run, clock, fx, beatKey, s
             return <circle key={a.key} className="burst" cx={p.x} cy={p.y} r="14" fill="none" stroke={c} strokeWidth="2.4" filter="url(#glo)" />
           })}
 
-          {/* packets in flight — SOS up, DISPATCH/ACK down, ACCEPT back up */}
+          {/* packets in flight - SOS up, DISPATCH/ACK down, ACCEPT back up */}
           {packets.map((pk, i) => {
             const a = px(pk.from)
             const b = px(pk.to)

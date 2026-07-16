@@ -1,5 +1,5 @@
 """
-Backend benchmark — run the SAME triage task against every OpenAI-compatible
+Backend benchmark - run the SAME triage task against every OpenAI-compatible
 backend you have running (vLLM, LM Studio, Ollama, llama.cpp) and rank them by
 latency + throughput, so we pick the fastest objectively.
 
@@ -8,7 +8,7 @@ latency + throughput, so we pick the fastest objectively.
 3. Run:  python bench.py           (uses backends.json)
          python bench.py --url http://localhost:1234/v1 --model qwen2.5-3b-instruct
 
-Nothing here changes the app — it just probes endpoints.
+Nothing here changes the app - it just probes endpoints.
 """
 from __future__ import annotations
 
@@ -101,9 +101,9 @@ async def main() -> None:
     print(f"{'backend':<12}{'ok':>6}{'good':>6}{'avg ms':>10}{'p50 ms':>10}{'tok/s':>10}   model")
     print("-" * 78)
     for r in results:
-        avg = r["avg_ms"] if r["avg_ms"] is not None else "—"
-        p50 = r["p50_ms"] if r["p50_ms"] is not None else "—"
-        ts = r["tok_s"] if r["tok_s"] is not None else "—"
+        avg = r["avg_ms"] if r["avg_ms"] is not None else "-"
+        p50 = r["p50_ms"] if r["p50_ms"] is not None else "-"
+        ts = r["tok_s"] if r["tok_s"] is not None else "-"
         print(f"{r['name']:<12}{r['ok']:>3}/{r['rounds']:<2}{r['good_json']:>6}{str(avg):>10}{str(p50):>10}{str(ts):>10}   {r['model']}")
     print("=" * 78)
     if live:
@@ -113,10 +113,10 @@ async def main() -> None:
     else:
         print("\nNo backend responded. Start a server (LM Studio / Ollama / vLLM) and retry.")
 
-    # Quality view — eyeball the actual translations (speed means nothing if the
+    # Quality view - eyeball the actual translations (speed means nothing if the
     # Tamil/Hindi translation is wrong). This is chip-independent → picks the model.
     print("\n" + "=" * 78)
-    print("TRANSLATION QUALITY (judge these by hand — same on Mac and NPU)")
+    print("TRANSLATION QUALITY (judge these by hand - same on Mac and NPU)")
     for r in results:
         if not r["ok"]:
             continue

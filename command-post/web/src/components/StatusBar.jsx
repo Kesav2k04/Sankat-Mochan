@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-// Bottom status bar — instrumentation at a glance (C13 metrics).
+// Bottom status bar - instrumentation at a glance (C13 metrics).
 export default function StatusBar({ metrics, gateway, database, voice, aiEnabled, sttReady }) {
   const [, tick] = useState(0);
   useEffect(() => {
@@ -17,7 +17,7 @@ export default function StatusBar({ metrics, gateway, database, voice, aiEnabled
   return (
     <footer className="flex items-center gap-5 px-6 py-1.5 font-mono text-[10px] tracking-wide text-muted-foreground bg-card border-t">
       <span>PKT RX <b className="text-foreground">{m.pkt_rx ?? 0}</b></span>
-      <span>LAST RX {lastRx == null ? "—" : lastRx < 60 ? `${lastRx}s AGO` : `${Math.floor(lastRx / 60)}m AGO`}</span>
+      <span>LAST RX {lastRx == null ? "-" : lastRx < 60 ? `${lastRx}s AGO` : `${Math.floor(lastRx / 60)}m AGO`}</span>
       {m.median_triage_ms != null && <span>MEDIAN TRIAGE {m.median_triage_ms}ms</span>}
       <span>{ai}</span>
       <span>VOICE RX <b className="text-foreground">{voice?.received ?? 0}</b></span>
@@ -29,7 +29,7 @@ export default function StatusBar({ metrics, gateway, database, voice, aiEnabled
         </span>
       )}
       <span title={database?.session_id || ""}>
-        DB {database?.connected ? "ON" : "OFF"} · SESSION {database?.session_id?.slice(0, 8) || "—"}
+        DB {database?.connected ? "ON" : "OFF"} · SESSION {database?.session_id?.slice(0, 8) || "-"}
       </span>
       <span className={`ml-auto font-semibold ${m.critical_open ? "text-primary" : ""}`}>
         {m.critical_open ?? 0} CRITICAL OPEN

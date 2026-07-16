@@ -3,9 +3,9 @@ import maplibregl from "maplibre-gl";
 import { MAP_CENTER, MAP_ZOOM, MAP_MIN_ZOOM, MAP_MAX_ZOOM, TILE_STYLE } from "../lib/mapConfig.js";
 import { pinColor } from "../lib/urgency.js";
 
-const CAMP_HQ = [77.5921, 12.9767]; // forward camp — Bengaluru city control (Cubbon Park)
+const CAMP_HQ = [77.5921, 12.9767]; // forward camp - Bengaluru city control (Cubbon Park)
 
-// Sector map — real offline vector basemap (Bengaluru PMTiles) with live
+// Sector map - real offline vector basemap (Bengaluru PMTiles) with live
 // incident beacons following the lifecycle arc (open red → claimed amber →
 // cleared green), square sensor glyphs, responder dots, and camp HQ.
 export default function MapPanel({ incidents, responders, selectedId, onSelect }) {
@@ -26,7 +26,7 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
-    // Camp HQ — fixed square marker
+    // Camp HQ - fixed square marker
     const hq = document.createElement("div");
     hq.style.cssText =
       "width:11px;height:11px;background:#1a1a1a;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)";
@@ -102,7 +102,7 @@ export default function MapPanel({ incidents, responders, selectedId, onSelect }
     }
 
     // First time we have any pins, frame the map so BOTH the victim (incident) and
-    // responder mobiles are on screen at once — otherwise a responder near the edge of
+    // responder mobiles are on screen at once - otherwise a responder near the edge of
     // the sector (or a distant incident) opens off-view and looks "not plotted". Runs
     // once; afterwards the operator's panning and the pan-to-selection below are left be.
     if (!fittedRef.current) {

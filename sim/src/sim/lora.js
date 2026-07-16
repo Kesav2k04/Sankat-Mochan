@@ -1,24 +1,24 @@
 /**
  * The simulation, in the order the real system works:
  *
- *   1. UPLINK — the SOS (text + voice note) leaves the danger spot. Every
+ *   1. UPLINK - the SOS (text + voice note) leaves the danger spot. Every
  *      module around the spot hears the broadcast, but only the SHORTEST
  *      route relays it on: priority one is reaching the safe camp.
- *      Rangers who happen to be in range OVERHEAR it — awareness only,
+ *      Rangers who happen to be in range OVERHEAR it - awareness only,
  *      nobody self-dispatches.
- *   2. AT THE SAFE CAMP — the voice note is transcribed offline, triaged,
+ *   2. AT THE SAFE CAMP - the voice note is transcribed offline, triaged,
  *      and a supplies list is suggested from what the victim actually said.
- *   3. DOWNLINK — the camp tasks the nearest ranger over the same mesh.
+ *   3. DOWNLINK - the camp tasks the nearest ranger over the same mesh.
  *      The ranger accepts; the acceptance travels back so command knows;
  *      the victim is told "help is on the way" in their own language.
- *   4. RESPONSE — the tasked ranger moves to the spot with the supplies.
+ *   4. RESPONSE - the tasked ranger moves to the spot with the supplies.
  */
 
 import { encode, loraAirtimeMs } from './envelope.js'
 
 export const ZONE = { lat: 11.685, lng: 76.132, radiusKm: 10 }
 export const OUTPOST = { id: 'OUTPOST', label: 'SAFE CAMP · OUTPOST', lat: 11.635, lng: 76.225 }
-/** Where the SOS originates — deep inside the zone, far from the outpost. */
+/** Where the SOS originates - deep inside the zone, far from the outpost. */
 export const DANGER_SPOT = { id: 'SPOT', label: 'DANGER SPOT', lat: 11.6995, lng: 76.0605 }
 export const RANGE_KM = 5 // rural LoRa link budget, SF9–SF12 class
 export const MAX_NODES = 20
@@ -39,7 +39,7 @@ export function inZone(p) {
   return haversineKm(p, ZONE) <= ZONE.radiusKm
 }
 
-/** A point `km` from `center` at bearing `deg` — geometrically accurate on the map. */
+/** A point `km` from `center` at bearing `deg` - geometrically accurate on the map. */
 function ringPoint(center, km, deg) {
   const a = (deg * Math.PI) / 180
   return {
@@ -51,7 +51,7 @@ function ringPoint(center, km, deg) {
 /**
  * Default layout: an accurate CIRCLE of eight modules around the danger spot
  * (2 km out, so the first broadcast is heard from every side), a relay chain to
- * the outpost, plus a few modules scattered at random across the zone — a real
+ * the outpost, plus a few modules scattered at random across the zone - a real
  * deployment is never tidy. The router ignores whatever doesn't help: only the
  * shortest route to the camp carries the message.
  */
@@ -75,7 +75,7 @@ export function autoLayout() {
   return [...ring, ...chain, ...scatter].filter(inZone)
 }
 
-/** The real wire cost of one hop — encoded envelope bytes through the Semtech formula. */
+/** The real wire cost of one hop - encoded envelope bytes through the Semtech formula. */
 export const SOS_WIRE = (() => {
   const { bytes } = encode({
     id: 'v1-0',
@@ -96,7 +96,7 @@ export const SOS_WIRE = (() => {
 
 /** What the offline AI makes of the victim's voice note at the safe camp. */
 export const VOICE_TRIAGE = {
-  transcript: 'Trapped on the upper floor — the water is rising',
+  transcript: 'Trapped on the upper floor - the water is rising',
   lang: 'Tamil',
   urgency: 5,
   category: 'trapped · flood',
@@ -152,7 +152,7 @@ function pathKm(path) {
 /**
  * The victim's first broadcast is heard by EVERY module in range of the spot.
  * The mesh then relays via whichever of them starts the shortest total route
- * to the outpost — that route and only that route carries the message on.
+ * to the outpost - that route and only that route carries the message on.
  */
 export function bestOrigin(nodes) {
   const heard = nodes.filter((n) => haversineKm(n, DANGER_SPOT) <= RANGE_KM)
@@ -166,7 +166,7 @@ export function bestOrigin(nodes) {
   return { heard: heard.length, origin: best?.origin ?? null, path: best?.path ?? null, km: best?.km ?? Infinity }
 }
 
-/** Rangers patrol near the relay chain — deterministic offsets from two path modules. */
+/** Rangers patrol near the relay chain - deterministic offsets from two path modules. */
 export function placeRangers(path) {
   const mods = path.slice(0, -1)
   const near = (n, dlat, dlng, id, label) => ({ id, label, lat: n.lat + dlat, lng: n.lng + dlng })
@@ -192,26 +192,26 @@ export function buildTimeline(nodes) {
   const events = []
   let t = 0
 
-  // ---- 1. UPLINK — priority one: reach the safe camp -----------------------
-  events.push({ t, text: `SOS + voice note recorded at the danger spot — ${SOS_WIRE.bytes} B envelope + audio` })
+  // ---- 1. UPLINK - priority one: reach the safe camp -----------------------
+  events.push({ t, text: `SOS + voice note recorded at the danger spot - ${SOS_WIRE.bytes} B envelope + audio` })
   segs.push({ kind: 'speak', at: victim, t0: t, dur: 1.8 })
   t += 1.8
 
   events.push({
     t,
-    text: `${heard} module${heard > 1 ? 's' : ''} around the spot hear the broadcast — shortest route wins: ${name(origin, nodes)}, ${pathKm([victim, ...path]).toFixed(1)} km total to the camp`,
+    text: `${heard} module${heard > 1 ? 's' : ''} around the spot hear the broadcast - shortest route wins: ${name(origin, nodes)}, ${pathKm([victim, ...path]).toFixed(1)} km total to the camp`,
   })
   segs.push({ kind: 'hop', pkt: 'SOS', from: victim, to: origin, t0: t, dur: 0.8 })
   t += 0.8
 
-  const overhear = new Map() // ranger id -> t (awareness only — nobody self-dispatches)
+  const overhear = new Map() // ranger id -> t (awareness only - nobody self-dispatches)
   for (let i = 0; i < path.length - 1; i++) {
     const from = path[i]
-    events.push({ t, text: `${name(from, nodes)} relays — ${SOS_WIRE.airtimeMs.toFixed(0)} ms on air` })
+    events.push({ t, text: `${name(from, nodes)} relays - ${SOS_WIRE.airtimeMs.toFixed(0)} ms on air` })
     for (const r of rangers) {
       if (!overhear.has(r.id) && haversineKm(r, from) <= RANGE_KM) {
         overhear.set(r.id, t)
-        events.push({ t: t + 0.3, text: `${r.label} overhears the SOS — monitoring, awaiting tasking from the camp`, tone: 'warn' })
+        events.push({ t: t + 0.3, text: `${r.label} overhears the SOS - monitoring, awaiting tasking from the camp`, tone: 'warn' })
       }
     }
     segs.push({ kind: 'hop', pkt: 'SOS', from, to: path[i + 1], t0: t, dur: HOP_S })
@@ -220,20 +220,20 @@ export function buildTimeline(nodes) {
 
   const hops = path.length - 1
   const outpostAt = t
-  events.push({ t, text: `SAFE CAMP received the SOS — ${hops} hops, ${t.toFixed(1)} s. Priority delivery complete.`, tone: 'good' })
+  events.push({ t, text: `SAFE CAMP received the SOS - ${hops} hops, ${t.toFixed(1)} s. Priority delivery complete.`, tone: 'good' })
 
-  // ---- 2. AT THE SAFE CAMP — transcribe, triage, suggest supplies ----------
+  // ---- 2. AT THE SAFE CAMP - transcribe, triage, suggest supplies ----------
   t += 0.9
   events.push({ t, text: `Voice note transcribed offline (${VOICE_TRIAGE.lang}): “${VOICE_TRIAGE.transcript}”` })
   t += 1.0
   const triageAt = t
   events.push({
     t,
-    text: `AI triage: urgency ${VOICE_TRIAGE.urgency}/5 · ${VOICE_TRIAGE.category} — suggested supplies: ${VOICE_TRIAGE.supplies.slice(0, 4).join(', ')}…`,
+    text: `AI triage: urgency ${VOICE_TRIAGE.urgency}/5 · ${VOICE_TRIAGE.category} - suggested supplies: ${VOICE_TRIAGE.supplies.slice(0, 4).join(', ')}…`,
     tone: 'good',
   })
 
-  // ---- 3. DOWNLINK — the camp tasks the nearest ranger ---------------------
+  // ---- 3. DOWNLINK - the camp tasks the nearest ranger ---------------------
   const responder = [...rangers].sort((a, b) => haversineKm(a, victim) - haversineKm(b, victim))[0]
   const rkm = haversineKm(responder, victim)
   const rmod = [...nodes].sort((a, b) => haversineKm(a, responder) - haversineKm(b, responder))[0]
@@ -245,7 +245,7 @@ export function buildTimeline(nodes) {
   const dispatchAt = t
   events.push({
     t,
-    text: `SAFE CAMP tasks ${responder.label} — nearest to the spot (${rkm.toFixed(1)} km). Dispatch + supplies list sent back over LoRa, shortest route.`,
+    text: `SAFE CAMP tasks ${responder.label} - nearest to the spot (${rkm.toFixed(1)} km). Dispatch + supplies list sent back over LoRa, shortest route.`,
     tone: 'warn',
   })
   for (let i = 0; i < downPath.length - 1; i++) {
@@ -254,15 +254,15 @@ export function buildTimeline(nodes) {
   }
 
   const task = { rid: responder.id, via: rmod, tAlert: t, tAccept: t + ACCEPT_S }
-  events.push({ t, text: `${name(rmod, nodes)} alerts ${responder.label} — task received`, tone: 'warn' })
+  events.push({ t, text: `${name(rmod, nodes)} alerts ${responder.label} - task received`, tone: 'warn' })
   t += ACCEPT_S
   events.push({ t, text: `${responder.label} ACCEPTED the task`, tone: 'good' })
   const acceptAt = t
 
   // The victim is told FIRST: "HELP ACCEPTED" races from the ranger's own
-  // module straight back to the spot — it does not wait for the camp round-trip.
+  // module straight back to the spot - it does not wait for the camp round-trip.
   let ta = acceptAt
-  events.push({ t: ta, text: `HELP ACCEPTED races back to the victim — priority over everything else`, tone: 'good' })
+  events.push({ t: ta, text: `HELP ACCEPTED races back to the victim - priority over everything else`, tone: 'good' })
   const back = route(nodes, rmod, origin)
   const backPath = back ? back.path : [rmod]
   for (let i = 0; i < backPath.length - 1; i++) {
@@ -280,16 +280,16 @@ export function buildTimeline(nodes) {
     segs.push({ kind: 'hop', pkt: 'ACCEPT', from: down.path[i], to: down.path[i + 1], t0: tc, dur: HOP_S })
     tc += HOP_S
   }
-  events.push({ t: tc, text: `Acceptance confirmed at SAFE CAMP — ${responder.label} is committed`, tone: 'good' })
+  events.push({ t: tc, text: `Acceptance confirmed at SAFE CAMP - ${responder.label} is committed`, tone: 'good' })
   t = Math.max(ta, tc)
 
-  // ---- 4. RESPONSE — the tasked ranger moves, in parallel with the ACK -----
+  // ---- 4. RESPONSE - the tasked ranger moves, in parallel with the ACK -----
   const goAt = acceptAt + 0.4
-  events.push({ t: goAt, text: `${responder.label} moving with supplies — ${rkm.toFixed(1)} km to the danger spot`, tone: 'warn' })
+  events.push({ t: goAt, text: `${responder.label} moving with supplies - ${rkm.toFixed(1)} km to the danger spot`, tone: 'warn' })
   segs.push({ kind: 'respond', ranger: responder.id, from: responder, to: victim, t0: goAt, dur: 11 })
   events.push({ t: goAt + 11, text: `${responder.label} reached the victim`, tone: 'good' })
 
-  // hold the shot on the rescue — let it land before any card covers the map
+  // hold the shot on the rescue - let it land before any card covers the map
   const total = Math.max(goAt + 11, victimAckAt) + 2.4
   events.sort((a, b) => a.t - b.t)
 

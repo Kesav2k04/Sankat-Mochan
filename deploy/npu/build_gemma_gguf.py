@@ -6,14 +6,14 @@ Keeps the Gemma finetune as-is (no re-base) and takes the GGUF route, because th
 Gemma reaches the NPU on Qualcomm: llama.cpp's Hexagon backend (`GGML_HEXAGON=ON`) and the
 GenieX `geniex_llamacpp` runtime both run GGUF on the HTP. The catch that dictates the whole
 recipe: **the HTP wants Q4_0 (or Q8_0)**. Qualcomm's own GenieX notes say "Q4_K_M is a
-suboptimal quant for HTP — it prefers Q4_0 / Q8_0", and llama.cpp's Snapdragon docs use Q4_0
+suboptimal quant for HTP - it prefers Q4_0 / Q8_0", and llama.cpp's Snapdragon docs use Q4_0
 exclusively (it repacks Q4_0 internally for the NPU). So we quantize to Q4_0, not the usual
 Q4_K_M.
 
-Pipeline (all local, llama.cpp — MIT, DOCS.md #1):
+Pipeline (all local, llama.cpp - MIT, DOCS.md #1):
   1. convert_hf_to_gguf.py  : merged Gemma HF weights → f16 GGUF
   2. llama-imatrix (optional): importance matrix from an IN-DOMAIN corpus built from the
-                               training data — meaningfully steadier low-bit quality for a
+                               training data - meaningfully steadier low-bit quality for a
                                task-specific model. Uses finetune/data/train.jsonl.
   3. llama-quantize         : f16 GGUF → Q4_0 GGUF (the HTP-preferred format)
 
@@ -26,7 +26,7 @@ Then run on device: see deploy/npu/run_gemma_npu.sh (llama.cpp HTP) or `geniex i
 model_type=gemma4 (NOT Gemma 3n), so convert_hf_to_gguf.py supports it. The checkpoint is
 Gemma4ForConditionalGeneration (multimodal); for this text-only assistant the converter emits
 the LLM GGUF (vision/audio mmproj not needed). The repo already ships merged weights under
-merged/ — download that dir and pass it as --merged-checkpoint (no re-merge required).
+merged/ - download that dir and pass it as --merged-checkpoint (no re-merge required).
 
 Command shapes from public docs (DOCS.md #3), all open-license:
   - llama.cpp docs/backend/snapdragon/README.md, tools/quantize/README.md  (MIT)
@@ -70,7 +70,7 @@ def build_calibration_corpus(train_jsonl: Path, out_txt: Path, max_records: int)
 
     In-domain calibration: the importance matrix reflects the emergency-response distribution
     the model is actually quantized for, not generic web text. Untrusted-input hygiene still
-    applies (DOCS.md #8) — we only READ the local training file and emit text, no execution.
+    applies (DOCS.md #8) - we only READ the local training file and emit text, no execution.
     """
     n = 0
     with train_jsonl.open("r", encoding="utf-8") as fin, out_txt.open("w", encoding="utf-8") as fout:
@@ -140,7 +140,7 @@ def main(argv=None) -> int:
                  "--merged-checkpoint at the 'merged' dir, not the LoRA-adapter dir.")
     convert_py = llama / "convert_hf_to_gguf.py"
     if not convert_py.exists() and not args.dry_run:
-        sys.exit(f"[error] {convert_py} not found — is --llama-cpp a real llama.cpp checkout?")
+        sys.exit(f"[error] {convert_py} not found - is --llama-cpp a real llama.cpp checkout?")
 
     f16 = out / f"{args.name}-f16.gguf"
     quant_out = out / f"{args.name}-{args.quant}.gguf"

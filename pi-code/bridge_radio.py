@@ -1,5 +1,5 @@
 """
-Router-Bridge LoRa transport — the field radio driven by the UNO Q's own MCU.
+Router-Bridge LoRa transport - the field radio driven by the UNO Q's own MCU.
 
 Single-board successor to `serial_radio.py`. On the Raspberry Pi the LoRa modem was a
 *separate* Arduino on USB, reachable as a raw serial port (`SerialRadio`). On the Arduino
@@ -13,7 +13,7 @@ surface the gateway, `LoRaLink` and the radio watchdog use (`open`, `send`,
 `channel_rssi_dbm`, `close`, and the `rst_gpio`/`name`/`cfg` attributes), so nothing
 above the transport layer changes.
 
-RPC contract — matches the sketch in `../sketch/sketch.ino`. Payloads are raw bytes
+RPC contract - matches the sketch in `../sketch/sketch.ino`. Payloads are raw bytes
 (MessagePack bin), so a full frame needs no hex doubling:
 
     host -> MCU (call):   lora_tx(bytes) -> int airtime_ms  (negative = failure)
@@ -23,7 +23,7 @@ RPC contract — matches the sketch in `../sketch/sketch.ino`. Payloads are raw 
 Every inbound frame is still untrusted (DOCS.md #8); this layer only moves bytes.
 Validation/dedup/size-capping happen unchanged in `envelope.py` / `node.py` downstream.
 
-Dependency: msgpack (via the vendored `bridge_client`) — permissive (project rule 1).
+Dependency: msgpack (via the vendored `bridge_client`) - permissive (project rule 1).
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ from sx127x import (
 DEFAULT_ROUTER_SOCKET = "/var/run/arduino-router.sock"
 
 # The MCU's RPC request buffer is DEFAULT_RPC_BUFFER_SIZE (256 B) and RPClite *cleanly
-# rejects* anything larger (it never truncates — see the sketch's SIZE NOTE). One
+# rejects* anything larger (it never truncates - see the sketch's SIZE NOTE). One
 # `lora_tx(bin)` call costs ~18 B of MessagePack framing, so the largest payload that
 # fits in a single RPC is ~238 B. We cap a little below that and fail fast with a clear
 # error, rather than letting an oversized call sit until it times out. Voice chunks
@@ -121,13 +121,13 @@ class BridgeRadio:
         parts = banner.split()
         # "<freq> <sf> <bw> <cr> <sync-hex> <ok|down>"
         if len(parts) < 6:
-            self._log.warning("[%s] could not parse modem banner %r — check the sketch",
+            self._log.warning("[%s] could not parse modem banner %r - check the sketch",
                               self.name, banner)
             return
         freq, sf, bw, cr, sync, state = parts[:6]
         if state != "ok":
             self._log.warning(
-                "[%s] modem reports its radio is '%s' — the SX1278 did not initialise. "
+                "[%s] modem reports its radio is '%s' - the SX1278 did not initialise. "
                 "Check SS/RST/DIO0 wiring and 3V3 power; TX/RX will fail until fixed.",
                 self.name, state)
         try:
@@ -141,11 +141,11 @@ class BridgeRadio:
             for got, expect, label in want:
                 if got != expect:
                     self._log.warning(
-                        "[%s] modem %s=%s but this board's config says %s — the two radios "
+                        "[%s] modem %s=%s but this board's config says %s - the two radios "
                         "will NOT hear each other. Reconcile the sketch's #defines with "
                         "pi-code config.", self.name, label, got, expect)
         except ValueError:
-            self._log.warning("[%s] could not parse modem banner %r — check the sketch",
+            self._log.warning("[%s] could not parse modem banner %r - check the sketch",
                               self.name, banner)
 
     def close(self) -> None:
@@ -257,7 +257,7 @@ class BridgeRadio:
     # --- health / carrier sense ---------------------------------------------
     def channel_rssi_dbm(self) -> int:
         """Instantaneous channel RSSI for CSMA. The modem sketch does not expose the
-        SX1278's live RSSI register, so we report a level below any sane threshold — the
+        SX1278's live RSSI register, so we report a level below any sane threshold - the
         channel reads as clear and `LoRaLink` sends without waiting. With a single field
         radio this is correct (there is no second local transmitter to collide with)."""
         return -120

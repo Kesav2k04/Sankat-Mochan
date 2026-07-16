@@ -2,7 +2,7 @@
 Test CTC-confidence language ID: can we pick the language from IndicConformer's own logits,
 with NO separate SLID model? The encoder is language-agnostic; each language is just a mask
 over the 5633 CTC classes. For each language we log_softmax over its masked columns and score
-the greedy path's average max log-prob — the language the model is most confident in wins.
+the greedy path's average max log-prob - the language the model is most confident in wins.
 
 Compares against VoxLingua107 SLID (90% on this set). Run: python lid_test.py
 """

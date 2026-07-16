@@ -1,5 +1,5 @@
 """
-Auto-detect STT benchmark — the test the normal bench does NOT do.
+Auto-detect STT benchmark - the test the normal bench does NOT do.
 
 stt_bench.py forces the language from references.json, so it never measures the
 thing we actually care about for the mesh app: "can it figure out the language
@@ -34,7 +34,7 @@ WHISPER_SIZE = "small"
 INDIC_ID = "ai4bharat/indic-conformer-600m-multilingual"
 VOXLINGUA_ID = "speechbrain/lang-id-voxlingua107-ecapa"
 
-_PUNCT = re.compile(r"[.,!?;:।॥\"'`()\[\]{}—–\-]")
+_PUNCT = re.compile(r"[.,!?;:।॥\"'`()\[\]{}-–\-]")
 
 
 def norm(s: str) -> str:
@@ -137,15 +137,15 @@ def summarize(label, rows):
     print("-" * 78)
     for r in rows:
         mark = "✓" if r["hit"] else "✗"
-        lid = r["lid_ms"] if r["lid_ms"] is not None else "—"
+        lid = r["lid_ms"] if r["lid_ms"] is not None else "-"
         print(f"{r['name']:<10}{r['true']:>5}{r['det']:>6}{mark:>5}"
               f"{str(r['wer']):>8}{str(r['cer']):>8}{str(lid):>9}{r['asr_ms']:>9}")
     print("-" * 78)
     print(f"LID accuracy: {hits}/{len(rows)} ({round(100 * hits / len(rows))}%)   "
-          f"avg WER {round(statistics.mean(wers), 1) if wers else '—'}%   "
-          f"avg CER {round(statistics.mean(cers), 1) if cers else '—'}%   "
-          f"avg LID {round(statistics.mean(lids)) if lids else '—'}ms   "
-          f"avg ASR {round(statistics.mean(asrs)) if asrs else '—'}ms")
+          f"avg WER {round(statistics.mean(wers), 1) if wers else '-'}%   "
+          f"avg CER {round(statistics.mean(cers), 1) if cers else '-'}%   "
+          f"avg LID {round(statistics.mean(lids)) if lids else '-'}ms   "
+          f"avg ASR {round(statistics.mean(asrs)) if asrs else '-'}ms")
     return {"label": label, "lid_acc": hits / len(rows),
             "cer": statistics.mean(cers) if cers else None,
             "lid_ms": statistics.mean(lids) if lids else None,
@@ -173,7 +173,7 @@ def main():
     for r in (a, b):
         tot = (r["lid_ms"] or 0) + (r["asr_ms"] or 0)
         print(f"  {r['label']}")
-        print(f"      LID {round(100 * r['lid_acc'])}%   CER {round(r['cer'], 1) if r['cer'] is not None else '—'}%   "
+        print(f"      LID {round(100 * r['lid_acc'])}%   CER {round(r['cer'], 1) if r['cer'] is not None else '-'}%   "
               f"~{round(tot)}ms/clip (CPU)")
 
 

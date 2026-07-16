@@ -1,5 +1,5 @@
 """
-Command-post intelligence — the deterministic services from
+Command-post intelligence - the deterministic services from
 docs/INTELLIGENCE-DESIGN.md (C1–C9, C13) at demo scale.
 
 Governing rule: CODE owns orchestration and the source of truth; the LLM
@@ -7,7 +7,7 @@ Governing rule: CODE owns orchestration and the source of truth; the LLM
 LLM never emits an assignment or drives control flow (C12 structural defense).
 
 Everything is in-memory (a demo doesn't need a DB). Every automated decision
-appends a human-readable *why* to the audit log (C13) — that feeds the
+appends a human-readable *why* to the audit log (C13) - that feeds the
 dashboard's AI-activity drawer and the judges' explainability story.
 """
 from __future__ import annotations
@@ -57,7 +57,7 @@ TAG_ENUMS: dict[str, set[str]] = {
 TAG_COUNT_MAX = 99
 TAG_LM_MAX = 48
 
-_TAG_LABELS = {  # chip/humanized text — key: (label, value formatter)
+_TAG_LABELS = {  # chip/humanized text - key: (label, value formatter)
     "inj": {"bleed": "bleeding", "fracture": "fracture", "burn": "burns",
             "breath": "breathing difficulty", "uncon": "unconscious", "other": "injured"},
     "hz": {"water": "rising water", "fire": "fire", "collapse": "collapse risk",
@@ -68,7 +68,7 @@ _TAG_LABELS = {  # chip/humanized text — key: (label, value formatter)
 def parse_tags(gist: str) -> dict[str, Any] | None:
     """Parse+validate a 'TAGS …' gist into a tag dict. Returns None when the
     payload isn't valid TAGS (caller falls back to normal handling). Only
-    whitelisted keys with in-range values survive — everything else is dropped."""
+    whitelisted keys with in-range values survive - everything else is dropped."""
     if not gist.startswith(TAGS_PREFIX):
         return None
     body = gist[len(TAGS_PREFIX):].strip()
@@ -105,7 +105,7 @@ def parse_tags(gist: str) -> dict[str, Any] | None:
 
 
 def humanize_tags(tags: dict[str, Any]) -> str:
-    """Plain-text one-liner for headlines/audit-log — never raw wire format."""
+    """Plain-text one-liner for headlines/audit-log - never raw wire format."""
     parts: list[str] = []
     if tags.get("c"):
         parts.append(f"{tags['c']} people" if tags["c"] > 1 else "1 person")
@@ -146,7 +146,7 @@ class Store:
         # Per-session nodeId (== envelope `origin`) -> stable handset device_id, learned
         # from any envelope a phone sends. Lets a BLE-presence row (which the Pi only knows
         # by the per-session nodeId) collapse onto the SAME `mesh-{device_id}` responder that
-        # this phone's ACCEPTED envelopes create — so one handset is one responder even after
+        # this phone's ACCEPTED envelopes create - so one handset is one responder even after
         # its app restarts mid-session and its nodeId rolls over.
         self.node_device: dict[str, str] = {}
         self.activity: list[dict[str, Any]] = []          # C13 append-only audit log
@@ -167,7 +167,7 @@ class Store:
     def _seed_responders(self) -> None:
         """Pre-registered roster for the demo (also fed by heartbeats later).
 
-        Coordinates MUST sit inside the Bengaluru operating box — the same box the map
+        Coordinates MUST sit inside the Bengaluru operating box - the same box the map
         centres on (web mapConfig.js) and the sample SOS clusters live in (models.py).
         They previously pointed at Wayanad (~11.68, 76.13), ~140 km away, so every
         seeded responder mobile fell off the edge of the command-post map and only the
@@ -199,7 +199,7 @@ class Store:
 
     def _responder_key(self, node_id: str) -> str:
         """Canonical responder id for a mesh node. Always `mesh-<device_id>` once the
-        handset's stable id is known, else `mesh-<node_id>` — so the presence path
+        handset's stable id is known, else `mesh-<node_id>` - so the presence path
         (nodeId) and the ACCEPTED path (deviceId) converge on ONE key."""
         return f"mesh-{self.node_device.get(node_id) or node_id}"
 
@@ -218,7 +218,7 @@ class Store:
             old["id"], old["device_id"] = new_key, device_id
             self.responders[new_key] = old
         else:
-            # Both rows exist — merge presence into the device-keyed row.
+            # Both rows exist - merge presence into the device-keyed row.
             if old.get("status") == "available" and existing.get("status") != "on_task":
                 existing["status"] = "available"
             existing["last_seen"] = max(existing["last_seen"], old["last_seen"])
@@ -271,7 +271,7 @@ class Store:
         for r in self.responders.values():
             if _now() - r["last_seen"] > OFFLINE_AFTER_S and r["status"] != "offline":
                 r["status"] = "offline"
-                self.log(f"{r['callsign']} marked offline — no heartbeat "
+                self.log(f"{r['callsign']} marked offline - no heartbeat "
                          f"{int((_now()-r['last_seen'])//60)}m")
                 if r["assigned_incident"]:
                     self._reopen(r["assigned_incident"], f"{r['callsign']} went offline")
@@ -319,7 +319,7 @@ class Store:
         # C7: sensor envelopes get their own handling flag
         report["is_sensor"] = report["category"] == "sensor"
 
-        # C2 — same-source dedup (origin + window + same category)
+        # C2 - same-source dedup (origin + window + same category)
         merged = self._dedup_same_source(report)
         if merged is not None:
             return merged
@@ -335,7 +335,7 @@ class Store:
         return incident
 
     def _sanitize_coords(self, report: dict[str, Any]) -> None:
-        """C1 edge case: null-island / out-of-region coords are 'suspect' —
+        """C1 edge case: null-island / out-of-region coords are 'suspect' -
         keep them on the record but don't let them anchor a cluster."""
         lat, lng = report.get("lat"), report.get("lng")
         if lat is None or lng is None:
@@ -362,7 +362,7 @@ class Store:
     def _dedup_same_source(self, report: dict[str, Any]) -> dict[str, Any] | None:
         """C2: same source + short window + same category ⇒ MERGE (escalation
         update), never a new incident. Different category from the same source
-        is a NEW emergency — never merged."""
+        is a NEW emergency - never merged."""
         for other in self.reports.values():
             if (self._same_source(other, report)
                     and other["category"] == report["category"]
@@ -378,7 +378,7 @@ class Store:
                 self._recompute_incident(inc)
                 self._rank_all()
                 self.log(f"merged update from {report['origin']} into {inc['id']} "
-                         f"(same source, {other['category']}) — urgency now "
+                         f"(same source, {other['category']}) - urgency now "
                          f"{other['urgency']}")
                 return inc
         return None
@@ -394,7 +394,7 @@ class Store:
         """A validated TAGS follow-up from the victim's on-phone agent. Bypasses
         LLM triage entirely (structured, machine-authored, already validated).
 
-        Merge is by ORIGIN + window only — category is deliberately ignored,
+        Merge is by ORIGIN + window only - category is deliberately ignored,
         because the phone's agent reuses the original SOS category while LLM
         triage may have re-labelled the incident's earlier reports. The raw
         'TAGS …' wire string must never become gist/english/headline.
@@ -418,7 +418,7 @@ class Store:
             merged.update(tags)
             anchor["tags"] = merged
             if not anchor["gist"]:
-                # The victim sent no words of their own — the humanized agent
+                # The victim sent no words of their own - the humanized agent
                 # summary beats the "no text details received" placeholder.
                 # Never touches a report that carries real victim text.
                 anchor["english"] = humanize_tags(merged)
@@ -428,10 +428,10 @@ class Store:
             self._recompute_incident(inc)
             self._rank_all()
             self.log(f"agent tags from {env['origin']} → {inc['id']}: {summary}"
-                     f" — urgency now {anchor['urgency']}")
+                     f" - urgency now {anchor['urgency']}")
             return inc
         # Original SOS unknown (lost or aged out): file as a fresh report whose
-        # gist is the HUMANIZED summary — never the raw wire string.
+        # gist is the HUMANIZED summary - never the raw wire string.
         fallback_env = {**env, "gist": summary}
         ai = {"urgency": env.get("urgency", 3), "category": env.get("category") or "other",
               "english": summary, "ai": False, "latency_ms": 0}
@@ -442,7 +442,7 @@ class Store:
                     self.reports[rid]["tags"] = dict(tags)
             self._recompute_incident(incident)
             self._rank_all()
-            self.log(f"agent tags from {env['origin']} had no anchor SOS — "
+            self.log(f"agent tags from {env['origin']} had no anchor SOS - "
                      f"filed as new report: {summary}")
         return incident
 
@@ -463,7 +463,7 @@ class Store:
             report["voice_transcript"] = clean
             report["voice_english"] = (ai or {}).get("english") or clean
             # M5: a report that already carries typed mobile text is authoritative. The
-            # voice clip only ADDS audio + a voice transcript/translation to it — it must
+            # voice clip only ADDS audio + a voice transcript/translation to it - it must
             # NOT touch urgency/rationale/ai/latency, or a benign voice add-on could inflate
             # a real typed SOS. Voice text becomes the PRIMARY text (and can set those
             # fields) only when the phone sent no typed details at all.
@@ -505,7 +505,7 @@ class Store:
                 self.log(f"clustered {report['id']} → {best['id']} "
                          f"({int(best_d)}m ≤ {int(CLUSTER_EPS_M)}m rule)")
                 return best
-        # lane 2: no GPS — group by location hint text
+        # lane 2: no GPS - group by location hint text
         elif report["location_hint"]:
             for inc in self.incidents.values():
                 if (inc["status"] in ACTIVE_STATES and inc["lat"] is None
@@ -526,7 +526,7 @@ class Store:
         }
         self.incidents[inc["id"]] = inc
         self.log(f"new incident {inc['id']} from {report['id']}"
-                 + (" (no GPS — location unknown lane)" if report["lat"] is None
+                 + (" (no GPS - location unknown lane)" if report["lat"] is None
                     and not report["location_hint"] else ""))
         return inc
 
@@ -553,7 +553,7 @@ class Store:
         if inc["sensor_only"]:
             inc["urgency"] = min(inc["urgency"], 3)  # investigate, don't over-dispatch
         if inc["sensor_confirmed"] and inc["status"] in ACTIVE_STATES:
-            self.log(f"{inc['id']} sensor-corroborated — sensor + "
+            self.log(f"{inc['id']} sensor-corroborated - sensor + "
                      f"{len(humans)} human report(s) agree (highest confidence)")
         cats = [m["category"] for m in humans] or [m["category"] for m in members]
         inc["category"] = max(set(cats), key=cats.count)
@@ -571,7 +571,7 @@ class Store:
         inc["unresponsive"] = agg_tags.get("unresp") == "y"
         if not inc["headline"] and agg_tags:
             # Empty-details SOS + agent conversation: the humanized tag summary
-            # becomes the headline (fills a blank — never replaces victim words).
+            # becomes the headline (fills a blank - never replaces victim words).
             inc["headline"] = humanize_tags(agg_tags)
         if inc["status"] == "new" and any(m["ai"] for m in members):
             inc["status"] = "triaged"
@@ -603,7 +603,7 @@ class Store:
 
     # ---- C5 nearest-responder proposal ----------------------------------
     def propose(self, incident_id: str) -> dict[str, Any] | None:
-        """Greedy nearest-available proposal. Proposes — responder confirms."""
+        """Greedy nearest-available proposal. Proposes - responder confirms."""
         self._refresh_responder_staleness()
         inc = self.incidents.get(incident_id)
         if not inc or inc["status"] not in ACTIVE_STATES:
@@ -611,13 +611,13 @@ class Store:
         avail = [r for r in self.responders.values() if r["status"] == "available"]
         if not avail:
             inc["status"] = "awaiting responder"
-            self.log(f"{inc['id']} awaiting responder — none available")
+            self.log(f"{inc['id']} awaiting responder - none available")
             return None
         if inc["lat"] is not None:
             best = min(avail, key=lambda r: haversine_km(inc["lat"], inc["lng"], r["lat"], r["lng"]))
             dist = haversine_km(inc["lat"], inc["lng"], best["lat"], best["lng"])
         else:
-            best, dist = avail[0], None  # no GPS: nearest is unknowable — first available
+            best, dist = avail[0], None  # no GPS: nearest is unknowable - first available
         eta_min = int(dist / RESPONDER_SPEED_KMH * 60) + 1 if dist is not None else None
         inc["proposed"] = {
             "responder_id": best["id"], "callsign": best["callsign"],
@@ -625,7 +625,7 @@ class Store:
             "eta_min": eta_min,
         }
         inc["status"] = "proposed"
-        self.log(f"proposed {best['callsign']} for {inc['id']} — nearest available"
+        self.log(f"proposed {best['callsign']} for {inc['id']} - nearest available"
                  + (f" {dist:.1f}km, ETA ~{eta_min}min (straight-line)" if dist is not None else ""))
         return inc["proposed"]
 
@@ -646,7 +646,7 @@ class Store:
         r["status"] = "on_task"
         r["assigned_incident"] = inc["id"]
         r["last_seen"] = _now()
-        self.log(f"{r['callsign']} accepted {inc['id']} — locked "
+        self.log(f"{r['callsign']} accepted {inc['id']} - locked "
                  f"(excluded from further assignment)")
         return True, "ok"
 
@@ -657,7 +657,7 @@ class Store:
         if not inc:
             return False
         if inc["assigned_to"]:
-            self.log(f"mesh accept for {inc['id']} from {origin} refused — "
+            self.log(f"mesh accept for {inc['id']} from {origin} refused - "
                      f"already taken (first-write-wins)")
             return False
         # Field responder registered on the fly (C4). Key by the STABLE device_id when the
@@ -682,12 +682,12 @@ class Store:
         r["status"] = "on_task"
         r["assigned_incident"] = inc["id"]
         r["last_seen"] = _now()
-        self.log(f"{r['callsign']} accepted {inc['id']} via mesh — locked")
+        self.log(f"{r['callsign']} accepted {inc['id']} via mesh - locked")
         self._rank_all()
         return True
 
     def delivered_from_mesh(self, ref_id: str, origin: str) -> None:
-        """DELIVERED is a transient stage-1 hint on the victim ladder — log it."""
+        """DELIVERED is a transient stage-1 hint on the victim ladder - log it."""
         inc = self._incident_of(ref_id)
         self.log(f"report {ref_id} delivery-confirmed by {origin}"
                  + (f" ({inc['id']})" if inc else ""))
@@ -705,7 +705,7 @@ class Store:
         if r:
             r["status"] = "available"
             r["assigned_incident"] = None
-        self.log(f"{inc['id']} cleared — sector broadcast; duplicates auto-closed. "
+        self.log(f"{inc['id']} cleared - sector broadcast; duplicates auto-closed. "
                  f"New SOS from this area will NOT be suppressed")
         self._rank_all()
         return True
@@ -719,12 +719,12 @@ class Store:
         inc["proposed"] = None
         inc["status"] = "awaiting responder"
         inc["exclude_responder"] = excluded
-        self.log(f"re-opened {inc['id']} — {reason}; will reassign excluding "
+        self.log(f"re-opened {inc['id']} - {reason}; will reassign excluding "
                  f"the silent responder")
         self._rank_all()
 
     def check_stuck(self) -> None:
-        """C4 stuck-assignment timeout — a victim never waits on a silent responder."""
+        """C4 stuck-assignment timeout - a victim never waits on a silent responder."""
         self._refresh_responder_staleness()
         for inc in self.incidents.values():
             if inc["status"] == "en route" and inc["assigned_at"]:

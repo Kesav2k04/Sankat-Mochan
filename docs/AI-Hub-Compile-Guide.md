@@ -1,4 +1,4 @@
-# Qualcomm AI Hub — Compile & Deploy Guide (Sankat-Mochan)
+# Qualcomm AI Hub - Compile & Deploy Guide (Sankat-Mochan)
 
 Knowledge transfer for compiling models on **Qualcomm AI Hub** and running them on-device
 (Snapdragon 8 Elite Gen 5 phone = OnePlus 15, and Snapdragon X Elite command-post). Written from
@@ -7,7 +7,7 @@ to the X Elite (change one device string).
 
 > TL;DR pipeline: **plain ONNX → package for AI Hub → `submit_compile_job` (QNN) → download
 > context binary → deploy via ONNX Runtime QNN EP on-device.** The devil is entirely in a handful
-> of version/packaging gotchas, all listed under "Gotchas" — read those first.
+> of version/packaging gotchas, all listed under "Gotchas" - read those first.
 
 ---
 
@@ -26,7 +26,7 @@ to the X Elite (change one device string).
 ```bash
 # Python env (we used command-post/.venv, Python 3.11)
 pip install "qai-hub==0.52.0" onnx onnxruntime soundfile numpy
-# One-time AI Hub auth — get the token from https://app.aihub.qualcomm.com/ (Account → Settings)
+# One-time AI Hub auth - get the token from https://app.aihub.qualcomm.com/ (Account → Settings)
 qai-hub configure --api_token <YOUR_TOKEN>     # writes ~/.qai_hub/client.ini
 ```
 
@@ -43,10 +43,10 @@ Verify: `python -c "import qai_hub as h; print(h.Device('Snapdragon 8 Elite Gen 
 ## 2. The compile pipeline (what the scripts do)
 
 Scripts live in `command-post/`:
-- `aihub_precompiled_stt.py` — compile both graphs as `precompiled_qnn_onnx` and download.
-- `aihub_compile_stt.py` / `aihub_resubmit_stt.py` — earlier `qnn_context_binary` variants + the
+- `aihub_precompiled_stt.py` - compile both graphs as `precompiled_qnn_onnx` and download.
+- `aihub_compile_stt.py` / `aihub_resubmit_stt.py` - earlier `qnn_context_binary` variants + the
   external-data packaging helper.
-- `aihub_poll_profile.py` — wait for a compile job, profile on-device, download artifacts.
+- `aihub_poll_profile.py` - wait for a compile job, profile on-device, download artifacts.
 
 ### 2a. Package an ONNX that uses external data
 AI Hub needs a **directory named `<model>.onnx`** containing `<model>.onnx` + `<model>.onnx.data`
@@ -79,9 +79,9 @@ job.download_target_model("out/encoder")              # writes a .zip (model.onn
 
 - `--target_runtime`: use **`precompiled_qnn_onnx`** for ORT-QNN on-device (a small EPContext
   `.onnx` wrapping a QNN context `.bin`). `qnn_context_binary` gives the bare `.bin` (needs the raw
-  QNN API). `qnn_dlc` is portable across QAIRT versions (JIT-compiled on device) — use if you hit
+  QNN API). `qnn_dlc` is portable across QAIRT versions (JIT-compiled on device) - use if you hit
   context-binary version mismatches.
-- **Static input specs are required** — pick a fixed window (we used 15 s → 1501 mel frames) and
+- **Static input specs are required** - pick a fixed window (we used 15 s → 1501 mel frames) and
   pad shorter audio in app code; pass the real valid length so the encoder masks the pad.
 - Derive exact static shapes empirically by running the preprocessor once (see
   `command-post/dump_mel_golden.py`).
@@ -94,25 +94,25 @@ pj.wait(); prof = pj.download_profile()
 # and per-layer compute_unit (want all "NPU", zero CPU/GPU fallback).
 ```
 
-## 3. Gotchas (every one of these cost real time — READ THIS)
+## 3. Gotchas (every one of these cost real time - READ THIS)
 
 | # | Symptom | Fix |
 |---|---|---|
 | G1 | Compile dies instantly: `QAIRT version 2.43 is not supported` | qai-hub-models pins 2.43; Workbench needs ≥2.45. Add `--qairt_version=default` (=2.45) to compile **and** profile options. |
 | G2 | Compile fails: only tiny graph uploaded, missing weights | External-data ONNX must be a **`<model>.onnx` directory** (`.onnx` + `.onnx.data` inside), not the bare file. See 2a. |
 | G3 | `QAIRT SDK version is not applicable to selected runtime` | You set `--qairt_version` without a QNN runtime. Add `--target_runtime qnn_context_binary` (or `precompiled_qnn_onnx`). |
-| G4 | `Must use --truncate_64bit_io when input tensors have type int64` | The graph has an int64 input (`length`). Add `--truncate_64bit_io`. This makes that IO **int32** on-device — feed int32 from the app (see G7). |
-| G5 | Big fp32 encoder = ~1.2 GB context binary (or 2.4 GB raw) | Too big for the APK → **side-load** it (adb push / download at runtime). Quantize to **W8A16** (~4× smaller) with AIMET — but AIMET-ONNX is **Linux/WSL only**, not macOS. |
+| G4 | `Must use --truncate_64bit_io when input tensors have type int64` | The graph has an int64 input (`length`). Add `--truncate_64bit_io`. This makes that IO **int32** on-device - feed int32 from the app (see G7). |
+| G5 | Big fp32 encoder = ~1.2 GB context binary (or 2.4 GB raw) | Too big for the APK → **side-load** it (adb push / download at runtime). Quantize to **W8A16** (~4× smaller) with AIMET - but AIMET-ONNX is **Linux/WSL only**, not macOS. |
 | S3.5 | Two big models won't fit the NPU | A Hexagon session caps **~3.5 GB** and maps to one HTP device. Don't co-locate two large NPU models (see the crash notes in the repo). |
 
-## 4. On-device deployment (Android / ORT-QNN) — gotchas
+## 4. On-device deployment (Android / ORT-QNN) - gotchas
 
 | # | Symptom | Fix |
 |---|---|---|
 | G6a | `Unsupported model IR version: 13, max supported IR version: 10` | AI Hub emits the EPContext wrapper at IR 13; `onnxruntime-android` accepts ≤10. Downgrade: `m=onnx.load(f); m.ir_version=10; onnx.save(m,f)` (its ops are IR-10 safe). |
 | G6b | `EPContext node ... NOT_IMPLEMENTED` | QNN EP not active. Add it: `sessionOptions.addQnn(mapOf("backend_path" to "libQnnHtp.so", "htp_performance_mode" to "burst", "qnn_context_priority" to "high"))`. |
 | G6c | `QNN_DEVICE_ERROR_INVALID_CONFIG` + missing `libQnnHtpV81Skel.so` | Your ORT-QNN is too old for the SoC. **`onnxruntime-android-qnn:1.22` (QAIRT 2.33) does NOT support SM8850/V81.** Use **1.27.0** (QAIRT 2.42) or newer. |
-| G6d | Gradle: `2 files found with path .../libQnnHtp.so` | Two AARs ship QNN libs (e.g. GenieX + ORT-QNN). `packaging { jniLibs.pickFirsts += listOf("**/libQnn*.so","**/libHexagon*.so") }` (first-declared dep wins — order it to the version matching your context binary). |
+| G6d | Gradle: `2 files found with path .../libQnnHtp.so` | Two AARs ship QNN libs (e.g. GenieX + ORT-QNN). `packaging { jniLibs.pickFirsts += listOf("**/libQnn*.so","**/libHexagon*.so") }` (first-declared dep wins - order it to the version matching your context binary). |
 | G7 | `Unexpected input data type. Actual: tensor(int64), expected: tensor(int32)` | After `--truncate_64bit_io`, feed `length` (and read `encoded_lengths`) as **int32** (`IntBuffer`, not `LongBuffer`). |
 | G8 | `IllegalStateException: missing output 'outputs'` | AI-Hub wrappers **rename outputs** to `output_0`, `output_1` (inputs keep names). Encoder: `output_0`=features, `output_1`=encoded_lengths; ctc: `output_0`=logprobs. |
 | G9 | `OrtSession.Result.get(name)` cast crash | It returns `Optional<OnnxValue>`, not `OnnxValue`: `res.get(name).orElseThrow() as OnnxTensor`. |
@@ -123,7 +123,7 @@ pj.wait(); prof = pj.download_profile()
 to the `.onnx`; keep both in the same folder.
 
 ## 5. Deploying the model files
-`mesh-app/tools/push_stt_model.sh` — extracts the AI Hub zips, downgrades IR to 10, and
+`mesh-app/tools/push_stt_model.sh` - extracts the AI Hub zips, downgrades IR to 10, and
 `adb push`es `model.onnx`+`model.bin` per graph into the **app-created** external dir
 (`Android/data/<pkg>/files/stt/<graph>/`). Open the app once first so `SttEngine`'s ctor creates
 the (app-owned) dirs.
@@ -133,12 +133,12 @@ the (app-owned) dirs.
 - **Compile for the X Elite command-post:** change `DEVICE = hub.Device("Snapdragon X Elite CRD")`.
   Everything else is identical. On Windows-on-ARM run it via ORT-QNN or onnxruntime-genai/QNN.
   (The command-post already does STT on CPU fine, so NPU there is a nice-to-have.)
-- **LLMs (e.g. Gemma 4 4B) via AI Hub:** a *different* path — AI Hub exports LLMs to the **Genie /
+- **LLMs (e.g. Gemma 4 4B) via AI Hub:** a *different* path - AI Hub exports LLMs to the **Genie /
   QAIRT** runtime (W4A16), not ONNX. Caveat: the export loads the full FP checkpoint **locally**
-  and OOMs on a laptop (3B wanted ~80 GB RAM+swap) — **compile LLMs on a big-RAM Linux box or the
+  and OOMs on a laptop (3B wanted ~80 GB RAM+swap) - **compile LLMs on a big-RAM Linux box or the
   X Elite**, not a Mac. Use Qualcomm's published perf numbers (`qai_hub_models/models/<m>/perf.yaml`)
   for the deck if you can't re-profile. NOTE: the phone app currently runs Gemma via **GenieX**
-  (llama.cpp `ggml-hexagon`, GGUF) — a separate, experimental runtime; the Genie path is more
+  (llama.cpp `ggml-hexagon`, GGUF) - a separate, experimental runtime; the Genie path is more
   mature and worth evaluating if GenieX proves unstable.
 
 ## 7. Reference links

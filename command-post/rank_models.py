@@ -159,7 +159,7 @@ def main():
     for i, r in enumerate(results, 1):
         print(f"{i:<5}{r['model']:<16}{str(r['quality'])+'%':>9}{r['avg_ms']:>10}{r['p50_ms']:>10}")
     print("=" * 72)
-    print(f"\n🏆 {results[0]['model']} — {results[0]['quality']}%, {results[0]['avg_ms']}ms avg\n")
+    print(f"\n🏆 {results[0]['model']} - {results[0]['quality']}%, {results[0]['avg_ms']}ms avg\n")
 
     # Per-case average points (out of 5) to see where models diverge.
     print("per-case avg points (/5):")

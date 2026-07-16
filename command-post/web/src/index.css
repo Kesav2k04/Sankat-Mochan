@@ -15,9 +15,9 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ────────────────────────────────────────────────────────────────────────
-   FIELD DESK — light editorial: warm paper, near-black ink, one saffron
+   FIELD DESK - light editorial: warm paper, near-black ink, one saffron
    accent. Fraunces for the masthead, IBM Plex Mono for everything that is
-   DATA. A beautifully typeset instrument — precise, calm, humane.
+   DATA. A beautifully typeset instrument - precise, calm, humane.
    ──────────────────────────────────────────────────────────────────────── */
 :root {
   --radius: 0.5rem;

@@ -2,14 +2,14 @@
 """
 Quality-review harness for the quantized Sahayak GGUF.
 
-4-bit quantization shifts outputs, and Sahayak gives first-aid guidance — so before a Q4_0
+4-bit quantization shifts outputs, and Sahayak gives first-aid guidance - so before a Q4_0
 GGUF goes near the phone, a human must read what it now says on held-out prompts (DOCS.md
 #6: security-sensitive output gets human review). This runs each eval record through the
 quantized model with `llama-cli` (MIT) and prints the model's answer next to the reference,
 plus cheap automatic flags (empty output, truncation, big length blow-ups) to triage which
 ones to read first.
 
-This is a review AID, not an automatic grader — it does not decide pass/fail for you.
+This is a review AID, not an automatic grader - it does not decide pass/fail for you.
 
 Usage:
   python deploy/npu/eval_gguf.py \
@@ -26,7 +26,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Sahayak's fixed system prompt — must match training/inference byte-for-byte (finetune spec
+# Sahayak's fixed system prompt - must match training/inference byte-for-byte (finetune spec
 # §1.1). Imported concept mirrors finetune/sahayak_finetune.py SYSTEM_PROMPT.
 SYSTEM_PROMPT = (
     "You are Sahayak, an offline emergency-response assistant running on a local device in a "
@@ -44,12 +44,12 @@ def find_llama_cli(llama_dir: Path) -> Path:
             for cand in (r / n, r / f"{n}.exe"):
                 if cand.exists():
                     return cand
-    sys.exit(f"[error] llama-cli not found under {llama_dir} — build llama.cpp first.")
+    sys.exit(f"[error] llama-cli not found under {llama_dir} - build llama.cpp first.")
 
 
 def gemma_prompt(user_text: str) -> str:
     """Gemma chat template. Gemma has no separate system role, so the system prompt is folded
-    into the first user turn — the same shape run_gemma_npu.sh uses on-device, so host eval
+    into the first user turn - the same shape run_gemma_npu.sh uses on-device, so host eval
     and phone inference see identical formatting."""
     return (f"<start_of_turn>user\n{SYSTEM_PROMPT}\n\n{user_text}<end_of_turn>\n"
             f"<start_of_turn>model\n")
@@ -125,7 +125,7 @@ def main(argv=None) -> int:
             answer = run_one(cli, gguf, gemma_prompt(user), args.n_predict, args.ctx)
             shown += 1
 
-            # Cheap automatic triage flags — cues for what to read, not a verdict.
+            # Cheap automatic triage flags - cues for what to read, not a verdict.
             flags = []
             if not answer or answer.startswith("[llama-cli error"):
                 flags.append("EMPTY/ERROR")

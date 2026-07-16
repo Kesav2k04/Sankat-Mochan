@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sahayak emergency-assistant fine-tuner — Gemma 4 E2B QLoRA, pure transformers + PEFT.
+Sahayak emergency-assistant fine-tuner - Gemma 4 E2B QLoRA, pure transformers + PEFT.
 
 No Unsloth, no TRL: just `transformers` + `peft` + `datasets` (+ `bitsandbytes` on CUDA),
 all Apache-2.0 (DOCS.md #1). Gemma 4 is native in transformers >= 5.6, so nothing here
@@ -8,17 +8,17 @@ needs remote code or third-party kernels.
 
 What it does (the training half of docs/SAHAYAK_DATASET_SPEC.md):
   * consumes the spec's messages-format JSONL,
-  * renders each record with the model's OWN chat template (single source of truth — no
+  * renders each record with the model's OWN chat template (single source of truth - no
     hand-maintained template table to drift out of sync),
   * trains with loss on ASSISTANT turns only (spec §3), including the 2-assistant-turn
     multi-turn records, via character-offset label masking,
   * exports LoRA adapters (+ optional merged bf16/fp16 weights) for the on-device runtime.
 
 Precision policy (learned the hard way on Kaggle T4s):
-  * Ampere+ (compute capability >= 8.0): bf16 everywhere — the fast path.
+  * Ampere+ (compute capability >= 8.0): bf16 everywhere - the fast path.
   * Older CUDA (T4, cc 7.5): Gemma 4 has fp16-unsafe ops, so compute runs in float32 with
     4-bit weights. Slower, but it converges instead of NaN-ing or dtype-crashing.
-  * CPU / Apple MPS: smoke-test fallback only — proves the pipeline, never ships a model.
+  * CPU / Apple MPS: smoke-test fallback only - proves the pipeline, never ships a model.
 
 Usage (typical, on a CUDA box):
     python sahayak_finetune.py \
@@ -89,7 +89,7 @@ def detect_device() -> dict:
         elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
             info["mps"] = True
             info["device"] = "mps"
-    except Exception as exc:  # torch absent — fine for --validate-only
+    except Exception as exc:  # torch absent - fine for --validate-only
         info["torch_error"] = repr(exc)
     return info
 
@@ -102,7 +102,7 @@ def validate_jsonl(path: Path, label: str) -> int:
     Checks per record: size bound, messages list of {role, content} with known roles and
     non-empty string content, an optional single leading system turn, strict user/assistant
     alternation, and an assistant turn last (otherwise there is nothing to train on).
-    Hard-errors with the line number — a bad record must never silently skew a long run.
+    Hard-errors with the line number - a bad record must never silently skew a long run.
     """
     n = 0
     with path.open("r", encoding="utf-8") as fh:
@@ -152,14 +152,14 @@ def render_and_mask(messages: list, tokenizer, max_seq_len: int) -> dict | None:
       2. For each assistant turn i, render messages[:i] with add_generation_prompt=True
          (ends exactly where the assistant's content begins) and messages[:i+1] without
          (ends just past the assistant's end-of-turn). Both must be string prefixes of the
-         full render — verified, not assumed — giving exact [start, end) character spans.
+         full render - verified, not assumed - giving exact [start, end) character spans.
       3. Tokenize the full render once with offset mapping; a token gets a label iff its
          character span overlaps an assistant span.
     This trains the end-of-turn token too (the model must learn to STOP), and handles the
     dataset's multi-turn records without special-casing.
 
     Returns None when truncation at max_seq_len leaves no supervised tokens (caller drops
-    and counts those — silently training on a label-less example wastes a step).
+    and counts those - silently training on a label-less example wastes a step).
     """
     full = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
 
@@ -175,7 +175,7 @@ def render_and_mask(messages: list, tokenizer, max_seq_len: int) -> dict | None:
         )
         if not (full.startswith(prefix) and full.startswith(through)):
             raise SystemExit(
-                "[error] chat template is not prefix-stable — assistant spans can't be located "
+                "[error] chat template is not prefix-stable - assistant spans can't be located "
                 "and response masking would be wrong. Check the model/template pairing."
             )
         spans.append((len(prefix), len(through)))
@@ -253,7 +253,7 @@ def load_tokenizer(model_id: str):
         tok.pad_token = tok.eos_token
     if not getattr(tok, "chat_template", None):
         raise SystemExit(
-            f"[error] tokenizer for '{model_id}' ships no chat template — this trainer relies "
+            f"[error] tokenizer for '{model_id}' ships no chat template - this trainer relies "
             "on the model's own template. Use an instruction-tuned (-it) checkpoint."
         )
     if not getattr(tok, "is_fast", False):
@@ -277,7 +277,7 @@ def load_model(args, env):
     import torch
     from transformers import AutoModelForCausalLM
 
-    # Compute dtype: bf16 on Ampere+; float32 elsewhere. Never fp16 — Gemma 4 has
+    # Compute dtype: bf16 on Ampere+; float32 elsewhere. Never fp16 - Gemma 4 has
     # fp16-unsafe ops (the source of the old "float != c10::Half" step-0 crash on T4s).
     compute_dtype = torch.bfloat16 if env["bf16"] else torch.float32
 
@@ -300,7 +300,7 @@ def load_model(args, env):
     elif env["cuda"]:
         kwargs["device_map"] = {"": 0}
     if env["cuda"] and args.device_map:
-        # Shard layers across all visible GPUs (naive pipeline parallelism — GPUs take turns,
+        # Shard layers across all visible GPUs (naive pipeline parallelism - GPUs take turns,
         # so it buys MEMORY, not speed). The Trainer detects hf_device_map and skips DDP.
         kwargs["device_map"] = args.device_map
 
@@ -332,7 +332,7 @@ def attach_lora(model, args, quantized: bool):
     module_names = [n for n, _ in model.named_modules()]
     if any(".language_model." in n for n in module_names):
         targets = r".*language_model.*\.({})$".format("|".join(LORA_TARGETS))
-        print("[lora] multimodal checkpoint detected — targeting language tower only")
+        print("[lora] multimodal checkpoint detected - targeting language tower only")
     else:
         targets = list(LORA_TARGETS)
 
@@ -406,7 +406,7 @@ def run_training(args, env) -> None:
 
     if env["device"] == "cpu" or env["mps"]:
         print("=" * 78)
-        print("[warn] no CUDA — this run is a pipeline SMOKE TEST (slow, unquantized).")
+        print("[warn] no CUDA - this run is a pipeline SMOKE TEST (slow, unquantized).")
         print("[warn] do the real run on a CUDA GPU; do not ship weights trained here.")
         print("=" * 78)
 
@@ -423,7 +423,7 @@ def run_training(args, env) -> None:
 
 
 def export_merged(args, env, adapter_dir: Path) -> None:
-    """Merge adapters into full weights. Reloads the base UNQUANTIZED on CPU — merging into
+    """Merge adapters into full weights. Reloads the base UNQUANTIZED on CPU - merging into
     4-bit weights is lossy/unsupported, and CPU sidesteps GPU OOM during the merge."""
     import torch
     from peft import PeftModel
@@ -458,7 +458,7 @@ def preflight(args) -> None:
         else:
             print(f"[warn] eval file not found, training without it: {args.eval}")
     if "HF_TOKEN" not in os.environ:
-        print("[warn] HF_TOKEN not set. Gemma weights are gated — export a Hugging Face "
+        print("[warn] HF_TOKEN not set. Gemma weights are gated - export a Hugging Face "
               "token (whose account accepted the Gemma terms) or the download will 401.")
 
 
@@ -485,12 +485,12 @@ def parse_args(argv=None):
                    help="Disable 4-bit QLoRA loading (CUDA default is 4-bit).")
     p.add_argument("--device-map", default=None,
                    help="Set 'balanced' to shard layers across all visible GPUs (e.g. Kaggle's "
-                        "2xT4). Buys memory headroom, not speed — GPUs take turns. Leave unset "
+                        "2xT4). Buys memory headroom, not speed - GPUs take turns. Leave unset "
                         "for single-GPU. Never combine with a torchrun/accelerate launcher.")
     p.add_argument("--export-merged", action="store_true",
                    help="After training, also save merged full weights (CPU merge).")
     p.add_argument("--validate-only", action="store_true",
-                   help="Validate the dataset files and exit — stdlib only, runs anywhere.")
+                   help="Validate the dataset files and exit - stdlib only, runs anywhere.")
     return p.parse_args(argv)
 
 
@@ -509,7 +509,7 @@ def main(argv=None) -> int:
     print(f" precision : {'bf16' if env['bf16'] else 'float32'}")
     print("──────────────────────────────────────────────────────────────")
     if env.get("torch_error"):
-        sys.exit(f"[error] torch not importable: {env['torch_error']} — "
+        sys.exit(f"[error] torch not importable: {env['torch_error']} - "
                  "install requirements.txt first (or run with --validate-only).")
     preflight(args)
     run_training(args, env)

@@ -1,8 +1,8 @@
 """
-Sahayak agent TAGS pipeline tests — the demo-critical invariants.
+Sahayak agent TAGS pipeline tests - the demo-critical invariants.
 
 Run:  .venv/bin/python test_tags.py
-(no pytest dependency — plain asserts, exits non-zero on failure)
+(no pytest dependency - plain asserts, exits non-zero on failure)
 
 Invariants under test (each one killed a demo beat in the adversarial critique):
  1. TAGS follow-ups merge into the SAME incident (bypass LLM triage, origin-only merge).
@@ -82,7 +82,7 @@ def test_ingest_path():
 
 def test_wire_size():
     # Worst-case TAGS gist inside a worst-case envelope. The phone's SosMessage.encode()
-    # trims the GIST (only) from the end, one char at a time, until the frame fits — mirror
+    # trims the GIST (only) from the end, one char at a time, until the frame fits - mirror
     # that here and assert the surviving prefix still parses with the critical keys intact
     # (AgentTags.KEY_ORDER is criticality-first: unresp before everything, lm last).
     gist = "TAGS unresp:y c:99 inj:fracture trap:y hz:electric mob:n lm:" + "x" * 48

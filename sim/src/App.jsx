@@ -26,7 +26,7 @@ function followTarget(run, clock) {
   const hops = run.segs.filter((s) => s.kind === 'hop')
   const active = [...hops].reverse().find((s) => clock >= s.t0 && clock <= s.t0 + s.dur)
   if (active) {
-    // ride ON the dot — tight zoom so you watch it travel hop by hop
+    // ride ON the dot - tight zoom so you watch it travel hop by hop
     const u = Math.min(1, (clock - active.t0) / active.dur)
     return { lat: active.from.lat + (active.to.lat - active.from.lat) * u, lng: active.from.lng + (active.to.lng - active.from.lng) * u, zoom: 13.3 }
   }
@@ -70,7 +70,7 @@ export default function App() {
   const rangers = useMemo(() => (run ? run.rangers : path ? placeRangers(path) : []), [run, path])
   const canStart = phase === 'setup' && !!path
 
-  // ---- story direction — each beat plays on the map, then hands to the next --
+  // ---- story direction - each beat plays on the map, then hands to the next --
   useEffect(() => {
     if (!story.on) return
     const b = BEATS[story.beat]
@@ -100,7 +100,7 @@ export default function App() {
         bottom: 56,
       },
       duration: b.dur ? b.dur * 1000 - 500 : 2800,
-      easing: (t) => t, // a slow continuous drift — the shot never "arrives"
+      easing: (t) => t, // a slow continuous drift - the shot never "arrives"
       essential: true,
     })
   }, [story, mapReady])
@@ -111,7 +111,7 @@ export default function App() {
     if (beat?.scar) setScarSeen(true)
   }, [beat])
 
-  // "the mesh wakes up" — modules pop onto the map one by one
+  // "the mesh wakes up" - modules pop onto the map one by one
   useEffect(() => {
     if (!beat?.mesh) return
     layoutRef.current ??= autoLayout()
@@ -142,7 +142,7 @@ export default function App() {
   }, [phase, run, clock])
 
   // the follow shot: every frame, glide the camera toward whatever carries the
-  // story right now — the signal, the camp, the ranger, the victim. The story
+  // story right now - the signal, the camp, the ranger, the victim. The story
   // hands over a pitched, rotated camera; this shot gently levels it out.
   const camPos = useRef(null)
   useEffect(() => {
@@ -266,7 +266,7 @@ export default function App() {
         </div>
 
         <div className="clock">
-          <b>{phase === 'setup' ? '—' : `T+${clock.toFixed(1)}s`}</b>
+          <b>{phase === 'setup' ? '-' : `T+${clock.toFixed(1)}s`}</b>
           <span>{phase === 'setup' ? 'placing modules' : phase === 'run' ? 'live' : 'complete'}</span>
         </div>
 
@@ -330,12 +330,12 @@ export default function App() {
             <b>Set up the mesh</b>
             <p>
               The SOS will come from the <em>danger spot</em> (⚠ deep in the zone). Click inside the red zone to drop
-              LoRa modules ({nodes.length}/{MAX_NODES}) — each reaches ~{RANGE_KM} km. Chain them from the spot to the
+              LoRa modules ({nodes.length}/{MAX_NODES}) - each reaches ~{RANGE_KM} km. Chain them from the spot to the
               outpost, or use <em>Auto‑place</em>.
             </p>
             {hint && <p className="warn">{hint}</p>}
-            {nodes.length > 0 && !spotCovered && <p className="warn">No module within {RANGE_KM} km of the danger spot yet — surround the spot first.</p>}
-            {nodes.length > 0 && spotCovered && !path && <p className="warn">Chain doesn’t reach the outpost yet — add a module closer to it.</p>}
+            {nodes.length > 0 && !spotCovered && <p className="warn">No module within {RANGE_KM} km of the danger spot yet - surround the spot first.</p>}
+            {nodes.length > 0 && spotCovered && !path && <p className="warn">Chain doesn’t reach the outpost yet - add a module closer to it.</p>}
             {path && (
               <p className="ok">
                 {best.heard} module{best.heard > 1 ? 's' : ''} cover the spot · shortest route: {path.length - 1} hops to the camp. Ready.
@@ -381,7 +381,7 @@ export default function App() {
             <b>VICTIM SAVED</b>
             <p>
               SOS reached the camp in {run.outpostAt.toFixed(1)} s over {run.hops} LoRa hops · supplies suggested from the
-              voice note · ranger tasked, accepted, on scene — no tower, no internet.
+              voice note · ranger tasked, accepted, on scene - no tower, no internet.
             </p>
             <div className="saved-actions">
               <button className="ghost" onClick={replayStory}>✦ Replay the story</button>

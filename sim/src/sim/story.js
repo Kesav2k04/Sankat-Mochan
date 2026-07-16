@@ -1,13 +1,13 @@
 /**
  * The opening story, told ON the map: each beat aims a pitched, drifting
  * camera, sets the weather, and reveals what the disaster does to the ground
- * below. The last beat hands the victim their phone — pressing SOS is what
+ * below. The last beat hands the victim their phone - pressing SOS is what
  * starts the sim.
  *
- * cam: { center, zoom, pitch, bearing } — the shot this beat drifts toward.
+ * cam: { center, zoom, pitch, bearing } - the shot this beat drifts toward.
  * scene: 'hero' shows the big illustrated panel; undefined keeps the map as
  *        the star with only the lower-third caption.
- * fx.shake — ONE decaying impact, not a constant jitter.
+ * fx.shake - ONE decaying impact, not a constant jitter.
  */
 export const BEATS = [
   {
@@ -52,7 +52,7 @@ export const BEATS = [
     hour: '03:40',
     place: 'GRID SECTOR 4',
     title: 'Towers down. No signal.',
-    text: 'The cell tower is damaged and its backup battery drains. No calls, no internet — no way to ask for help.',
+    text: 'The cell tower is damaged and its backup battery drains. No calls, no internet - no way to ask for help.',
     dur: 7.5,
     scene: 'hero',
     cam: { center: [76.155, 11.679], zoom: 12.6, pitch: 55, bearing: -30 },
@@ -80,7 +80,7 @@ export const BEATS = [
     key: 'phone',
     hour: '04:05',
     place: 'THE DANGER SPOT',
-    title: 'Trapped — but not silent',
+    title: 'Trapped - but not silent',
     text: 'Someone stuck near the slide opens Sankat-Mochan. No bars on the phone, but the mesh is listening. Press SOS.',
     dur: null, // waits for the tap
     cam: { center: [76.075, 11.6995], zoom: 12.4, pitch: 48, bearing: -18 },

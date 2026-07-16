@@ -1,5 +1,5 @@
 """
-Serial-backed LoRa transport — the field radio driven by the Arduino UNO Q.
+Serial-backed LoRa transport - the field radio driven by the Arduino UNO Q.
 
 When both Ra-02 radios lived on the Raspberry Pi, `sx127x.Radio` drove each one
 directly over SPI. Now the field radio has moved to the UNO Q, whose STM32 side runs
@@ -21,7 +21,7 @@ line can never carry a raw newline; the UNO Q Linux host is the initiator:
 Every inbound frame is still untrusted (DOCS.md #8); this layer only moves bytes.
 Validation/dedup/size-capping happen unchanged in `envelope.py` / `node.py` downstream.
 
-Dependency: pyserial (`import serial`) — BSD-3-Clause, permissive (project rule 1).
+Dependency: pyserial (`import serial`) - BSD-3-Clause, permissive (project rule 1).
 """
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ class SerialRadio:
                  logger, *, boot_timeout_s: float = 5.0):
         if serial is None:
             raise LoraError(
-                "pyserial is not installed — the serial LoRa transport needs it. "
+                "pyserial is not installed - the serial LoRa transport needs it. "
                 "Install it with:  ../.venv/bin/pip install pyserial"
             )
         self.name = name
@@ -99,12 +99,12 @@ class SerialRadio:
             if line.startswith("I "):
                 banner = line
                 break
-            # "# LoRa init FAILED..." etc. — surface it, keep waiting for a verdict.
+            # "# LoRa init FAILED..." etc. - surface it, keep waiting for a verdict.
             if line.startswith("#"):
                 self._log.info("[%s] modem: %s", self.name, line[1:].strip())
 
         if banner is None:
-            # Attached after the banner already scrolled past — ping instead.
+            # Attached after the banner already scrolled past - ping instead.
             if not self._ping_locked_open():
                 self._ser.close()
                 self._ser = None
@@ -133,11 +133,11 @@ class SerialRadio:
             for got, expect, label in want:
                 if got != expect:
                     self._log.warning(
-                        "[%s] modem %s=%s but this board's config says %s — the two radios "
+                        "[%s] modem %s=%s but this board's config says %s - the two radios "
                         "will NOT hear each other. Reconcile the sketch's #defines with "
                         "pi-code config.", self.name, label, got, expect)
         except ValueError:
-            self._log.warning("[%s] could not parse modem banner %r — check the sketch",
+            self._log.warning("[%s] could not parse modem banner %r - check the sketch",
                               self.name, banner)
 
     def close(self) -> None:
@@ -269,14 +269,14 @@ class SerialRadio:
                 if resp.startswith("E"):
                     reason = resp[1:].strip() or "unknown"
                     raise LoraError(f"radio '{self.name}': modem refused the frame ({reason})")
-                # a stray Y/I between request and reply — ignore and keep waiting
+                # a stray Y/I between request and reply - ignore and keep waiting
         raise LoraError(
             f"radio '{self.name}': no transmit confirmation from the modem within {timeout_s}s")
 
     # --- health / carrier sense ---------------------------------------------
     def channel_rssi_dbm(self) -> int:
         """Instantaneous channel RSSI for CSMA. The modem sketch does not expose the
-        SX1278's live RSSI register, so we report a level below any sane threshold — the
+        SX1278's live RSSI register, so we report a level below any sane threshold - the
         channel reads as clear and `LoRaLink` sends without waiting. With a single field
         radio this is correct (there is no second local transmitter to collide with)."""
         return -120
@@ -338,7 +338,7 @@ class SerialRadio:
 
     def _read_line_blocking(self, deadline: float) -> Optional[str]:
         """Read one line directly from the port (only safe when the reader thread is not
-        running — i.e. during open()/handshake). Returns None on timeout."""
+        running - i.e. during open()/handshake). Returns None on timeout."""
         assert self._ser is not None
         buf = bytearray()
         while time.monotonic() < deadline:

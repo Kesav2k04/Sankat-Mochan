@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Hardware self-test for the LoRa tier. No phones, no BLE — just the two radios.
+Hardware self-test for the LoRa tier. No phones, no BLE - just the two radios.
 
 Scenarios exercised:
   1. A real SOS envelope crosses radio A -> radio B over 433 MHz.
@@ -78,7 +78,7 @@ async def main() -> int:
     def check(label: str, ok: bool, detail: str = "") -> None:
         results.append((label, ok, detail))
         # Detail is diagnostic: only useful when the assertion failed.
-        print(f"  [{'PASS' if ok else 'FAIL'}] {label}" + (f" — {detail}" if detail and not ok else ""))
+        print(f"  [{'PASS' if ok else 'FAIL'}] {label}" + (f" - {detail}" if detail and not ok else ""))
 
     try:
         for r in radios.values():
@@ -171,7 +171,7 @@ async def main() -> int:
         radios["gateway"].stop_receiving()
         radios["gateway"]._set_mode(MODE_SLEEP)
         before = len(sink_b.received)
-        m2 = sos(2, "This must never arrive — radio B is asleep")
+        m2 = sos(2, "This must never arrive - radio B is asleep")
         await field.originate(m2)
         await asyncio.sleep(2.5)
         silent = len(sink_b.received) == before

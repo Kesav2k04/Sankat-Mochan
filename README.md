@@ -6,6 +6,7 @@
     <img src="https://img.shields.io/badge/Award-National%20Finalist-gold?style=for-the-badge&logo=qualcomm" alt="National Finalist" />
     <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Raspberry%20Pi-blue?style=for-the-badge" alt="Platforms" />
     <img src="https://img.shields.io/badge/AI-Snapdragon%20NPU%20%7C%20Whisper-orange?style=for-the-badge" alt="AI Tech Stack" />
+    <img src="https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/python.yml/badge.svg" alt="CI Build Status" />
   </p>
 </div>
 

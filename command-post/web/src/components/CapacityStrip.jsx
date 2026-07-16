@@ -1,12 +1,12 @@
 import { TriangleAlert } from "lucide-react";
 
-// C8 capacity — derived, read-only "are we keeping up?" with the OVERWHELMED flag.
+// C8 capacity - derived, read-only "are we keeping up?" with the OVERWHELMED flag.
 export default function CapacityStrip({ capacity }) {
   const c = capacity || {};
   const cells = [
     ["AVAIL", `${c.available ?? 0}/${c.total ?? 0}`],
     ["BACKLOG", c.backlog ?? 0],
-    ["AVG RESP", c.avg_response_min != null ? `${c.avg_response_min}m` : "—"],
+    ["AVG RESP", c.avg_response_min != null ? `${c.avg_response_min}m` : "-"],
     ["RESOLVED", c.resolved ?? 0],
   ];
   return (
@@ -15,7 +15,7 @@ export default function CapacityStrip({ capacity }) {
     }`}>
       {c.overwhelmed && (
         <div className="flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.1em] text-destructive font-semibold mb-2">
-          <TriangleAlert className="size-3" /> OVERWHELMED — BACKLOG EXCEEDS AVAILABLE RESPONDERS
+          <TriangleAlert className="size-3" /> OVERWHELMED - BACKLOG EXCEEDS AVAILABLE RESPONDERS
         </div>
       )}
       <div className="grid grid-cols-4 gap-2">

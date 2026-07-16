@@ -5,10 +5,10 @@ Pre-flight: everything that must be true before the gateway can work.
 Checks the config, the Python deps, and then the radios for real. What "the radios"
 means depends on each node's transport:
 
-  * spi    — the Raspberry Pi gateway: SPI device nodes, group access, chip ID,
+  * spi    - the Raspberry Pi gateway: SPI device nodes, group access, chip ID,
              MOSI/MISO write-read-back, the RST wire and the DIO0 interrupt wire.
              No transmit, so it is safe with or without antennas.
-  * serial — the Arduino UNO Q field modem: the serial device exists and the modem
+  * serial - the Arduino UNO Q field modem: the serial device exists and the modem
              answers (boot banner / ping) with settings that match this config.
 
 Exit 0 = go. Exit 1 = something is wrong, and it says which and how to fix it.
@@ -37,7 +37,7 @@ def record(label: str, ok: bool, detail: str = "", fix: str = "") -> bool:
     mark = f"{GREEN}PASS{RESET}" if ok else f"{RED}FAIL{RESET}"
     line = f"  [{mark}] {label}"
     if detail:
-        line += f" {DIM}— {detail}{RESET}"
+        line += f" {DIM}- {detail}{RESET}"
     print(line)
     if not ok and fix:
         print(f"         {YELLOW}fix:{RESET} {fix}")
@@ -125,11 +125,11 @@ def check_spi_nodes(cfg) -> bool:
 
 def check_groups(cfg) -> bool:
     if not _has(cfg, "spi"):
-        return record("device access", True, "no SPI radios — group check not applicable")
+        return record("device access", True, "no SPI radios - group check not applicable")
     if os.geteuid() == 0:
         return record("user in spi + gpio groups", True, "running as root")
     # The 'spi'/'gpio' groups are a Raspberry Pi OS convention. On other Debian boards the
-    # device nodes may be owned by other groups, so don't hard-fail there — a real
+    # device nodes may be owned by other groups, so don't hard-fail there - a real
     # permission problem still surfaces when we actually open the SPI device below.
     try:
         import gpio_compat
@@ -140,7 +140,7 @@ def check_groups(cfg) -> bool:
     missing = {"spi", "gpio"} - mine
     if not is_pi:
         return record("device access", True,
-                      "non-Pi board — group check skipped; access is verified by opening the "
+                      "non-Pi board - group check skipped; access is verified by opening the "
                       "radio below")
     return record("user in spi + gpio groups", not missing,
                   "spi, gpio" if not missing else f"missing: {', '.join(sorted(missing))}",
@@ -155,12 +155,12 @@ def check_bluetooth(cfg) -> bool:
                     "field_beacon sketch (no BLE needed at all)")
     # rfkill is the nicest way to read the block state, but it is not installed on every
     # board (e.g. the UNO Q). If it is missing, fall back to just checking the adapter
-    # exists — bleak will surface any real Bluetooth problem when it actually scans.
+    # exists - bleak will surface any real Bluetooth problem when it actually scans.
     try:
         out = subprocess.run(["rfkill", "list", "bluetooth"], capture_output=True, text=True, timeout=5).stdout
     except FileNotFoundError:
         return record("bluetooth adapter", adapter,
-                      "hci0 present (rfkill not installed — could not check block state)"
+                      "hci0 present (rfkill not installed - could not check block state)"
                       if adapter else "no hci0 and no rfkill",
                       "" if adapter else disable_hint)
     except Exception as e:
@@ -210,7 +210,7 @@ def check_bridge_modem(cfg, name) -> bool:
     if not Path(sock).exists():
         return record(
             label, False, f"{sock} not found",
-            "the arduino-router service is not running — is this an Arduino UNO Q with "
+            "the arduino-router service is not running - is this an Arduino UNO Q with "
             "the app framework up? (systemctl status arduino-router)")
     try:
         from bridge_radio import BridgeRadio
@@ -287,9 +287,9 @@ def main() -> int:
     failed = [l for l, good, _ in results if not good]
     print()
     if failed:
-        print(f"{RED}pre-flight FAILED{RESET} — {len(failed)} check(s): {', '.join(failed)}")
+        print(f"{RED}pre-flight FAILED{RESET} - {len(failed)} check(s): {', '.join(failed)}")
         return 1
-    print(f"{GREEN}pre-flight OK{RESET} — {len(results)} checks passed")
+    print(f"{GREEN}pre-flight OK{RESET} - {len(results)} checks passed")
     return 0
 
 

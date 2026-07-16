@@ -1,17 +1,17 @@
 # Building the mesh app APK (OnePlus / any arm64-v8a phone)
 
 The app targets `arm64-v8a` (see `app/build.gradle.kts` → `abiFilters`), which is exactly
-what OnePlus phones use — so there is **nothing device-specific to change**. A normal debug
+what OnePlus phones use - so there is **nothing device-specific to change**. A normal debug
 APK sideloads straight onto the phone.
 
 Requirements (all bundled with **Android Studio**):
 - JDK **17** (Android Studio ships it as the "JBR")
 - Android **SDK platform-35** + **build-tools** (installed on first project open / SDK Manager)
-- Gradle 8.13 — downloaded automatically by the wrapper, no manual install
+- Gradle 8.13 - downloaded automatically by the wrapper, no manual install
 
 ---
 
-## Option A — one click in Android Studio (simplest)
+## Option A - one click in Android Studio (simplest)
 
 1. Open the `mesh-app` folder in Android Studio and let it finish Gradle sync
    (this also installs the right SDK packages if they're missing).
@@ -21,7 +21,7 @@ Requirements (all bundled with **Android Studio**):
 4. Copy that APK to the OnePlus and install (enable "install unknown apps" for your file
    manager). Done.
 
-## Option B — command line (uses the helper scripts here)
+## Option B - command line (uses the helper scripts here)
 
 The scripts point `JAVA_HOME` at Android Studio's bundled JDK and write `local.properties`
 with your SDK path, then run the build.
@@ -57,5 +57,5 @@ Output APK (both options):
 
 ## Release build (optional)
 
-`./gradlew :app:assembleRelease` produces an optimized APK, but it is **unsigned** — you must
+`./gradlew :app:assembleRelease` produces an optimized APK, but it is **unsigned** - you must
 sign it with your own keystore before it will install. Debug is the right choice for testing.

@@ -17,7 +17,7 @@ export default function App() {
 
   // A restarted server hands out a fresh session id (see database.py). Drop the
   // selection when it changes so a reopened/reconnected dashboard never stays parked
-  // on an incident that belonged to the previous — now cleared — session.
+  // on an incident that belonged to the previous - now cleared - session.
   const sessionId = cp.database?.session_id ?? null;
   useEffect(() => {
     setSelectedId(null);

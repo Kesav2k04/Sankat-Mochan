@@ -1,5 +1,5 @@
 """
-Sankat-Mochan command post ("AI PC") — FastAPI.
+Sankat-Mochan command post ("AI PC") - FastAPI.
 
 Receives SOS envelopes (from the Pi/LoRa gateway via POST /sos, or the test
 button), runs AI triage, feeds the deterministic intelligence services
@@ -42,7 +42,7 @@ AUDIO_DIR.mkdir(exist_ok=True)
 def _purge_audio_store() -> None:
     """Every process start is a fresh session (see database.py). In DB-less mode the
     live Store already starts empty, but voice clips are written to disk under
-    audio_store/ and OUTLIVE the process — worse, the clip-id counters (_voice_seq,
+    audio_store/ and OUTLIVE the process - worse, the clip-id counters (_voice_seq,
     _test_seq) reset to 0 on restart, so a NEW `voice-0` would be served the STALE
     bytes of a previous run's `voice-0.webm`. Clear the transient clips on startup so
     a killed-and-restarted server never replays an old session's audio. Only our own
@@ -102,11 +102,11 @@ hub = Hub()
 class GatewayHub:
     """The Pi LoRa-gateway edge link (EDGE-LINK.md). One persistent bidirectional
     WebSocket:
-      up   — the Pi sends {type:"envelope", id, env}; we ingest + reply {type:"ack", id}.
-      down — we send {type:"dispatch", id, env} (ACCEPTED / instruction) for the Pi to
+      up   - the Pi sends {type:"envelope", id, env}; we ingest + reply {type:"ack", id}.
+      down - we send {type:"dispatch", id, env} (ACCEPTED / instruction) for the Pi to
              carry over LoRa/BLE back to the victim (the return path).
     Downlink is buffered until the far end ACKs by id, so a disconnect never loses a
-    dispatch; flushed (highest urgency first) on reconnect. Idempotent — the phone/Pi
+    dispatch; flushed (highest urgency first) on reconnect. Idempotent - the phone/Pi
     dedup by envelope id, so replays are safe.
     """
 
@@ -234,7 +234,7 @@ async def _ingest(envelope: dict[str, Any], audio_url: str | None = None) -> boo
 
     if envelope.get("gist", "").startswith(intelligence.TAGS_PREFIX):
         # Sahayak agent follow-up: machine-authored structured tags. MUST bypass
-        # LLM triage — triage would re-label category before dedup and the
+        # LLM triage - triage would re-label category before dedup and the
         # follow-up would coin-flip into a duplicate incident (and the raw
         # 'TAGS …' string would become a headline). parse_tags is the enum
         # whitelist gate for this untrusted mesh input (rule #8).
@@ -247,12 +247,12 @@ async def _ingest(envelope: dict[str, Any], audio_url: str | None = None) -> boo
         return True
 
     if envelope.get("category") == "sensor":
-        # C7: sensor envelopes skip the LLM — readings aren't language
+        # C7: sensor envelopes skip the LLM - readings aren't language
         ai = {"urgency": envelope.get("urgency", 3), "category": "sensor",
               "english": envelope.get("gist", ""), "ai": False, "latency_ms": 0}
     else:
         ai = await triage.triage(envelope)
-        # Enrich with structured triage tags from the fast E2B backend — but only when the
+        # Enrich with structured triage tags from the fast E2B backend - but only when the
         # SOS carries real detail. A bare "SOS"/"help" is skipped (worth_tagging) so an
         # empty-data incident never gets invented tags; the extractor omits anything not
         # explicitly stated, and parse_tags is the enum whitelist gate (rule #8) for the
@@ -380,7 +380,7 @@ async def mesh_voice(
         return JSONResponse({"status": "rejected"}, status_code=400)
     if ref_id not in store.reports:
         # The voice ref_id is `{origin}-{voiceSeq}`, but the SOS report is keyed by the
-        # SOS envelope id `{origin}-{seq}` — two INDEPENDENT counters on the phone, so an
+        # SOS envelope id `{origin}-{seq}` - two INDEPENDENT counters on the phone, so an
         # exact match is the exception, not the rule. Fall back to the most recent report
         # from the SAME origin, so a victim's recording still enriches their own card.
         # This never fabricates a card: if that origin has no report yet, the Pi keeps the
@@ -433,7 +433,7 @@ async def _transcribe_mesh_voice(*, clip_id: str, ref_id: str, origin: str,
         # 1. Browser-playable transcode (AMR/3GP → WAV). Runs eagerly here, AFTER the Pi
         #    was already ACKed, so it never blocks the upload. If ffmpeg is missing or the
         #    clip won't decode, we keep the raw url and the card shows a quiet unplayable
-        #    state — never a crash (DOCS.md #10).
+        #    state - never a crash (DOCS.md #10).
         web = await run_in_threadpool(stt.transcode_for_web, data)
         web_audio = web[0] if web else None
         web_content_type = web[1] if web else None
@@ -442,7 +442,7 @@ async def _transcribe_mesh_voice(*, clip_id: str, ref_id: str, origin: str,
         if web and not database.enabled:
             (AUDIO_DIR / f"{clip_id}.wav").write_bytes(web_audio)
         # Publish the playable URL NOW, before the (slow) STT below. The card was first
-        # attached with the raw .3gp — browsers cannot play AMR, so until this swap the
+        # attached with the raw .3gp - browsers cannot play AMR, so until this swap the
         # operator's play button is dead. Transcode is fast; STT (first model load) can
         # take minutes, and audio must never wait on it.
         if web and ref_id in store.reports:
@@ -453,7 +453,7 @@ async def _transcribe_mesh_voice(*, clip_id: str, ref_id: str, origin: str,
         tr = await run_in_threadpool(stt.transcribe, data, lang)
         transcript = str(tr.get("text", "")).strip()
 
-        # 3. FAITHFUL translation only — never triage. triage() would pattern-complete a
+        # 3. FAITHFUL translation only - never triage. triage() would pattern-complete a
         #    benign clip ("mic testing one two three") into a false life-threatening SOS
         #    and escalate its urgency; translate() is forbidden from adding or inferring.
         ai = None
@@ -525,7 +525,7 @@ async def audio_file(name: str) -> Response:
 @app.get("/web_audio/{clip_id}")
 async def web_audio_file(clip_id: str) -> Response:
     """Serve the browser-playable (WAV) transcode of a clip. Falls back to 404 if the
-    transcode isn't available (e.g. ffmpeg missing) — the card then keeps the raw url."""
+    transcode isn't available (e.g. ffmpeg missing) - the card then keeps the raw url."""
     if not _valid_audio_name(clip_id):
         return JSONResponse({"status": "rejected"}, status_code=400)
     stored = await database.get_web_audio(clip_id)
@@ -573,7 +573,7 @@ async def accept(incident_id: str, responder: str | None = None) -> JSONResponse
 
 @app.post("/resolve/{incident_id}")
 async def resolve(incident_id: str) -> JSONResponse:
-    """C9: incident cleared — frees the responder, archives the incident."""
+    """C9: incident cleared - frees the responder, archives the incident."""
     ok = store.resolve(incident_id)
     await _broadcast_snapshot()
     return JSONResponse({"status": "ok" if ok else "unknown"},
@@ -652,7 +652,7 @@ async def ws(ws: WebSocket) -> None:
 
 @app.websocket("/gateway")
 async def gateway_ws(ws: WebSocket) -> None:
-    """The Pi LoRa-gateway edge link (EDGE-LINK.md) — bidirectional + ACKed."""
+    """The Pi LoRa-gateway edge link (EDGE-LINK.md) - bidirectional + ACKed."""
     await gateway.attach(ws)
     try:
         while True:
@@ -669,7 +669,7 @@ async def gateway_ws(ws: WebSocket) -> None:
                 if msg.get("id"):
                     await ws.send_json({"type": "ack", "id": msg["id"]})
             elif kind == "ack":
-                # Down: the Pi confirms a dispatch — clear it from our buffer.
+                # Down: the Pi confirms a dispatch - clear it from our buffer.
                 gateway.ack(msg.get("id", ""))
             elif kind == "heartbeat":
                 await ws.send_json({"type": "pong"})
@@ -677,7 +677,7 @@ async def gateway_ws(ws: WebSocket) -> None:
                 node_id = str(msg.get("node_id", ""))
                 role = msg.get("role")
                 connected = msg.get("connected")
-                # device_id is optional (the BLE beacon can't carry it — 13-byte scan-
+                # device_id is optional (the BLE beacon can't carry it - 13-byte scan-
                 # response budget); the store normally learns it from this phone's
                 # envelopes. Accept it here too if a future Pi build forwards it.
                 device_id = str(msg.get("device_id", ""))[:32]
@@ -747,7 +747,7 @@ async def vector_tile(z: int, x: int, y: int):
         return JSONResponse({"status": "no basemap"}, status_code=404)
     data = reader.get(z, x, y)
     if not data:
-        return Response(status_code=204)  # empty tile — maplibre skips it
+        return Response(status_code=204)  # empty tile - maplibre skips it
     return Response(
         content=data,
         media_type="application/x-protobuf",

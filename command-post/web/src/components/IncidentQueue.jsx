@@ -76,7 +76,7 @@ function IncidentCard({ inc, selected, onSelect }) {
   );
 }
 
-// Left column — the AI-ranked incident queue with the location-unknown bucket.
+// Left column - the AI-ranked incident queue with the location-unknown bucket.
 export default function IncidentQueue({ incidents, selectedId, onSelect, onInject }) {
   const located = incidents.filter((i) => i.lat != null);
   const unknown = incidents.filter((i) => i.lat == null);
@@ -99,7 +99,7 @@ export default function IncidentQueue({ incidents, selectedId, onSelect, onInjec
           {incidents.length === 0 && (
             <div className="flex flex-col items-center gap-2 text-center text-muted-foreground py-16 text-sm">
               <Inbox className="size-7 opacity-40" />
-              No SOS yet — waiting for the mesh…
+              No SOS yet - waiting for the mesh…
               <Button size="sm" variant="outline" className="mt-1 gap-1.5" onClick={onInject}>
                 <FlaskConical className="size-3.5" /> Inject test SOS
               </Button>

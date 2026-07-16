@@ -1,10 +1,10 @@
-# Qualcomm Organizer Slides — extracted reference
+# Qualcomm Organizer Slides - extracted reference
 
-> Source: official organizer presentation slides shown at the Snapdragon Multiverse Hackathon (Bengaluru, 11–12 Jul 2026). Transcribed from screenshots on 10 Jul 2026. This is the sponsor's *recommended* tooling — align our stack to it where sensible, it signals we followed their guidance.
+> Source: official organizer presentation slides shown at the Snapdragon Multiverse Hackathon (Bengaluru, 11–12 Jul 2026). Transcribed from screenshots on 10 Jul 2026. This is the sponsor's *recommended* tooling - align our stack to it where sensible, it signals we followed their guidance.
 
 ---
 
-## 1. Qualcomm AI Hub — three pillars
+## 1. Qualcomm AI Hub - three pillars
 
 *"Ship intelligent experiences across devices with Qualcomm AI Hub."*
 
@@ -37,23 +37,23 @@ Tagline: **"Within 5 minutes, with a few lines of code."**
 ```
 ONNX  (model + graph)
   ↓
-QAIRT — INT8 Model Quantization
+QAIRT - INT8 Model Quantization
   ↓
-QNN — Model Conversion
+QNN - Model Conversion
   ↓
-Context BIN — QNN Context Binary   ← the device-specific artifact that runs on the NPU
+Context BIN - QNN Context Binary   ← the device-specific artifact that runs on the NPU
 ```
 
-> This is exactly the artifact chain behind our `.bin` files. The "Context BIN is device-specific" line in PLAN.md §6 is confirmed here — compile separately per target (X Elite AND 8 Elite Gen 5).
+> This is exactly the artifact chain behind our `.bin` files. The "Context BIN is device-specific" line in PLAN.md §6 is confirmed here - compile separately per target (X Elite AND 8 Elite Gen 5).
 
 ---
 
 ## 4. Suggested Software Stack (Qualcomm's recommendation)
 
-### Computer (AI PC — Snapdragon X Elite)
+### Computer (AI PC - Snapdragon X Elite)
 - **Frontend:** Streamlit (Python) **or** JS/TS w/ Electron
 - **Backend:** Python (use **x64 Python** for QNN access)
-- **ML Runtime:** **ONNXRuntime-QNN** — note: use the `onnxruntime-qnn` package
+- **ML Runtime:** **ONNXRuntime-QNN** - note: use the `onnxruntime-qnn` package
 - **Tools:** Llama.cpp
 
 ### Phones
@@ -67,11 +67,11 @@ Context BIN — QNN Context Binary   ← the device-specific artifact that runs 
 - **IDE:** App Lab
 - **Tooling:** EdgeImpulse
 
-> **Validation of our plan:** our PLAN.md already picks ORT + QNN-EP as the primary runtime on both targets — this slide confirms Qualcomm recommends the same (`onnxruntime-qnn` on PC, `onnxruntime-android` on phone). Our React dashboard is an alternative to their Streamlit/Electron suggestion — fine, but be ready to justify. IoT note: **App Lab + EdgeImpulse** for the UNO Q — we haven't touched EdgeImpulse; worth a look for the sensor/auto-alert path (Isha).
+> **Validation of our plan:** our PLAN.md already picks ORT + QNN-EP as the primary runtime on both targets - this slide confirms Qualcomm recommends the same (`onnxruntime-qnn` on PC, `onnxruntime-android` on phone). Our React dashboard is an alternative to their Streamlit/Electron suggestion - fine, but be ready to justify. IoT note: **App Lab + EdgeImpulse** for the UNO Q - we haven't touched EdgeImpulse; worth a look for the sensor/auto-alert path (Isha).
 
 ---
 
-## 5. Resources — official links
+## 5. Resources - official links
 
 | Resource | Link |
 |---|---|
@@ -86,14 +86,14 @@ Context BIN — QNN Context Binary   ← the device-specific artifact that runs 
 | Qualcomm Hackathon Projects (awesome list) | https://qualcomm.github.io/awesome-qualcomm-developer/ |
 
 > High-value for us:
-> - **simple-whisper-transcription** — reference impl for our Whisper STT on the NPU via AI Hub. Directly reusable for the voice-SOS pipeline.
-> - **simple-npu-chatbot (AnythingLLM)** — our documented AI-PC fallback ladder (ORT-genai → AnythingLLM). Sample code to lean on.
-> - **onnx-msix-samples** — packaging the command post as a runnable Windows executable = helps the *Deployment & Accessibility* score (20 pts).
-> - **awesome-qualcomm-developer** — scan for anything else pre-built we can stand on.
+> - **simple-whisper-transcription** - reference impl for our Whisper STT on the NPU via AI Hub. Directly reusable for the voice-SOS pipeline.
+> - **simple-npu-chatbot (AnythingLLM)** - our documented AI-PC fallback ladder (ORT-genai → AnythingLLM). Sample code to lean on.
+> - **onnx-msix-samples** - packaging the command post as a runnable Windows executable = helps the *Deployment & Accessibility* score (20 pts).
+> - **awesome-qualcomm-developer** - scan for anything else pre-built we can stand on.
 
 ---
 
-## 6. Event Schedule — Day 2 (Sun 12 Jul 2026)
+## 6. Event Schedule - Day 2 (Sun 12 Jul 2026)
 
 | Time | Item |
 |---|---|
@@ -107,7 +107,7 @@ Context BIN — QNN Context Binary   ← the device-specific artifact that runs 
 | 5:00 PM – 7:00 PM | Social reception on campus |
 | 7:00 PM onwards | Event close & wrap-up |
 
-> **Hard gate:** repo + Microsoft Form submitted by **1:00 PM Sunday**. Demos are the 1–4 PM window — the 3-min rehearsed demo has to be airtight by 1 PM. Build like the deadline is 1 PM, not 7 PM (matches PLAN/hackathon-info).
+> **Hard gate:** repo + Microsoft Form submitted by **1:00 PM Sunday**. Demos are the 1–4 PM window - the 3-min rehearsed demo has to be airtight by 1 PM. Build like the deadline is 1 PM, not 7 PM (matches PLAN/hackathon-info).
 
 ---
 
@@ -115,5 +115,5 @@ Context BIN — QNN Context Binary   ← the device-specific artifact that runs 
 1. **P0 unchanged and confirmed:** AI Hub Workbench does cloud compile + profile → real NPU numbers without the hardware in hand. Check the 300+ model gallery first (Qwen3/Whisper may be pre-done).
 2. **Our runtime choice is Qualcomm-endorsed:** `onnxruntime-qnn` (PC) / `onnxruntime-android` (phone). Say this out loud to judges.
 3. **Steal the reference repos:** `simple-whisper-transcription` for STT, `simple-npu-chatbot` for the AnythingLLM fallback, `onnx-msix-samples` for packaging.
-4. **IoT gap:** we've not used App Lab / EdgeImpulse for the UNO Q — the sponsor expects that path for the board's sensing/auto-alert story.
+4. **IoT gap:** we've not used App Lab / EdgeImpulse for the UNO Q - the sponsor expects that path for the board's sensing/auto-alert story.
 5. **Submission is 1 PM Sunday, demos 1–4 PM.** Freeze features earlier than that.

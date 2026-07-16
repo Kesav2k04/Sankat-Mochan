@@ -1,15 +1,15 @@
 """
-One GPIO surface, three backends — so the SX1278 driver is byte-for-byte identical on
+One GPIO surface, three backends - so the SX1278 driver is byte-for-byte identical on
 the Raspberry Pi and on the Arduino UNO Q's Linux side (CONTRACT 1).
 
 `sx127x.py` and `preflight.py` import `GPIO` from here and use the small RPi.GPIO-shaped
 API (`setmode/setwarnings/setup/output/input/cleanup` + the BCM/OUT/IN/HIGH/LOW/PUD_DOWN
 constants). This module picks whichever backend the board actually has:
 
-  * RPi.GPIO — the Raspberry Pi. Used directly; this is exactly RPi.GPIO.
-  * lgpio    — the UNO Q's Debian (or any Pi-5/libgpiod board). Wrapped to look like
+  * RPi.GPIO - the Raspberry Pi. Used directly; this is exactly RPi.GPIO.
+  * lgpio    - the UNO Q's Debian (or any Pi-5/libgpiod board). Wrapped to look like
                RPi.GPIO. Only needed if a radio is wired to the UNO Q's *Linux* GPIO.
-  * none     — no GPIO library present. Import still succeeds (so a serial-modem field
+  * none     - no GPIO library present. Import still succeeds (so a serial-modem field
                board, which never touches GPIO, can run), but any real pin call raises a
                clear error rather than a confusing ImportError at startup.
 
@@ -17,7 +17,7 @@ constants). This module picks whichever backend the board actually has:
 never ambiguous.
 
 Licensing: RPi.GPIO (MIT) and lgpio (Unlicense/public-domain) are both permissive
-(project rule 1). No vendor SDK internals are reproduced — only the documented public
+(project rule 1). No vendor SDK internals are reproduced - only the documented public
 GPIO calls of each library.
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ class _NullGPIO:
 
     _MSG = ("no GPIO backend is available on this board. Install RPi.GPIO (Raspberry Pi) "
             "or lgpio (UNO Q: `pip install lgpio`). A field board that talks to its radio "
-            "through the UNO Q serial modem does not need GPIO at all — use "
+            "through the UNO Q serial modem does not need GPIO at all - use "
             "radios.<node>.transport = \"serial\" and this error will not be reached.")
 
     # setmode/setwarnings/cleanup are no-ops: a serial-only board calls gpio_init()/
