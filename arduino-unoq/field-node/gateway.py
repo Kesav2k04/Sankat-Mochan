@@ -15,7 +15,7 @@ Run:
     ../.venv/bin/python chainlog.py                # did each envelope cross the air?
 
 Prerequisites: SPI enabled, `sudo rfkill unblock bluetooth`, and the mesh app open on
-at least one phone (airplane mode is fine — re-enable Bluetooth only). Responders may
+at least one phone (airplane mode is fine - re-enable Bluetooth only). Responders may
 join later without restarting the gateway.
 """
 from __future__ import annotations
@@ -58,7 +58,7 @@ async def startup_probe(radios: Dict[str, Radio], lora_cfg: LoraConfig,
     This is the difference between "the gateway started" and "the gateway can actually
     carry a message". It runs on the raw radios, before the MeshNodes are wired up, so
     the probe can never leak onto a phone. The payload is deliberately NOT a valid
-    envelope — nothing downstream would accept it even if it escaped.
+    envelope - nothing downstream would accept it even if it escaped.
     """
     if not lora_cfg:
         return True
@@ -90,7 +90,7 @@ async def startup_probe(radios: Dict[str, Radio], lora_cfg: LoraConfig,
         return False
 
     pkt = seen["pkt"]
-    logger.info("radio check PASSED: 'field' spoke, 'gateway' heard it — %s. "
+    logger.info("radio check PASSED: 'field' spoke, 'gateway' heard it - %s. "
                 "The 433 MHz link works.", nodemod.signal_words(pkt.rssi_dbm, pkt.snr_db))
     chain.emit(clog.START, "probe", result="ok", radio="field->gateway",
                rssi_dbm=pkt.rssi_dbm, snr_db=pkt.snr_db)
@@ -101,7 +101,7 @@ async def radio_watchdog(radios: Dict[str, Radio], logger, chain: clog.ChainLog,
                          stop: asyncio.Event, period_s: float = 5.0) -> None:
     """Keep both radios in LoRa mode for as long as the gateway is up.
 
-    An SX1278 that resets — brownout, a glitch on the RST line — comes back in FSK. It
+    An SX1278 that resets - brownout, a glitch on the RST line - comes back in FSK. It
     still answers SPI, RegVersion still reads 0x12, and pre-flight would still pass. But
     RegIrqFlags then addresses a different register whose bits read as set, so a transmit
     'completes' in 0.1 ms having radiated nothing. `Radio.send()` now refuses in that
@@ -124,14 +124,14 @@ async def radio_watchdog(radios: Dict[str, Radio], logger, chain: clog.ChainLog,
                 await asyncio.sleep(0.05)
                 op2 = await loop.run_in_executor(None, radio.op_mode)
                 if op2 & LONG_RANGE_MODE:
-                    logger.warning("radio '%s': RegOpMode read 0x%02X then 0x%02X — ignoring the "
+                    logger.warning("radio '%s': RegOpMode read 0x%02X then 0x%02X - ignoring the "
                                    "first as a glitch, the radio is still in LoRa mode", name, op, op2)
                     continue
             except Exception as e:
                 logger.error("radio '%s' stopped answering: %s: %s", name, type(e).__name__, e)
                 continue
 
-            logger.error("radio '%s' is out of LoRa mode (RegOpMode=0x%02X, twice) — it reset "
+            logger.error("radio '%s' is out of LoRa mode (RegOpMode=0x%02X, twice) - it reset "
                          "itself. Re-initialising; nothing it 'sent' meanwhile left the antenna.",
                          name, op2)
             chain.emit(clog.START, name, radio=name, result="fell_out_of_lora", op_mode=op2)
@@ -173,15 +173,15 @@ async def software_watchdog(nodes, edge, logger, stop: asyncio.Event,
         for name, node in nodes.items():
             age = now() - getattr(node, "rx_progress", now())
             if age > max_age_s:
-                logger.error("WATCHDOG: RX drainer '%s' has not made progress in %.0fs — "
+                logger.error("WATCHDOG: RX drainer '%s' has not made progress in %.0fs - "
                              "it may be wedged. (No auto-restart; please check the gateway.)",
                              name, age)
             if getattr(node, "critical_alarm", False):
-                logger.error("WATCHDOG: node '%s' raised a CRITICAL-INTAKE alarm — an SOS "
+                logger.error("WATCHDOG: node '%s' raised a CRITICAL-INTAKE alarm - an SOS "
                              "could not be queued. The gateway is overwhelmed.", name)
         if edge is not None:
             for who, age in edge.stalled_loops(max_age_s):
-                logger.error("WATCHDOG: edge '%s' loop stalled for %.0fs — it may be wedged. "
+                logger.error("WATCHDOG: edge '%s' loop stalled for %.0fs - it may be wedged. "
                              "(No auto-restart; please check the link to the AI PC.)",
                              who, age)
 
@@ -197,7 +197,7 @@ async def resolve_peers_waiting(manager, cfg, logger, stop: asyncio.Event):
                 raise
             # Rule 10: an operator-facing failure is a message, not a traceback.
             logger.warning("%s", e)
-            logger.info("still waiting — I will look again in %.0fs "
+            logger.info("still waiting - I will look again in %.0fs "
                         "(press Ctrl-C to stop)", retry)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=retry)
@@ -214,10 +214,10 @@ def attach_phone(phone, manager, nodes, cfg, logger, chain: clog.ChainLog,
     phone's address), or None when the phone belongs to the other board."""
     name = "gateway" if phone.role == "responder" else "field"
     # On a split board only one node runs. A phone whose role belongs to the OTHER board
-    # (e.g. a responder that wandered near the field UNO Q) is not ours to carry — it
+    # (e.g. a responder that wandered near the field UNO Q) is not ours to carry - it
     # attaches to its own board. Skipping keeps each SOS crossing exactly one 433 MHz hop.
     if name not in nodes:
-        logger.info("ignoring phone %s — its role belongs to the '%s' node, which runs on "
+        logger.info("ignoring phone %s - its role belongs to the '%s' node, which runs on "
                     "the other board", phone.describe(), name)
         return None
     bl = ble_link.BleLink(phone.address, cfg["ble"]["char_uuid"], logger, chain, name,
@@ -244,7 +244,7 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
 
     Node ids are stable while Android BLE addresses rotate, so they are the identity
     key (attached maps node id -> (link, the radio it hangs off)). A phone already
-    attached under this node id but now advertising a NEW address has rotated its MAC —
+    attached under this node id but now advertising a NEW address has rotated its MAC -
     we retarget its existing link to the live address so its reconnect loop stops
     dialling the dead one. A phone whose ROLE changed is re-homed: the role decides
     which radio carries it, and leaving it where it was either dual-homes it (letting
@@ -280,7 +280,7 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
                 if entry is None:
                     continue
                 bl, old_name = entry
-                logger.warning("phone %s is now a %s — that role lives on the other "
+                logger.warning("phone %s is now a %s - that role lives on the other "
                                "board, so this board stops carrying it",
                                phone.node_id, phone.role)
                 await manager.release(bl)
@@ -296,7 +296,7 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
                         continue
                     # Role switched between THIS board's radios (single-board bench):
                     # move the link to the radio that matches the new role.
-                    logger.warning("phone %s switched role to %s — moving it from radio "
+                    logger.warning("phone %s switched role to %s - moving it from radio "
                                    "'%s' to radio '%s'",
                                    phone.node_id, phone.role, old_name, name)
                     await manager.release(bl)
@@ -307,7 +307,7 @@ async def discover_new_peers(manager, nodes, cfg, logger, chain: clog.ChainLog,
                     continue
                 attached[phone.node_id] = (bl, name)
                 if phone.role == "responder":
-                    logger.info("responder %s joined — acceptance updates can now travel "
+                    logger.info("responder %s joined - acceptance updates can now travel "
                                 "back across 433 MHz", phone.node_id)
 
 
@@ -316,8 +316,8 @@ async def voice_nack_sweeper(edge: EdgeUplink, gateway_node, cfg, logger,
     """Ask victims to resend voice pieces our gateway-side reassembly never received.
 
     The receiver half of the mesh's voice NACK loop, Pi-side. We inject the request on
-    the GATEWAY node — the same return path an ACCEPTED dispatch takes (on_dispatch ->
-    gw.originate) — so it travels back across the LoRa bridge toward the victim exactly
+    the GATEWAY node - the same return path an ACCEPTED dispatch takes (on_dispatch ->
+    gw.originate) - so it travels back across the LoRa bridge toward the victim exactly
     like every other downlink, whatever the physical topology at the venue.
     """
     v = cfg["voice"]
@@ -331,11 +331,11 @@ async def voice_nack_sweeper(edge: EdgeUplink, gateway_node, cfg, logger,
         nacks, abandoned = edge.collect_voice_repairs(origin, quiet)
         for nack in nacks:
             await gateway_node.originate(nack)
-            logger.info("voice %s stalled — asked phone %s to resend %d missing piece(s) "
+            logger.info("voice %s stalled - asked phone %s to resend %d missing piece(s) "
                         "(request %d)", nack.clip_id, nack.clip_origin,
                         len(nack.missing), nack.attempt + 1)
         for clip in abandoned:
-            logger.warning("voice %s abandoned — %d piece(s) never arrived after %d "
+            logger.warning("voice %s abandoned - %d piece(s) never arrived after %d "
                            "resend request(s)", clip.clip_id, clip.missing, clip.requests)
 
 
@@ -380,7 +380,7 @@ async def run() -> int:
             transport = r.get("transport", "spi")
             if transport == "bridge":
                 # The field radio is the UNO Q's OWN MCU, reached over the Router Bridge
-                # (no serial port — see bridge_radio.py). Single-board field node.
+                # (no serial port - see bridge_radio.py). Single-board field node.
                 from bridge_radio import BridgeRadio, DEFAULT_ROUTER_SOCKET
                 sock = r.get("socket_path", DEFAULT_ROUTER_SOCKET)
                 radio = BridgeRadio(name, lora_cfg, logger, socket_path=sock)
@@ -420,7 +420,7 @@ async def run() -> int:
             if not await startup_probe(radios, lora_cfg, logger, chain):
                 return 3
         elif cfg["lora"]["startup_probe"]:
-            logger.info("startup probe skipped — only radio '%s' is on this board; the peer "
+            logger.info("startup probe skipped - only radio '%s' is on this board; the peer "
                         "radio is on the other box, so the link is proven by live traffic.",
                         node_names[0])
 
@@ -508,7 +508,7 @@ async def run() -> int:
             lora_links[name] = link
 
         # Radio RX runs on its own thread; enqueue onto the node's bounded intake queue
-        # (thread-safe) rather than scheduling a coroutine per packet — an unbounded
+        # (thread-safe) rather than scheduling a coroutine per packet - an unbounded
         # per-packet task/coroutine was a DoS vector (mesh-transmission.md D1).
         for name in node_names:
             n, l = nodes[name], lora_links[name]
@@ -544,7 +544,7 @@ async def run() -> int:
                         "433 MHz -> gateway -> AI PC. I will keep scanning for responders "
                         "and attach them when they appear.")
         else:
-            logger.warning("Bluetooth is switched off in the config — running the two radios "
+            logger.warning("Bluetooth is switched off in the config - running the two radios "
                            "alone, with no phones attached")
 
         watchdog = asyncio.create_task(radio_watchdog(radios, logger, chain, stop))

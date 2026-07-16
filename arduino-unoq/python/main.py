@@ -1,10 +1,10 @@
 """
-Sankat-Mochan field node — Arduino App entry point.
+Sankat-Mochan field node - Arduino App entry point.
 
 This App exists to put the LoRa **modem firmware** on the UNO Q's MCU: starting the App
 builds and flashes ../sketch/sketch.ino (the Router-Bridge LoRa modem) onto the STM32 and
 keeps the arduino-router link to it alive. The actual field-node mesh logic (BLE to the
-victim's phones, envelope validation, LoRa forwarding) does NOT run here — it runs as a
+victim's phones, envelope validation, LoRa forwarding) does NOT run here - it runs as a
 separate host process with full Bluetooth access, launched with:
 
     ./field-node/run.sh
@@ -25,7 +25,7 @@ logger.info("Sankat field-node modem host: MCU runs the LoRa modem; start the me
 
 
 def loop():
-    # Nothing to do here — the MCU modem and the field-node process do the work.
+    # Nothing to do here - the MCU modem and the field-node process do the work.
     time.sleep(10)
 
 

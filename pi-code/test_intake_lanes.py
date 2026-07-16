@@ -79,7 +79,7 @@ async def _run(coro, timeout=3.0):
 
 async def _test_sos_first() -> None:
     """A burst of ~45 voice chunks is queued, then one SOS. The SOS must be handled before
-    the bulk of the voice chunks — proving the critical lane jumps the queue (MJ2)."""
+    the bulk of the voice chunks - proving the critical lane jumps the queue (MJ2)."""
     order: list[str] = []
 
     async def on_accept(msg) -> None:
@@ -113,7 +113,7 @@ async def _test_sos_first() -> None:
 
 async def _test_sos_never_rate_dropped() -> None:
     """Rate cap is tiny (1/s) and a flood of voice chunks exhausts it, but every SOS must
-    still be accepted — the critical lane is rate-exempt (MJ1)."""
+    still be accepted - the critical lane is rate-exempt (MJ1)."""
     accepted: list[str] = []
 
     async def on_accept(msg) -> None:

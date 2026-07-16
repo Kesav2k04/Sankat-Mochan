@@ -4,7 +4,7 @@ Load-only test: can Gemma 4 E4B be loaded on this GPU in a given dtype without O
 and where does the memory go?
 
 Motivation: on a T4 (compute capability 7.5) Unsloth gates bf16 on cc >= 8.0, so it refuses
-bf16, then refuses fp16 for Gemma ("won't work"), and falls back to fp32 (4 bytes) — which OOMs
+bf16, then refuses fp16 for Gemma ("won't work"), and falls back to fp32 (4 bytes) - which OOMs
 E4B at load. But `torch.cuda.is_bf16_supported()` is True on the T4 (emulated), and bf16 is only
 2 bytes with a wide range that doesn't overflow. So forcing dtype=bfloat16 may halve the load
 footprint and fit.
@@ -92,7 +92,7 @@ def main() -> int:
         for b, name, shape in fp32_modules[:12]:
             print(f"  {b/1e6:8.1f} MB  {name}  {shape}")
     else:
-        print("\n(no large fp32 tensors — good; nothing forced to fp32 at this dtype)")
+        print("\n(no large fp32 tensors - good; nothing forced to fp32 at this dtype)")
 
     print("\nDone. If this fit in bf16 but OOMs in float32, forcing dtype=bfloat16 is the fix.")
     return 0

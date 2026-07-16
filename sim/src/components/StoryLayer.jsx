@@ -4,7 +4,7 @@ import { SCENES } from './scenes.jsx'
 
 /**
  * The cinema layer that sits ON TOP of the live map: letterbox bars, the big
- * illustrated scene panel, film-style lower-third titles, chapter progress —
+ * illustrated scene panel, film-style lower-third titles, chapter progress -
  * and, at the final beat, the victim's actual phone screen, where tapping the
  * real SOS card is what launches the simulation.
  */
@@ -38,7 +38,7 @@ export default function StoryLayer({ beats, beat, onNext, onJump, onSkip, onSos 
         </div>
       </div>
 
-      {/* the big illustrated shot — remounts every beat so its film plays once */}
+      {/* the big illustrated shot - remounts every beat so its film plays once */}
       {b.scene === 'hero' && SCENES[b.key] && (
         <div className="cine-hero" key={`hero-${beat}`}>
           {SCENES[b.key]}
@@ -81,7 +81,7 @@ function PhonePanel({ onSos }) {
   return (
     <div className="phone-panel">
       <div className={`phone-shell ${sent ? 'sent' : ''}`}>
-        <img src={phonePng} alt="Sankat-Mochan — Send for help" draggable="false" />
+        <img src={phonePng} alt="Sankat-Mochan - Send for help" draggable="false" />
         {/* the red SOS card region of the screenshot */}
         <button className="phone-tap" onClick={press} disabled={sent} aria-label="Press SOS">
           {!sent && (
@@ -91,7 +91,7 @@ function PhonePanel({ onSos }) {
             </span>
           )}
         </button>
-        {sent && <div className="phone-sent">SOS SENT — riding the mesh</div>}
+        {sent && <div className="phone-sent">SOS SENT - riding the mesh</div>}
       </div>
       {sent && <div className="phone-flash" />}
     </div>

@@ -6,9 +6,9 @@ that runs on the Snapdragon 8 Elite Gen 5 Hexagon NPU (OnePlus 15).
 This is a thin, auditable orchestrator around Qualcomm's own `qai-hub-models` CLI
 (BSD-3-Clause). It runs the two AI-Hub stages back-to-back:
 
-  1. `.quantize`  — local AIMET post-training quantization (w4a16) of YOUR merged
+  1. `.quantize`  - local AIMET post-training quantization (w4a16) of YOUR merged
                     finetuned weights, calibrated in-toolchain → a "calibrated checkpoint".
-  2. `.export`    — submits a COMPILE JOB to Qualcomm AI Hub (cloud) that turns the
+  2. `.export`    - submits a COMPILE JOB to Qualcomm AI Hub (cloud) that turns the
                     calibrated checkpoint into QAIRT context binaries for the target
                     Hexagon version, and assembles a Genie bundle you push to the phone.
 
@@ -18,9 +18,9 @@ Command shapes are taken verbatim from Qualcomm's public docs (Apache/BSD, DOCS.
 
 WHY NOT GEMMA (important):
   The Sahayak adapter was trained on Gemma, but on Qualcomm AI Hub `gemma_4_e2b_it`
-  only ships the llama.cpp/GGUF runtime (`geniex_llamacpp`, q4_0) — that does NOT use
+  only ships the llama.cpp/GGUF runtime (`geniex_llamacpp`, q4_0) - that does NOT use
   the optimized QNN Hexagon path. Qwen3-4B (Apache-2.0) and Llama-3.2-3B DO expose the
-  QNN path (`geniex_qairt`/`genie`, w4a16). So the finetune is re-based onto Qwen3-4B —
+  QNN path (`geniex_qairt`/`genie`, w4a16). So the finetune is re-based onto Qwen3-4B -
   a one-flag change to sahayak_finetune.py (`--model Qwen/Qwen3-4B`), because the LoRA
   targets (q/k/v/o/gate/up/down_proj) exist identically in Qwen. See deploy/npu/README.md.
 
@@ -32,7 +32,7 @@ Prereqs (see README.md for the long version):
   * A CUDA GPU for the quantize step (AIMET calibration of a 4B model is not a CPU job).
   * `pip install -U "qai-hub-models[qwen3-4b]"`  (extras name matches the model id, dashes)
   * A configured AI Hub token for the export/compile step:  qai-hub configure --api_token …
-    (never hardcode it — DOCS.md #2; the token lives in ~/.qai_hub/client.ini)
+    (never hardcode it - DOCS.md #2; the token lives in ~/.qai_hub/client.ini)
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ _CONFIG_FILES = (
 
 def _run(cmd: list[str], *, dry_run: bool) -> None:
     """Echo then run a subprocess step, failing loudly (a half-built bundle is worse
-    than a clear stop). We never shell=True — args are passed as a list."""
+    than a clear stop). We never shell=True - args are passed as a list."""
     printable = " ".join(f'"{c}"' if " " in c else c for c in cmd)
     print(f"\n$ {printable}\n", flush=True)
     if dry_run:
@@ -94,7 +94,7 @@ def preflight(args) -> None:
                  "        Produce it first: python finetune/sahayak_finetune.py "
                  "--model Qwen/Qwen3-4B ... --export-merged  (use the out/*/merged dir)")
     if not (ckpt / "config.json").exists():
-        sys.exit(f"[error] {ckpt} has no config.json — not a merged HF checkpoint. "
+        sys.exit(f"[error] {ckpt} has no config.json - not a merged HF checkpoint. "
                  "Point --merged-checkpoint at the 'merged' dir, not the LoRA-adapter dir.")
 
     if not args.dry_run:
@@ -154,13 +154,13 @@ def main(argv=None) -> int:
     p.add_argument("--model", default="qwen3_4b",
                    help="qai-hub-models package id. Must expose the QNN path (geniex_qairt/"
                         "genie): qwen3_4b (Apache-2.0, recommended) or llama_v3_2_3b_instruct. "
-                        "NOT gemma_4_e2b_it — that is llama.cpp-only, no optimized NPU path.")
+                        "NOT gemma_4_e2b_it - that is llama.cpp-only, no optimized NPU path.")
     p.add_argument("--precision", default="w4a16",
                    help="Weight/activation precision. w4a16 is the QNN-NPU default for these "
                         "models; confirm with `python -m qai_hub_models.models.<model>.quantize --help`.")
     p.add_argument("--chipset", default="qualcomm-snapdragon-8-elite-gen5",
                    help="Compile target. OnePlus 15 = qualcomm-snapdragon-8-elite-gen5. "
-                        "(X Elite laptop later: qualcomm-snapdragon-x-elite — same source, "
+                        "(X Elite laptop later: qualcomm-snapdragon-x-elite - same source, "
                         "re-run .export only.)")
     p.add_argument("--context-length", type=int, default=2048,
                    help="KV-cache context. 2048 keeps memory modest on a phone; raise if the "
@@ -203,7 +203,7 @@ def main(argv=None) -> int:
     print(f" outputs     : {calibrated}  ->  {bundle}")
     print("=" * 32)
 
-    # Stage 1 — quantize (local, GPU): merged fp16 weights → calibrated w4a16 checkpoint.
+    # Stage 1 - quantize (local, GPU): merged fp16 weights → calibrated w4a16 checkpoint.
     _run(build_quantize_cmd(args, calibrated), dry_run=args.dry_run)
     if not args.dry_run:
         _copy_model_config(Path(args.merged_checkpoint), calibrated)
@@ -215,7 +215,7 @@ def main(argv=None) -> int:
               f"--checkpoint {calibrated} --prompt 'A wall collapsed, someone is bleeding. What do I do?'")
         return 0
 
-    # Stage 2 — export (cloud compile on AI Hub): calibrated checkpoint → Genie bundle.
+    # Stage 2 - export (cloud compile on AI Hub): calibrated checkpoint → Genie bundle.
     _run(build_export_cmd(args, calibrated, bundle), dry_run=args.dry_run)
 
     print(f"\n[done] Genie bundle at {bundle}")

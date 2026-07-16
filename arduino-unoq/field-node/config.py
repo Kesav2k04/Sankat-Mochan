@@ -1,5 +1,5 @@
 """
-Config loading. Everything the gateway does is driven from JSON + env overrides —
+Config loading. Everything the gateway does is driven from JSON + env overrides -
 no radio pin, frequency, UUID, or peer address is baked into the code.
 
 Resolution order (last wins):
@@ -12,7 +12,7 @@ Resolution order (last wins):
         SANKAT_BLE__PEERS__FIELD=AA:BB:CC:DD:EE:FF
         SANKAT_UPLINK__URL=http://10.148.169.50:8000/sos
 
-Secrets (rule 2) never live in the JSON — pass them via env only.
+Secrets (rule 2) never live in the JSON - pass them via env only.
 """
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def _apply_env(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 def _read_json(path: Path) -> Any:
     """Parse one config file, naming it on failure. A bare JSONDecodeError ('Expecting
-    value: line 1 column 1') hides WHICH file is empty/corrupt — typically a truncated
+    value: line 1 column 1') hides WHICH file is empty/corrupt - typically a truncated
     write or leftover merge-conflict markers after a git pull on the board."""
     text = path.read_text()
     if not text.strip():
@@ -92,7 +92,7 @@ def _read_json(path: Path) -> Any:
     try:
         return json.loads(text)
     except json.JSONDecodeError as e:
-        hint = ("it starts with merge-conflict markers — resolve the git conflict"
+        hint = ("it starts with merge-conflict markers - resolve the git conflict"
                 if text.lstrip().startswith("<<<<<<<") else str(e))
         raise ConfigError(
             f"{path} is not valid JSON: {hint}. "
@@ -133,7 +133,7 @@ def _validate(cfg: Dict[str, Any]) -> None:
             raise ConfigError(f'radios.{node}.transport must be "spi", "serial" or "bridge"')
         if transport == "bridge":
             # A bridge radio is the UNO Q's own MCU, reached over the Router Bridge unix
-            # socket — no device path, no SPI chip-select or GPIO pins. socket_path is
+            # socket - no device path, no SPI chip-select or GPIO pins. socket_path is
             # optional (defaults to /var/run/arduino-router.sock).
             if "socket_path" in r and (
                 not isinstance(r["socket_path"], str) or not r["socket_path"]

@@ -2,7 +2,7 @@
 AI4Bharat IndicConformer-600M (multilingual) transcription test.
 
 Indic-specific ASR (22 Indian languages, MIT). Unlike Whisper it does NOT
-auto-detect — you pass the language code. So we transcribe sos1/sos2 with their
+auto-detect - you pass the language code. So we transcribe sos1/sos2 with their
 (inferred) languages, and for the unknown sos3 we sweep several languages and
 show them all so we can spot the right one.
 
@@ -62,7 +62,7 @@ for fname, lang in KNOWN:
     print(f"  CTC  ({ms1}ms): {ctc}")
     print(f"  RNNT ({ms2}ms): {rnnt}")
 
-print("\n=== sos3.wav — language sweep (CTC) ===")
+print("\n=== sos3.wav - language sweep (CTC) ===")
 p3 = AUDIO / "sos3.wav"
 if p3.exists():
     for lang in SWEEP_LANGS:

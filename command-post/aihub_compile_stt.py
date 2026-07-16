@@ -2,7 +2,7 @@
 Compile IndicConformer (CTC path) for the phone NPU via Qualcomm AI Hub.
 
 Our chosen STT (benchmark winner) is AI4Bharat IndicConformer, CTC decoding.
-The CTC path is pure feed-forward — NO RNN-T autoregressive loop — so it maps
+The CTC path is pure feed-forward - NO RNN-T autoregressive loop - so it maps
 cleanly to the Hexagon NPU. Two graphs do the heavy lifting:
 
     encoder.onnx      (1,80,1501)+(1,)  -> (1,1024,188)   ~2.4 GB fp32 (the model)
@@ -49,7 +49,7 @@ CTC_SPECS = {"encoder_output": ((1, 1024, 188), "float32")}
 
 def consolidate(src_name: str, dst_dir: Path) -> Path:
     """Load an ONNX (external data resolved from ASSETS) and re-save with all
-    weights in ONE sibling .data file — a clean 2-file package for upload."""
+    weights in ONE sibling .data file - a clean 2-file package for upload."""
     dst_dir.mkdir(parents=True, exist_ok=True)
     dst = dst_dir / src_name
     model = onnx.load(str(ASSETS / src_name), load_external_data=True)  # pulls the ~350 blobs
@@ -64,7 +64,7 @@ def consolidate(src_name: str, dst_dir: Path) -> Path:
 def main():
     if STAGE.exists():
         shutil.rmtree(STAGE)
-    print("→ consolidating encoder.onnx (2.4 GB — this loads all weights into RAM)…", flush=True)
+    print("→ consolidating encoder.onnx (2.4 GB - this loads all weights into RAM)…", flush=True)
     enc_path = consolidate("encoder.onnx", STAGE)
     print(f"   staged {enc_path} ({enc_path.stat().st_size / 1e6:.1f} MB graph + .data)", flush=True)
     print("→ consolidating ctc_decoder.onnx…", flush=True)

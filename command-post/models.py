@@ -1,5 +1,5 @@
 """
-Envelope validation — mirrors CONTRACT 1 in the Pi HANDOFF.md and the Android
+Envelope validation - mirrors CONTRACT 1 in the Pi HANDOFF.md and the Android
 SosMessage.kt. All incoming mesh data is UNTRUSTED (project rule #8): validate
 size, type, and ranges; never trust or execute the contents.
 """
@@ -18,7 +18,7 @@ VALID_TYPES = {"SOS", "DELIVERED", "ACCEPTED"}
 
 
 class InvalidEnvelope(ValueError):
-    """Raised when an incoming payload fails validation — caller drops it."""
+    """Raised when an incoming payload fails validation - caller drops it."""
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -93,13 +93,13 @@ def parse_envelope(raw: bytes | str | dict) -> dict[str, Any]:
 
 
 def sample_sos(seq: int = 0) -> dict[str, Any]:
-    """Demo scenario envelopes for the inject button — exercises the full
+    """Demo scenario envelopes for the inject button - exercises the full
     intelligence pipeline: 3 reports + 1 sensor cluster at the bridge
     (corroboration), a lone medical, a trapped pair, and a no-GPS case.
-    Native-script Indic — what on-device STT actually emits."""
+    Native-script Indic - what on-device STT actually emits."""
     #  lang, text, category, urgency, lat, lng, origin, locationHint
     samples = [
-        # cluster A: Koramangala underpass flood — 3 humans within ~80m + sensor
+        # cluster A: Koramangala underpass flood - 3 humans within ~80m + sensor
         ("ta", "தண்ணீர் வேகமாக ஏறுகிறது, இங்கே குழந்தைகள் இருக்கிறார்கள்", "flood", 5, 12.9332, 77.6248, "ph-01", "Koramangala underpass"),
         ("ml", "ഞങ്ങൾ പാലത്തിനടുത്താണ്, വെള്ളം കയറിക്കൊണ്ടിരിക്കുന്നു", "flood", 4, 12.9336, 77.6253, "ph-02", "Koramangala underpass"),
         ("sensor", "WLS-1 water level 2.4m and rising 12cm/min", "sensor", 4, 12.9329, 77.6245, "unoq-1", "Koramangala underpass"),
@@ -107,7 +107,7 @@ def sample_sos(seq: int = 0) -> dict[str, Any]:
         # lone incidents
         ("hi", "मेरी माँ को साँस लेने में तकलीफ़ हो रही है, दवाई चाहिए", "medical", 4, 12.9719, 77.6412, "ph-04", "Indiranagar"),
         ("ta", "சுவர் இடிஞ்சு விழுந்துச்சு, ரெண்டு பேர் உள்ளே மாட்டிக்கிட்டாங்க", "trapped", 5, 12.9857, 77.6050, "ph-05", "Shivajinagar"),
-        # no-GPS lane — still triaged + dispatchable, not map-pinned
+        # no-GPS lane - still triaged + dispatchable, not map-pinned
         ("ta", "பழைய கோவில் பக்கத்துல மாட்டிக்கிட்டேன், GPS வரலை", "trapped", 4, None, None, "ph-06", "old temple"),
         ("en", "Eight workers stranded on the flooded ground floor of the tech park", "flood", 3, 12.9260, 77.6740, "ph-07", "Bellandur"),
     ]

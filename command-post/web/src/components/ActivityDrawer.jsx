@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { fmtClock } from "@/lib/urgency";
 
-// C13 — the explainable AI-activity feed. Collapsed: latest decision as a
+// C13 - the explainable AI-activity feed. Collapsed: latest decision as a
 // ticker line. Expanded: the scrolling audit log (why for every decision).
 export default function ActivityDrawer({ activity }) {
   const [open, setOpen] = useState(false);
@@ -20,7 +20,7 @@ export default function ActivityDrawer({ activity }) {
         </span>
         {latest && !open && (
           <span className="font-mono text-[11px] truncate text-foreground/80">
-            {fmtClock(latest.ts)} — {latest.text}
+            {fmtClock(latest.ts)} - {latest.text}
           </span>
         )}
         <span className="ml-auto flex items-center gap-1 font-mono text-[9px] text-muted-foreground shrink-0">
@@ -39,7 +39,7 @@ export default function ActivityDrawer({ activity }) {
             <div className="px-4 py-2 flex flex-col-reverse gap-1">
               {activity.slice(-60).map((a, i) => (
                 <div key={`${a.ts}-${i}`} className="font-mono text-[11px] leading-relaxed">
-                  <span className="text-muted-foreground">{fmtClock(a.ts)}</span>{" — "}
+                  <span className="text-muted-foreground">{fmtClock(a.ts)}</span>{" - "}
                   {a.text}
                 </div>
               ))}

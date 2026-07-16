@@ -1,7 +1,7 @@
 """
 Unit tests for the voice reassembly + NACK repair loop (uplink.VoiceAssembler).
 
-No hardware, no network — pure state-machine tests with a fake clock so the quiet-period
+No hardware, no network - pure state-machine tests with a fake clock so the quiet-period
 timing is deterministic. Run directly (`python test_voice_assembler.py`) or under pytest.
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ def test_stray_mismatched_chunk_does_not_destroy_good_clip():
     _install_clock()
     a = uplink.VoiceAssembler()
     a.accept(chunk(0, 3))
-    # same clip_id (origin+seq) but a different `total` — corruption/stray. Must be ignored,
+    # same clip_id (origin+seq) but a different `total` - corruption/stray. Must be ignored,
     # not allowed to delete the clip we are carefully rebuilding.
     stray = a.accept(chunk(0, 5))
     assert stray.complete is None
@@ -117,7 +117,7 @@ def test_renack_backs_off_by_one_quiet_period_and_increments_attempt():
     clock.advance(5.0)
     first, _ = a.due_for_nack(quiet_s=4.0, requester_origin="PiG1")
     assert len(first) == 1 and first[0].attempt == 0
-    # immediately after asking, the clock has been reset — no repeat request yet
+    # immediately after asking, the clock has been reset - no repeat request yet
     again, _ = a.due_for_nack(quiet_s=4.0, requester_origin="PiG1")
     assert again == []
     clock.advance(5.0)

@@ -2,12 +2,12 @@
 Resubmit the IndicConformer CTC compile jobs with the CORRECT packaging.
 
 First attempt passed the bare .onnx file, so qai-hub uploaded only the graph
-proto (42 MB / 746 B) and dropped the sibling .data — the compile would fail on
+proto (42 MB / 746 B) and dropped the sibling .data - the compile would fail on
 missing weights. Per AI Hub docs, an ONNX with external data must be a DIRECTORY
 named `<model>.onnx` containing `<model>.onnx` + `<model>.onnx.data`, and you
 pass the DIRECTORY path.
 
-The 2.4 GB .data is already staged (aihub_out/indic_ctc_stage) — we just move the
+The 2.4 GB .data is already staged (aihub_out/indic_ctc_stage) - we just move the
 files into .onnx directories, no reload.
 """
 from __future__ import annotations

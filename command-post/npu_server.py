@@ -1,11 +1,11 @@
 """
-NPU model server — the OpenAI-compatible shim around onnxruntime-genai (QNN).
+NPU model server - the OpenAI-compatible shim around onnxruntime-genai (QNN).
 
 Runs on the AI PC (Snapdragon X Elite, Windows-on-ARM). It loads an
 onnxruntime-genai model folder that was built for the QNN / Hexagon NPU (the
 artifact AI Hub / the genai builder produces) and exposes the SAME
 `/v1/chat/completions` endpoint the popular tools use. So the command post
-(app.py / triage.py) points at it with ONE env line — no code change:
+(app.py / triage.py) points at it with ONE env line - no code change:
 
     LLM_BASE_URL=http://localhost:8010/v1
 
@@ -16,7 +16,7 @@ Run on the X Elite (inside an ARM64 Python venv):
     pip install onnxruntime-genai            # or the QNN build: onnxruntime-genai-qnn
     NPU_MODEL_DIR=C:\\models\\qwen3-4b-qnn  uvicorn npu_server:app --port 8010
 
-NOTE: this file is written on the Mac but TARGETS the X Elite — it can't run
+NOTE: this file is written on the Mac but TARGETS the X Elite - it can't run
 here (no onnxruntime-genai / no NPU). The generation loop follows the current
 onnxruntime-genai API; verify against the installed version on the device (the
 append_tokens / generate_next_token names are the version-sensitive spot).

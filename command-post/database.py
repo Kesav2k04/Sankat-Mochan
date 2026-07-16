@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS command_post_voice_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_voice_session ON command_post_voice_messages(session_id);
 -- Browser-playable transcode of the raw AMR clip, kept alongside the original (never a
--- second row — protects the audit trail). Added idempotently so existing DBs migrate.
+-- second row - protects the audit trail). Added idempotently so existing DBs migrate.
 ALTER TABLE command_post_voice_messages ADD COLUMN IF NOT EXISTS web_audio BYTEA;
 ALTER TABLE command_post_voice_messages ADD COLUMN IF NOT EXISTS web_content_type TEXT;
 """

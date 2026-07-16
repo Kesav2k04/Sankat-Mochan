@@ -1,5 +1,5 @@
 """
-CONTRACT 2 — the Pi joins the phone mesh as a BLE central.
+CONTRACT 2 - the Pi joins the phone mesh as a BLE central.
 
 The Android app makes every phone a peripheral advertising SERVICE_UUID with one
 characteristic that is both WRITE and NOTIFY. We connect, subscribe to notifications
@@ -10,7 +10,7 @@ already deduplicates and forwards whatever we hand it. No app change is required
 MTU, and why it matters
 -----------------------
 `GattServerController.onCharacteristicWriteRequest` treats each write as one complete
-envelope — it ignores `offset` and `preparedWrite`. So a 244-byte write MUST fit in a
+envelope - it ignores `offset` and `preparedWrite`. So a 244-byte write MUST fit in a
 single ATT packet, which needs an MTU of at least 247. If BlueZ negotiates less, a
 long write is split across ATT_PREPARE_WRITE requests and the phone will parse each
 fragment as a separate (malformed) envelope. Likewise the phone's notifications are
@@ -55,7 +55,7 @@ ROLE_NAMES = {0: "victim", 1: "responder", 2: "relay"}
 MAX_NODE_ID = 8
 
 # Frames that could not be delivered because the phone's BLE link was down are held and
-# replayed on reconnect (Android drops the link routinely — MAC rotation, duty cycling).
+# replayed on reconnect (Android drops the link routinely - MAC rotation, duty cycling).
 # Bounded so a long outage can't hoard memory; stale frames are skipped at replay time
 # (the phone's own NACK loop covers anything older). 128 comfortably holds a whole
 # voice clip (<= 45 chunks) plus interleaved status traffic.
@@ -66,7 +66,7 @@ REPLAY_MAX_AGE_S = 90.0
 async def negotiated_mtu(client: BleakClient, logger, name: str) -> int:
     """The real ATT MTU, asking BlueZ for it when bleak hasn't looked it up yet.
 
-    bleak's BlueZ backend hardcodes `mtu_size` to 23 — the spec minimum — until
+    bleak's BlueZ backend hardcodes `mtu_size` to 23 - the spec minimum - until
     `_acquire_mtu()` has run; its own docstring says so, and it emits a UserWarning.
     Believing that placeholder caps us at 20-byte writes, which refuses every real
     SOS envelope. Workaround adapted from bleak's own `examples/mtu_size.py` (MIT).
@@ -81,7 +81,7 @@ async def negotiated_mtu(client: BleakClient, logger, name: str) -> int:
     try:
         await acquire()
     except Exception as e:
-        logger.warning("[%s] could not ask Bluetooth for the real message-size limit (%s) — "
+        logger.warning("[%s] could not ask Bluetooth for the real message-size limit (%s) - "
                        "assuming the %d-byte minimum", name, type(e).__name__, MIN_MTU)
         return MIN_MTU
     return int(getattr(backend, "_mtu_size", MIN_MTU) or MIN_MTU)
@@ -98,7 +98,7 @@ class BleLink(nodemod.Link):
         self._log = logger
         self._chain = chain
         self._node = node_name
-        # Latest BLEDevice from a scan. Preferred connect target — see MeshPhone.device.
+        # Latest BLEDevice from a scan. Preferred connect target - see MeshPhone.device.
         # Kept across detach so a reconnect can still use it until the next scan refreshes it.
         self._device = device
         self._client: Optional[BleakClient] = None
@@ -130,7 +130,7 @@ class BleLink(nodemod.Link):
                 "[%s]   fix: have the app call requestMtu(247) when the Pi connects.",
                 self._node)
         else:
-            self._log.info("[%s] phone connected — Bluetooth will carry up to %d bytes "
+            self._log.info("[%s] phone connected - Bluetooth will carry up to %d bytes "
                            "per message, enough for a full SOS", self._node, self._max_write)
 
     def mark_subscribed(self) -> None:
@@ -138,7 +138,7 @@ class BleLink(nodemod.Link):
 
     async def flush_replay(self) -> None:
         """Deliver every frame that queued up while the phone was offline. Called right
-        after a (re)connect completes its subscribe. Stale frames are skipped — anything
+        after a (re)connect completes its subscribe. Stale frames are skipped - anything
         older than REPLAY_MAX_AGE_S is better recovered by the phone's own NACK loop than
         replayed out of context. The phone's dedup drops any frame it already has."""
         if not self._replay:
@@ -150,7 +150,7 @@ class BleLink(nodemod.Link):
                 batch.append((raw, msg_id))
         if not batch:
             return
-        self._log.info("[%s] phone is back — replaying %d held frame(s)",
+        self._log.info("[%s] phone is back - replaying %d held frame(s)",
                        self._node, len(batch))
         sent = 0
         for i, (raw, msg_id) in enumerate(batch):
@@ -160,24 +160,24 @@ class BleLink(nodemod.Link):
             if await self.send(raw, msg_id):
                 sent += 1
         if sent:
-            self._log.info("[%s] replay done — %d frame(s) delivered", self._node, sent)
+            self._log.info("[%s] replay done - %d frame(s) delivered", self._node, sent)
 
     def retarget(self, address: str, device: object = None) -> None:
         """Follow the phone to a new Bluetooth address after Android rotated its MAC.
 
         Without this, the reconnect loop keeps dialling the phone's OLD address forever
         (BleakDeviceNotFoundError / InProgress) while the phone is really advertising on a
-        fresh one — every delivery to it is then LOST. `_keep_connected` reads `self.address`
+        fresh one - every delivery to it is then LOST. `_keep_connected` reads `self.address`
         (and `self._device`) afresh each cycle, so updating them here makes the next
         reconnect land on the live address. No-op when the address has not changed."""
         # Always refresh the BLEDevice from the latest scan, even when the address is
-        # unchanged — a fresh handle is what makes the next connect land reliably.
+        # unchanged - a fresh handle is what makes the next connect land reliably.
         if device is not None:
             self._device = device
         if not address or address == self.address:
             return
         self._log.info("[%s] phone moved to a new Bluetooth address (%s -> %s); Android "
-                       "rotates it — reconnecting there", self._node, self.address, address)
+                       "rotates it - reconnecting there", self._node, self.address, address)
         self.address = address
         self.name = f"ble:{address}"
 
@@ -189,22 +189,22 @@ class BleLink(nodemod.Link):
     async def send(self, raw: bytes, msg_id: str, *,
                    repeats: int | None = None, post_delay_s: float = 0.0) -> bool:
         # BLE writes are ACKed at the ATT layer and point-to-point, so the LoRa airtime
-        # knobs (repeats / inter-chunk yield) do not apply — accept and ignore them so
+        # knobs (repeats / inter-chunk yield) do not apply - accept and ignore them so
         # MeshNode can call every link uniformly.
         del repeats, post_delay_s
         if not self.ready:
             # The phone is between BLE connections (Android drops/rotates routinely).
-            # Hold the frame and replay it the moment the link is back — this is what
+            # Hold the frame and replay it the moment the link is back - this is what
             # keeps a voice clip complete on the receiving phone instead of arriving
             # with holes it then has to NACK for one round-trip at a time.
             self._replay.append((raw, msg_id, time.monotonic()))
-            self._log.info("[%s] phone offline — holding %s to replay on reconnect "
+            self._log.info("[%s] phone offline - holding %s to replay on reconnect "
                            "(%d frame(s) waiting)", self._node, msg_id, len(self._replay))
             self._chain.emit(clog.DROP, self._node, radio=self.name, msg_id=msg_id,
                              size=len(raw), reason="queued_for_reconnect")
             return False
         if self._max_write and len(raw) > self._max_write:
-            self._log.error("[%s] LOST %s — it is %d bytes, but this phone's Bluetooth only "
+            self._log.error("[%s] LOST %s - it is %d bytes, but this phone's Bluetooth only "
                             "accepts %d bytes per message. Not delivered.",
                             self._node, msg_id, len(raw), self._max_write)
             self._chain.emit(clog.DROP, self._node, radio=self.name, msg_id=msg_id,
@@ -283,7 +283,7 @@ class BleManager:
         self._tasks: List[asyncio.Task] = []
         # BlueZ serialises scanning and connecting on the one adapter. Letting N
         # reconnect loops and the discovery scan all hit it at once just trades
-        # org.bluez.Error.InProgress failures around until nothing gets through —
+        # org.bluez.Error.InProgress failures around until nothing gets through -
         # scans starve, rotated phones are never re-found, and the mesh livelocks.
         # Every adapter-owning operation (scan, connect handshake) takes this lock;
         # an established connection does not hold it.
@@ -294,11 +294,11 @@ class BleManager:
         """Make BlueZ forget every device it merely remembers (Connected=False).
 
         BlueZ's device cache outlives Android's MAC rotation by design, so a scan
-        returns ghosts next to live phones: old addresses, old RSSI readings, and —
-        worst — the OLD ROLE BEACON of a phone whose operator has since switched roles.
+        returns ghosts next to live phones: old addresses, old RSSI readings, and -
+        worst - the OLD ROLE BEACON of a phone whose operator has since switched roles.
         A ghost that outranks the live entry sends a responder to the wrong radio or to
         a dead address (the -127 dBm entries), and whether the ghost or the live entry
-        wins a given scan is timing luck — which is exactly why delivery came and went.
+        wins a given scan is timing luck - which is exactly why delivery came and went.
         Purging remembered-but-unconnected devices right before the scan makes every
         result a phone the adapter can hear NOW. Best-effort: on any D-Bus hiccup we
         log and scan with the cache as-is. Runs under the adapter lock (caller holds it).
@@ -328,7 +328,7 @@ class BleManager:
                 if res.message_type != MessageType.ERROR:
                     removed += 1
         except Exception as e:
-            self._log.debug("could not clear the Bluetooth cache (%s: %s) — scanning "
+            self._log.debug("could not clear the Bluetooth cache (%s: %s) - scanning "
                             "with it as-is", type(e).__name__, e)
         finally:
             if bus is not None:
@@ -347,7 +347,7 @@ class BleManager:
 
         Two reasons not to trust the address here. BlueZ merges scan responses and
         cached properties, so a device can surface on an address the mesh app is not
-        actually serving on — connecting to it succeeds, then wedges on the first GATT
+        actually serving on - connecting to it succeeds, then wedges on the first GATT
         operation. And Android rotates its resolvable private address, so the same
         phone appears under a different MAC between runs. The node id in the beacon is
         the only stable identity we have.
@@ -365,15 +365,15 @@ class BleManager:
         for device, adv in found.values():
             if adv.rssi is None or adv.rssi <= STALE_RSSI_DBM:
                 # A cache ghost that survived the purge (e.g. it reappeared between the
-                # purge and the scan). Its address, beacon and ROLE are all historical —
+                # purge and the scan). Its address, beacon and ROLE are all historical -
                 # routing a phone by a ghost beacon is what sent responders to the wrong
                 # radio, or to a dead address, and made delivery a coin toss.
-                self._log.info("  ignoring %s — remembered by Bluetooth but not heard now "
+                self._log.info("  ignoring %s - remembered by Bluetooth but not heard now "
                                "(no live signal)", device.address)
                 continue
             advertised = {u.lower() for u in (adv.service_uuids or ())}
             if svc not in advertised:
-                self._log.info("  ignoring %s — it is not advertising the mesh app", device.address)
+                self._log.info("  ignoring %s - it is not advertising the mesh app", device.address)
                 continue
             beacon = {k.lower(): v for k, v in (adv.service_data or {}).items()}.get(svc)
             parsed = parse_beacon(bytes(beacon)) if beacon else None
@@ -422,7 +422,7 @@ class BleManager:
             if best is None or p.rssi > best.rssi:
                 by_node[p.node_id] = p
         if len(by_node) < len(phones):
-            self._log.info("  (%d addresses collapsed to %d phones by node id — "
+            self._log.info("  (%d addresses collapsed to %d phones by node id - "
                            "Android rotates its Bluetooth address)", len(phones), len(by_node))
 
         responders = [p for p in by_node.values() if p.role == "responder"]
@@ -430,7 +430,7 @@ class BleManager:
                         key=lambda p: p.node_id)
 
         # Do not gate the mesh on both roles being present. In particular, a victim's
-        # SOS must reach the command post while there are zero responders — that is the
+        # SOS must reach the command post while there are zero responders - that is the
         # moment at which dispatch is needed most. gateway.py keeps scanning after
         # startup and attaches responders whenever they appear.
         responders.sort(key=lambda p: p.rssi, reverse=True)
@@ -475,7 +475,7 @@ class BleManager:
             announced = False
             client: Optional[BleakClient] = None
             try:
-                # Connect by the scan's BLEDevice when we have one — a bare MAC string
+                # Connect by the scan's BLEDevice when we have one - a bare MAC string
                 # makes bleak re-discover the device first, which fails with
                 # BleakDeviceNotFoundError the moment Android rotates the address.
                 target = link._device or link.address
@@ -488,7 +488,7 @@ class BleManager:
                 if client.services.get_characteristic(link._char) is None:
                     raise RuntimeError(
                         f"{link.address} accepted the connection but does not serve the "
-                        "mesh characteristic — this is not the phone's mesh-app address. "
+                        "mesh characteristic - this is not the phone's mesh-app address. "
                         "Pin the right one under \"ble\".\"peers\" in config.json."
                     )
                 mtu = await negotiated_mtu(client, self._log, link._node)
@@ -498,7 +498,7 @@ class BleManager:
 
                 def handler(_char, data: bytearray) -> None:
                     # Hand off to the node's bounded intake queue (a fast, non-blocking
-                    # enqueue) rather than spawning a task per notification — an
+                    # enqueue) rather than spawning a task per notification - an
                     # unbounded task-per-frame was a DoS vector (mesh-transmission.md D1).
                     on_bytes(bytes(data))
 
@@ -510,7 +510,7 @@ class BleManager:
                     announced = True
                 self._log.info("[%s] now listening for messages from this phone", link._node)
                 # Deliver whatever queued while the phone was away (voice chunks
-                # especially — this is what keeps a clip complete on the phone).
+                # especially - this is what keeps a clip complete on the phone).
                 await link.flush_replay()
 
                 while client.is_connected:
@@ -524,7 +524,7 @@ class BleManager:
                 raise
             except asyncio.TimeoutError:
                 self._log.warning(
-                    "[%s] %s connected but never answered the subscribe within %.0fs — "
+                    "[%s] %s connected but never answered the subscribe within %.0fs - "
                     "dropping it rather than waiting for the link to time out",
                     link._node, link.address, GATT_OP_TIMEOUT_S)
             except Exception as e:
@@ -532,7 +532,7 @@ class BleManager:
                                   link._node, link.address, type(e).__name__, e)
                 if "not found" in str(e).lower():
                     # The address is gone (Android rotated it, or the cache purge swept
-                    # it). Redialling faster won't bring it back — only the next scan's
+                    # it). Redialling faster won't bring it back - only the next scan's
                     # retarget will. Go straight to the slowest backoff rung so this
                     # loop stops hammering the adapter in the meantime.
                     attempt = max(attempt, len(backoff) - 1)

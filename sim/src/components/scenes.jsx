@@ -1,9 +1,9 @@
 /**
- * The story scenes — widescreen night vignettes that carry the film while the
+ * The story scenes - widescreen night vignettes that carry the film while the
  * map drifts underneath. Pure SVG + CSS, no assets, fully offline.
  *
  * One shared palette, four parallax depths, and every disaster plays ONCE and
- * holds its aftermath (fill-mode: forwards) — a landslide is not a loop.
+ * holds its aftermath (fill-mode: forwards) - a landslide is not a loop.
  * Each scene scopes its keyframes with a prefix (rn-, sl-, pc-, tw-, ms-).
  */
 
@@ -141,7 +141,7 @@ function Vignette({ id }) {
   return <rect width={W} height={H} fill={`url(#${id}-vig)`} pointerEvents="none" />
 }
 
-/** 02:00 — the rain will not stop -------------------------------------- */
+/** 02:00 - the rain will not stop -------------------------------------- */
 
 function RainScene() {
   const id = 'rn'
@@ -189,7 +189,7 @@ function RainScene() {
         {/* the ridge answers the lightning */}
         <path className="rn-ridgeflash" d="M0 176 Q 120 128 250 158 T 520 150 T 840 168" fill="none" stroke="#7fa8cd" strokeWidth="1.6" />
 
-        {/* the village holding on — a few warm windows in the dark */}
+        {/* the village holding on - a few warm windows in the dark */}
         <g>
           <House x={430} y={300} litClass="rn-win" />
           <House x={472} y={306} s={0.85} litClass="rn-win" />
@@ -234,7 +234,7 @@ function RainScene() {
   )
 }
 
-/** 03:10 — the hillside gives way --------------------------------------- */
+/** 03:10 - the hillside gives way --------------------------------------- */
 
 function LandslideScene() {
   const id = 'sl'
@@ -349,7 +349,7 @@ function LandslideScene() {
   )
 }
 
-/** 03:25 — the power goes out ------------------------------------------- */
+/** 03:25 - the power goes out ------------------------------------------- */
 
 function PowerCutScene() {
   const id = 'pc'
@@ -421,7 +421,7 @@ function PowerCutScene() {
           <circle cx="288" cy="171" r="2.6" fill="#fff2d0" stroke="none" />
         </g>
 
-        {/* the village grid below — then, cluster by cluster, the dark */}
+        {/* the village grid below - then, cluster by cluster, the dark */}
         <g>
           {[
             { x: 150, y: 316, w: 'pc-w1' }, { x: 196, y: 322, w: 'pc-w1' }, { x: 238, y: 318, w: 'pc-w2' },
@@ -441,7 +441,7 @@ function PowerCutScene() {
               </g>
             </g>
           ))}
-          {/* one house on inverter power — it holds a little longer */}
+          {/* one house on inverter power - it holds a little longer */}
           <g className="pc-batt">
             <rect x="441" y="316" width="6" height="6" fill="#bfe3ff" />
           </g>
@@ -451,7 +451,7 @@ function PowerCutScene() {
         <Rain layer="far" count={14} className="pc-rain" />
         <Rain layer="mid" count={10} className="pc-rain" />
 
-        {/* the dark settling over everything — but the moon stays above it */}
+        {/* the dark settling over everything - but the moon stays above it */}
         <rect className="pc-gloom" width={W} height={H} fill="#010409" />
         <Moon id={id} x={112} y={58} r={17} />
       </g>
@@ -460,7 +460,7 @@ function PowerCutScene() {
   )
 }
 
-/** 03:40 — towers down, no signal --------------------------------------- */
+/** 03:40 - towers down, no signal --------------------------------------- */
 
 function TowerScene() {
   const id = 'tw'
@@ -497,7 +497,7 @@ function TowerScene() {
         <Moon id={id} x={296} y={58} r={15} />
         <Hills id={id} />
 
-        {/* the tower on its ridge — the tallest thing for ten kilometres */}
+        {/* the tower on its ridge - the tallest thing for ten kilometres */}
         <g transform="translate(500,262)">
           {/* lattice mast */}
           <g stroke="#2b3f52" strokeWidth="2.4" fill="none">
@@ -513,7 +513,7 @@ function TowerScene() {
             <rect x="-3" y="-172" width="6" height="24" rx="1.5" />
             <ellipse cx="-14" cy="-118" rx="7" ry="9" transform="rotate(-24 -14 -118)" fill="#243748" />
           </g>
-          {/* aviation beacon — the only light that survives the night */}
+          {/* aviation beacon - the only light that survives the night */}
           <circle className="tw-beacon" cy="-192" r="3.4" fill={P.red} />
           <circle className="tw-beacon" cy="-192" r="8" fill={P.red} opacity="0.25" filter={`url(#${id}-blur6)`} />
 
@@ -561,7 +561,7 @@ function TowerScene() {
   )
 }
 
-/** 03:41 — the mesh wakes up -------------------------------------------- */
+/** 03:41 - the mesh wakes up -------------------------------------------- */
 
 function LoraNode({ x, y, s = 1, wake = 0.8 }) {
   return (

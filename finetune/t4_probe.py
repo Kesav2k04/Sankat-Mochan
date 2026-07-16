@@ -5,7 +5,7 @@ GPU capability + memory-attribution probe for the Sahayak fine-tune.
 Answers, empirically on the actual card, two questions:
   1. What numeric / quantization formats does THIS GPU support (fp32/fp16/bf16, int8
      tensor-core matmul, bitsandbytes nf4/fp4 4-bit, int8 weight quant)?
-  2. Why does Gemma 4 E4B OOM on a T4 even at 4-bit — i.e. show that the cost is the
+  2. Why does Gemma 4 E4B OOM on a T4 even at 4-bit - i.e. show that the cost is the
      fp32 activation/conv path, which weight quantization does NOT shrink.
 
 Run it on Kaggle (or any CUDA box) as a cell or `python t4_probe.py` and read the summary.
@@ -44,7 +44,7 @@ def main() -> int:
 
     print("torch", torch.__version__, "| CUDA", torch.version.cuda)
     if not torch.cuda.is_available():
-        print("No CUDA GPU visible — run this on the GPU accelerator.")
+        print("No CUDA GPU visible - run this on the GPU accelerator.")
         return 1
 
     name = torch.cuda.get_device_name(0)

@@ -1,17 +1,17 @@
 """
 Two logs, two audiences.
 
-`gateway.log`  — human-readable narrative at whatever level you set (DEBUG..ERROR).
-`chain.jsonl`  — one JSON object per hop event, machine-readable, append-only.
+`gateway.log`  - human-readable narrative at whatever level you set (DEBUG..ERROR).
+`chain.jsonl`  - one JSON object per hop event, machine-readable, append-only.
 
 The chain log is the *evidence* that a message crossed the air rather than being
 shuffled between two objects inside one Python process. For every envelope id you
 get a LORA_TX row on one radio and a LORA_RX row on the other carrying:
 
-  * `sha`        — sha256 of the exact payload bytes, taken on both sides
-  * `rssi_dbm`   — read out of the receiving chip's RegPktRssiValue
-  * `snr_db`     — read out of RegPktSnrValue
-  * `airtime_ms` — measured wall time between entering TX and TxDone firing
+  * `sha`        - sha256 of the exact payload bytes, taken on both sides
+  * `rssi_dbm`   - read out of the receiving chip's RegPktRssiValue
+  * `snr_db`     - read out of RegPktSnrValue
+  * `airtime_ms` - measured wall time between entering TX and TxDone firing
 
 rssi/snr are produced by the SX1278's own demodulator. There is no code path that
 invents them, and no way to obtain them without a real frame arriving over RF.

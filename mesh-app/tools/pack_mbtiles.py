@@ -4,7 +4,7 @@ Pack a directory of z/x/y.png raster tiles into a spec-compliant MBTiles SQLite 
 for the mesh app's osmdroid OfflineTileProvider.
 
 The tiles are pre-rendered from the command post's exact Protomaps "light" vector style
-(see command-post/static/_render/) so the phone map matches the command post look —
+(see command-post/static/_render/) so the phone map matches the command post look -
 same cream earth, pastel parks, blue water. XYZ input rows are converted to the MBTiles
 TMS convention (tile_row = 2^z - 1 - y).
 
@@ -23,7 +23,7 @@ from PIL import Image
 def optimize_png(raw: bytes) -> bytes:
     """Quantize a 24-bit map tile to a 256-colour palette PNG. Map tiles use a small palette
     (earth, parks, water, roads, labels), so this shrinks each tile ~4x with no visible loss,
-    keeping the bundled archive small — same size class as the previous CARTO tiles."""
+    keeping the bundled archive small - same size class as the previous CARTO tiles."""
     im = Image.open(io.BytesIO(raw)).convert("RGB")
     pal = im.quantize(colors=256, method=Image.Quantize.FASTOCTREE)
     out = io.BytesIO()

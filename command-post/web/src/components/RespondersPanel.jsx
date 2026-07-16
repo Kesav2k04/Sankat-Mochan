@@ -3,7 +3,7 @@ import { fmtWait } from "@/lib/urgency";
 const DOT = { available: "#2e7d32", on_task: "#946200", offline: "#9e9689" };
 const LABEL = { available: "AVAILABLE", on_task: "ON TASK", offline: "OFFLINE" };
 
-// C4 responder registry — compact roster with status dots + staleness.
+// C4 responder registry - compact roster with status dots + staleness.
 export default function RespondersPanel({ responders }) {
   const avail = responders.filter((r) => r.status === "available").length;
   return (

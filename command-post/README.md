@@ -1,4 +1,4 @@
-# Sankat-Mochan — Command Post ("AI PC")
+# Sankat-Mochan - Command Post ("AI PC")
 
 The laptop-side dashboard that SOS envelopes land on. Receives them (from the
 LoRa gateway via `POST /sos`, or the test button), runs **AI triage**
@@ -36,7 +36,7 @@ gitignored). To require an external PostgreSQL instead, set `DATABASE_URL` and
 
 ## AI backend (any OpenAI-compatible server)
 
-Set in `.env` — swap freely, no code change:
+Set in `.env` - swap freely, no code change:
 
 | backend   | LLM_BASE_URL                | notes                        |
 |-----------|-----------------------------|------------------------------|

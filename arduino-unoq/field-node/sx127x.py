@@ -69,7 +69,7 @@ REG_PA_DAC = 0x4D
 # RegOpMode
 MODE_SLEEP, MODE_STDBY, MODE_TX, MODE_CAD, MODE_RX_CONT = 0x00, 0x01, 0x03, 0x07, 0x05
 LONG_RANGE_MODE = 0x80
-OPMODE_RESET_VALUE = 0x09  # FSK standby, low-frequency mode — the chip's power-on state
+OPMODE_RESET_VALUE = 0x09  # FSK standby, low-frequency mode - the chip's power-on state
 
 # RegIrqFlags
 IRQ_RX_TIMEOUT = 0x80
@@ -273,7 +273,7 @@ class Radio:
         # OCP must track the PA level: the +20 dBm mode draws ~120 mA, so the 100 mA
         # trim that suits <=17 dBm would clip the PA mid-burst and brown the radio out
         # (the "fell out of LoRa mode" failure the watchdog chases). Semtech's SX1278
-        # datasheet 5.4.3 — and the Arduino LoRa library — use 140 mA there; match them.
+        # datasheet 5.4.3 - and the Arduino LoRa library - use 140 mA there; match them.
         if dbm > 17:
             self._write(REG_PA_DAC, 0x87)          # +20 dBm mode
             self._write(REG_PA_CONFIG, 0x80 | 0x70 | 0x0F)
@@ -300,7 +300,7 @@ class Radio:
         return RSSI_OFFSET_HF if self.cfg.frequency_hz >= HF_BAND_START_HZ else RSSI_OFFSET_LF
 
     def channel_rssi_dbm(self) -> int:
-        """Instantaneous RSSI — used for carrier sense before transmitting."""
+        """Instantaneous RSSI - used for carrier sense before transmitting."""
         return self._rssi_offset + self._read(REG_RSSI)
 
     def _packet_rssi_dbm(self, snr_db: float) -> int:
@@ -363,7 +363,7 @@ class Radio:
             return self._read(REG_OP_MODE)
 
     def in_lora_mode(self) -> bool:
-        """False if the chip has fallen back to FSK — i.e. it reset behind our back.
+        """False if the chip has fallen back to FSK - i.e. it reset behind our back.
 
         This matters more than it looks. RegIrqFlags (0x12) addresses a *different*
         register in FSK mode, and its bits read as set, so `send()` sees TxDone
@@ -391,7 +391,7 @@ class Radio:
         with self._lock:
             if not self.in_lora_mode():
                 raise LoraError(
-                    f"radio '{self.name}' is no longer in LoRa mode — it reset behind our "
+                    f"radio '{self.name}' is no longer in LoRa mode - it reset behind our "
                     "back. Nothing it 'sends' would leave the antenna."
                 )
             self._tx_active = True
@@ -460,7 +460,7 @@ class Radio:
     def _rx_loop(self) -> None:
         while not self._stop.is_set():
             # Poll the pin lock-free; only contend for SPI once there's really an IRQ.
-            # Skip while a transmit owns the radio — DIO0 means TxDone there, not RxDone.
+            # Skip while a transmit owns the radio - DIO0 means TxDone there, not RxDone.
             if self._tx_active or not GPIO.input(self.dio0_gpio):
                 time.sleep(0.001)
                 continue

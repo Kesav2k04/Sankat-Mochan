@@ -48,7 +48,7 @@ _PUNCT_RE = re.compile(r"[^\w\s]", flags=re.UNICODE)
 
 
 def normalize(text: str) -> str:
-    """Lowercase, strip punctuation, sort tokens — the exact fingerprint form the spec §8.2
+    """Lowercase, strip punctuation, sort tokens - the exact fingerprint form the spec §8.2
        writes to fingerprints.txt (id<TAB>normalized). The sort is for that on-disk format /
        stable equality; token_overlap() below is order-independent, so it doesn't rely on it."""
     cleaned = _PUNCT_RE.sub(" ", text.lower())
@@ -56,7 +56,7 @@ def normalize(text: str) -> str:
 
 
 def token_overlap(a: str, b: str) -> float:
-    """Jaccard overlap of token sets — order-independent; cheap near-dup signal."""
+    """Jaccard overlap of token sets - order-independent; cheap near-dup signal."""
     sa, sb = set(a.split()), set(b.split())
     if not sa or not sb:
         return 0.0
@@ -209,7 +209,7 @@ def validate(path: Path, fingerprints_path: Path | None, allow_no_prompt_check: 
         if len(errors) > 200:
             print(f"  … and {len(errors) - 200} more")
         return 1
-    print("OK — batch passes mechanical validation.")
+    print("OK - batch passes mechanical validation.")
     return 0
 
 

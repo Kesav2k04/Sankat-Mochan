@@ -9,15 +9,15 @@ Fine-tune **Gemma 4 (E2B/E4B)** into the offline emergency-response assistant, p
 | `validate_dataset.py` | Mechanical validator for a generated batch (spec §8.1 step 2). Exit 0 = clean. |
 
 Everything here is **Apache-2.0**. The Gemma **weights** are gated under Google's Gemma Terms of
-Use (not OSI-approved) — accept the terms on Hugging Face and set `HF_TOKEN` before training.
+Use (not OSI-approved) - accept the terms on Hugging Face and set `HF_TOKEN` before training.
 
 ## Cross-platform (Windows / Linux / Surface, x86-64 or ARM)
 
 The trainer detects your hardware and picks a backend automatically (`--backend auto`):
 
-- **NVIDIA CUDA present →** Unsloth QLoRA — the fast, spec-recommended path.
+- **NVIDIA CUDA present →** Unsloth QLoRA - the fast, spec-recommended path.
 - **No CUDA (CPU / Apple MPS / Windows-on-ARM / Surface) →** a transformers + PEFT LoRA fallback.
-  It *runs everywhere* so you can validate the whole pipeline on a laptop, but it's slow — do the
+  It *runs everywhere* so you can validate the whole pipeline on a laptop, but it's slow - do the
   real run on a CUDA GPU.
 
 All paths use `pathlib`, so the identical command line works in PowerShell, bash, or zsh.
@@ -27,7 +27,7 @@ All paths use `pathlib`, so the identical command line works in PowerShell, bash
 ```bash
 # 1) Install torch for YOUR platform first (see https://pytorch.org). Then:
 pip install -r requirements.txt
-# 2) Gemma is gated — accept its terms on HF, then:
+# 2) Gemma is gated - accept its terms on HF, then:
 #    PowerShell:  $env:HF_TOKEN = "hf_..."
 #    bash/zsh:    export HF_TOKEN=hf_...
 ```
@@ -54,7 +54,7 @@ python sahayak_finetune.py \
 ```
 
 Notes:
-- `--model` — the spec calls the target "Gemma 4 E4B"; pass the E2B id to train the smaller one.
+- `--model` - the spec calls the target "Gemma 4 E4B"; pass the E2B id to train the smaller one.
   Override with any Unsloth/HF Gemma id you've been granted.
 - Loss is computed on assistant turns only (`train_on_responses_only`), vision layers stay frozen.
 - **Whatever chat template you train with must match on-device inference**, or quality craters
@@ -64,14 +64,14 @@ Notes:
 
 Run `python sahayak_finetune.py --help` for every knob (epochs, lr, LoRA rank, batch size, …).
 
-## Train E4B on Kaggle (recommended — free GPU T4 ×2)
+## Train E4B on Kaggle (recommended - free GPU T4 ×2)
 
 E4B QLoRA needs ~10 GB VRAM, which a Kaggle **T4** (16 GB, compute capability 7.5) fits but an
 8 GB laptop card does not. Use the ready-to-run notebook:
 
 **[`kaggle_gemma4_e4b_finetune.ipynb`](kaggle_gemma4_e4b_finetune.ipynb)**
 
-It installs the stack, **guards the GPU** (hard-fails on a P100 — cc 6.0 < 7.0, where Unsloth
+It installs the stack, **guards the GPU** (hard-fails on a P100 - cc 6.0 < 7.0, where Unsloth
 silently drops to the maskless fallback), reads `HF_TOKEN` from **Kaggle Secrets** (never a cell),
 runs the validator as a **hard gate**, trains E4B with the best-accuracy settings
 (r=32 / α=32, lr 2e-4, 3 epochs, seq-len 1024), exports merged-fp16 + GGUF, and uploads the

@@ -1,19 +1,19 @@
-# Sahayak on the mobile NPU — llama.cpp / Hexagon (Snapdragon 8 Elite Gen 5)
+# Sahayak on the mobile NPU - llama.cpp / Hexagon (Snapdragon 8 Elite Gen 5)
 
 Run the Sahayak emergency assistant on the **Hexagon NPU** of the OnePlus 15
 (Snapdragon 8 Elite Gen 5) using **llama.cpp** end to end. The finetune stays as **Gemma 4
-E2B** — no re-base. The route is a **custom Q4_0 GGUF** on llama.cpp's Snapdragon Hexagon
+E2B** - no re-base. The route is a **custom Q4_0 GGUF** on llama.cpp's Snapdragon Hexagon
 backend (`GGML_HEXAGON=ON`); GenieX can run the same GGUF as an alternative front-end.
 
 > Not using Qualcomm AI Hub's quantize/compile. Gemma has no QNN compile on AI Hub
 > (`gemma_4_e2b_it` is `skip_export: true`, `geniex_llamacpp` runtime only). llama.cpp is the
 > path that puts *your finetuned Gemma* on the NPU. (An AI-Hub QNN path exists only if you
-> re-base to Qwen3-4B — kept for reference in `alt-aihub-qwen/`.)
+> re-base to Qwen3-4B - kept for reference in `alt-aihub-qwen/`.)
 
 ## The one rule: quantize to Q4_0, not Q4_K_M
 
 The Hexagon backend (HTP) wants **Q4_0** or **Q8_0**. Qualcomm's GenieX notes: *"Q4_K_M is a
-suboptimal quant for HTP — it prefers Q4_0 / Q8_0."* llama.cpp's Snapdragon docs use Q4_0
+suboptimal quant for HTP - it prefers Q4_0 / Q8_0."* llama.cpp's Snapdragon docs use Q4_0
 exclusively and repack it for the NPU internally. So the whole pipeline targets **Q4_0**.
 
 ## Model facts (confirmed from `kesav2k04/sahayak-e2b`)
@@ -23,7 +23,7 @@ exclusively and repack it for the NPU internally. So the whole pipeline targets 
   supports it (public Gemma-4-E2B GGUFs already exist). We convert the **text tower** only;
   vision/audio aren't needed for the assistant.
 - LoRA: r=32 / α=32 on the language tower (`q/k/v/o/gate/up/down_proj`); vision/audio frozen.
-- **Merged weights already published** in the repo under `merged/` — no re-merge/re-train.
+- **Merged weights already published** in the repo under `merged/` - no re-merge/re-train.
 
 ## Pipeline
 
@@ -37,9 +37,9 @@ deploy/npu/eval_gguf.py                   host-side quality review (DOCS.md #6)
 deploy/npu/run_gemma_npu.sh               adb push + llama.cpp on D=HTP0  (Hexagon NPU)
 ```
 
-## Step 0 — build llama.cpp
+## Step 0 - build llama.cpp
 
-> **Already installed on the X Elite dev box** at `C:\Users\qcwor\llama.cpp` — prebuilt
+> **Already installed on the X Elite dev box** at `C:\Users\qcwor\llama.cpp` - prebuilt
 > win-arm64 binaries (build b9966: `llama-quantize/llama-imatrix/llama-cli` under
 > `build\bin\`) plus the Python converter deps (torch 2.11.0+cpu, transformers, gguf) in the
 > Python 3.12 at `...\Programs\Python\Python312`. Gemma 4 conversion support verified
@@ -55,7 +55,7 @@ win-arm64 release (no compiler needed); the phone still needs the Android Snapdr
 git clone https://github.com/ggml-org/llama.cpp && cd llama.cpp     # MIT
 pip install -r requirements/requirements-convert_hf_to_gguf.txt      # converter deps
 
-# Host build (CPU is fine — convert & quantize are CPU ops):
+# Host build (CPU is fine - convert & quantize are CPU ops):
 cmake -B build && cmake --build build -j
 
 # Android Snapdragon build (Hexagon NPU backend), from the Android NDK toolchain:
@@ -63,15 +63,15 @@ cmake --preset arm64-android-snapdragon-release -B build-snapdragon   # sets GGM
 cmake --build build-snapdragon
 ```
 
-## Step 1 — get the merged weights
+## Step 1 - get the merged weights
 
 ```bash
-# Gated repo — use your HF token (accept Gemma terms on HF first). Do NOT hardcode it.
+# Gated repo - use your HF token (accept Gemma terms on HF first). Do NOT hardcode it.
 huggingface-cli download kesav2k04/sahayak-e2b --include 'merged/*' --local-dir out/sahayak-e2b
 # → out/sahayak-e2b/merged/{model.safetensors,config.json,chat_template.jinja,tokenizer*}
 ```
 
-## Step 2 — convert + quantize to Q4_0
+## Step 2 - convert + quantize to Q4_0
 
 ```bash
 python deploy/npu/build_gemma_gguf.py \
@@ -87,7 +87,7 @@ python deploy/npu/build_gemma_gguf.py \
 The importance matrix is built from `finetune/data/train.jsonl`, so the 4-bit encodings are
 calibrated on the emergency-response distribution rather than generic text.
 
-## Step 3 — review the quantized model (do not skip)
+## Step 3 - review the quantized model (do not skip)
 
 ```bash
 python deploy/npu/eval_gguf.py \
@@ -99,7 +99,7 @@ python deploy/npu/eval_gguf.py \
 Prints model answer vs reference per holdout prompt, auto-flagging empty/degraded outputs.
 A human confirms first-aid answers are still correct and safe before shipping (DOCS.md #6).
 
-## Step 4 — run on the phone (Hexagon NPU)
+## Step 4 - run on the phone (Hexagon NPU)
 
 ```bash
 export LLAMA_CPP=/path/to/llama.cpp
@@ -119,7 +119,7 @@ GGML_HEXAGON_VERBOSE=1 bash deploy/npu/run_gemma_npu.sh <gguf> "test"
 ```
 
 The Hexagon backend has limited op coverage; unsupported ops fall back to CPU. Check the log
-shows layers on HTP. Also benchmark GenieX's **default hybrid** (NPU+GPU+CPU) — Qualcomm has
+shows layers on HTP. Also benchmark GenieX's **default hybrid** (NPU+GPU+CPU) - Qualcomm has
 measured it faster than pinned-NPU on some models (~90 vs ~60 tok/s prefill).
 
 ## Files
@@ -133,6 +133,6 @@ measured it faster than pinned-NPU on some models (~90 vs ~60 tok/s prefill).
 
 ## Sources (all open-license, per DOCS.md #3)
 
-- llama.cpp Snapdragon/Hexagon backend — https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/snapdragon/README.md
-- llama.cpp quantize tool — https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md
-- Qualcomm GenieX (custom GGUF, NPU/GPU/CPU, Q4_0 for HTP) — https://github.com/qualcomm/GenieX
+- llama.cpp Snapdragon/Hexagon backend - https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/snapdragon/README.md
+- llama.cpp quantize tool - https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md
+- Qualcomm GenieX (custom GGUF, NPU/GPU/CPU, Q4_0 for HTP) - https://github.com/qualcomm/GenieX

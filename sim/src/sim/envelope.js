@@ -1,5 +1,5 @@
 /**
- * CONTRACT 1 — the SOS envelope, as it goes on the air.
+ * CONTRACT 1 - the SOS envelope, as it goes on the air.
  *
  * A JS port of `pi-code/envelope.py` (which is itself a port of the Android
  * `model/SosMessage.kt`). Same short keys, same 244-byte budget, same
@@ -43,7 +43,7 @@ export function toWire(e) {
 
 /**
  * UTF-8 JSON, <= MAX_BYTES. Only the free-text gist is trimmed, one CHARACTER
- * at a time — the Kotlin original drops a byte count from a character string,
+ * at a time - the Kotlin original drops a byte count from a character string,
  * which throws away the whole gist for Tamil/Hindi. envelope.py fixed that; so
  * does this.
  */
@@ -62,7 +62,7 @@ export function encode(e) {
 /**
  * Short content hash, logged at TX and again at RX so a reader can confirm the
  * exact bytes crossed the air. The real gateway uses sha256[:12]; the browser's
- * only SHA-256 is async, so this is FNV-1a/64 — same purpose, different function.
+ * only SHA-256 is async, so this is FNV-1a/64 - same purpose, different function.
  */
 export function digest(bytes) {
   let h = 0xcbf29ce484222325n

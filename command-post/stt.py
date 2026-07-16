@@ -1,5 +1,5 @@
 """
-Speech-to-text for the command post — AI4Bharat IndicConformer-600M (MIT).
+Speech-to-text for the command post - AI4Bharat IndicConformer-600M (MIT).
 
 Chosen by benchmark (see stt_bench.py / FLEURS): ~6.8% CER and ~500 ms vs
 Whisper's ~52% CER / ~40 s on Indian languages. Runs on CPU, so it does NOT
@@ -8,7 +8,7 @@ consume the NPU (which stays free for the triage LLM).
 The model is loaded ONCE, lazily, on the first transcription (it's a heavy
 404-file bundle). Callers pass the language code; if omitted we fall back to
 DEFAULT_LANG. (A VoxLingua107 LID front-end for true auto-detect is a planned
-add-on — see research notes in the chat / PLAN.md.)
+add-on - see research notes in the chat / PLAN.md.)
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import time
 
 # Windows has no unprivileged symlinks, so the HuggingFace cache's default symlink
 # strategy fails mid-download with "[WinError 1314] A required privilege is not held
-# by the client" — the model never finishes loading and every transcription errors.
+# by the client" - the model never finishes loading and every transcription errors.
 # Tell hf_hub to COPY blobs into the snapshot instead (costs a little disk, works
 # without Developer Mode / admin). Must be set BEFORE huggingface_hub is imported;
 # transformers is imported lazily below, so this module-scope set wins. setdefault
@@ -36,10 +36,10 @@ SUPPORTED = {
     "hi", "bn", "ta", "te", "kn", "ml", "mr", "gu", "pa", "as", "or", "ur",
 }
 # Candidates the on-device language-ID sweeps over, most-likely first (ties break
-# on this order). All 12 are cheap to score — see identify_language().
+# on this order). All 12 are cheap to score - see identify_language().
 LID_CANDIDATES = ["hi", "ur", "bn", "ta", "te", "kn", "ml", "mr", "gu", "pa", "or", "as"]
 # How close Hindi's LID score must be to Urdu's to override to Hindi. Hindi and Urdu
-# are the same spoken language (Hindustani) — the acoustic model can't separate them,
+# are the same spoken language (Hindustani) - the acoustic model can't separate them,
 # so LID flips between the two. India-first, we keep Devanagari Hindi on a near-tie.
 # CALIBRATED on FLEURS (lid_gap.py, 30 hi/ur clips, 2026-07-12): our peak-confidence
 # scores are ~10× smaller than the mobile decoder's, so mobile's 0.15 flipped ALL Urdu
@@ -73,7 +73,7 @@ def warmup(retries: int = 2, backoff_s: float = 3.0) -> bool:
     from a background thread at startup; returns True once the model is hot.
 
     The ONNX session init can transiently fail with an allocator error ("bad
-    allocation") when the box is briefly under memory pressure at startup — e.g.
+    allocation") when the box is briefly under memory pressure at startup - e.g.
     another process loading a model, or a heavy one-off job (the FLEURS download reads
     a whole ~700 MB parquet shard into RAM). That's recoverable once memory frees, so
     we retry a couple of times with a GC + short backoff between attempts before giving
@@ -83,13 +83,13 @@ def warmup(retries: int = 2, backoff_s: float = 3.0) -> bool:
         try:
             model = _ensure_model()
             import torch
-            # 0.5 s of silence @16 kHz — exercises encode + CTC so the sessions are warm.
+            # 0.5 s of silence @16 kHz - exercises encode + CTC so the sessions are warm.
             try:
                 model(torch.zeros(1, 8000, dtype=torch.float32), DEFAULT_LANG, DEFAULT_MODE)
-            except Exception:  # noqa: BLE001 — load succeeded; the dummy pass is best-effort
+            except Exception:  # noqa: BLE001 - load succeeded; the dummy pass is best-effort
                 pass
             return True
-        except Exception as e:  # noqa: BLE001 — startup must never crash on a warm-up
+        except Exception as e:  # noqa: BLE001 - startup must never crash on a warm-up
             print(f"[stt] warmup attempt {attempt}/{retries + 1} failed: "
                   f"{type(e).__name__}: {e}")
             gc.collect()
@@ -118,7 +118,7 @@ _ffmpeg_present: bool | None = None  # cached availability probe (see transcode_
 def transcode_for_web(data: bytes) -> tuple[bytes, str] | None:
     """Transcode raw mesh audio (AMR-NB in 3GP, which browsers cannot decode) into a
     universally-playable WAV (PCM s16le, mono, 16 kHz). Returns (bytes, content_type) or
-    None if ffmpeg is unavailable / the input can't be decoded — callers then keep the raw
+    None if ffmpeg is unavailable / the input can't be decoded - callers then keep the raw
     clip and surface a quiet "not playable" status (DOCS.md #10), never a crash.
 
     Security (DOCS.md #8): the input is attacker-influenced bytes. We invoke ffmpeg with
@@ -138,7 +138,7 @@ def transcode_for_web(data: bytes) -> tuple[bytes, str] | None:
     try:
         proc = subprocess.run(cmd, input=bytes(data), stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, timeout=15)
-    except Exception as exc:  # noqa: BLE001 — transcode failure must degrade, not crash
+    except Exception as exc:  # noqa: BLE001 - transcode failure must degrade, not crash
         print(f"[stt] web transcode failed: {type(exc).__name__}")
         return None
     if proc.returncode != 0 or not proc.stdout:
@@ -171,19 +171,19 @@ def load_audio(path_or_bytes) -> np.ndarray:
     return np.ascontiguousarray(data)
 
 
-_lid_cols_cache = None  # {lang: (script_col_tensor, blank_full_col)} — constant, built once
+_lid_cols_cache = None  # {lang: (script_col_tensor, blank_full_col)} - constant, built once
 
 
 def _lid_cols(model):
     """Per-language full-vocab column indices for language ID, built once and cached.
 
     model.language_masks[lang] is a BOOLEAN array over the full 5633-token vocab (see
-    model_onnx.py: `logprobs[:, :, mask]`). Exactly 257 are True per language — 256
+    model_onnx.py: `logprobs[:, :, mask]`). Exactly 257 are True per language - 256
     script tokens + one shared CTC blank. Returns {lang: (all_cols, blank_pos)} where
     all_cols is a LongTensor of those 257 full-vocab column indices in mask order and
     blank_pos is the position of the blank WITHIN them (config.BLANK_ID = 256, last).
-    Scoring renormalizes the softmax over exactly these 257 columns — the same
-    per-language restriction the mobile decoder uses (CtcDecoder.pickLanguage) — so a
+    Scoring renormalizes the softmax over exactly these 257 columns - the same
+    per-language restriction the mobile decoder uses (CtcDecoder.pickLanguage) - so a
     language's score is isolated from probability mass in other languages' columns."""
     global _lid_cols_cache
     if _lid_cols_cache is not None:
@@ -201,8 +201,8 @@ def _lid_cols(model):
 
 def _identify_from_wav(model, wav, candidates: list[str] | None = None) -> dict:
     """Language identification WITHOUT a second model, ported to match the mobile
-    decoder (CtcDecoder.pickLanguage — 100% on FLEURS). IndicConformer has no
-    auto-detect (indic_stt.py), but its acoustic encoder is language-independent —
+    decoder (CtcDecoder.pickLanguage - 100% on FLEURS). IndicConformer has no
+    auto-detect (indic_stt.py), but its acoustic encoder is language-independent -
     the language only picks a vocab MASK at the CTC decode step (model_onnx.py
     ::_ctc_decode). So we encode once, run the shared CTC head once, then for each
     candidate ask: "assuming this language, how confidently does each frame decode to
@@ -211,8 +211,8 @@ def _identify_from_wav(model, wav, candidates: list[str] | None = None) -> dict:
     Per candidate we renormalize the softmax over ONLY that language's 257 columns and
     average the top token's log-prob over the frames where that language emits a
     non-blank token. The correct language produces sharp, low-entropy CTC spikes (high
-    top log-prob); a wrong script hedges (low). This PEAK-CONFIDENCE metric — plus
-    per-language speech gating and a Hindi/Urdu (Hindustani) margin — replaced an
+    top log-prob); a wrong script hedges (low). This PEAK-CONFIDENCE metric - plus
+    per-language speech gating and a Hindi/Urdu (Hindustani) margin - replaced an
     earlier full-vocab probability-MASS metric that rewarded diffuse mass, normalized
     globally (so scores leaked across languages), and had no hi/ur guard. Returns
     {"lang", "scores"}; degrades to DEFAULT_LANG on API drift.
@@ -242,7 +242,7 @@ def _identify_from_wav(model, wav, candidates: list[str] | None = None) -> dict:
         if best == "ur" and "hi" in scores and scores["hi"] >= scores["ur"] - HINDUSTANI_MARGIN:
             best = "hi"
         return {"lang": best, "scores": scores}
-    except Exception as e:  # noqa: BLE001 — LID must never crash; degrade to default
+    except Exception as e:  # noqa: BLE001 - LID must never crash; degrade to default
         print(f"[stt] language id failed, using {DEFAULT_LANG}: {type(e).__name__}: {e}")
         return {"lang": DEFAULT_LANG, "scores": {}}
 
@@ -264,7 +264,7 @@ def transcribe(path_or_bytes, lang: str | None = None, mode: str = DEFAULT_MODE)
     """Detect-then-transcribe, mirroring the mobile pipeline: if the caller already
     identified the language (the phone tags each clip with the mesh `ln` field) we
     trust that hint; otherwise we identify the language FROM THE AUDIO first, then
-    transcribe with it — because IndicConformer needs the language and blindly
+    transcribe with it - because IndicConformer needs the language and blindly
     defaulting to Hindi mistranscribes every other language.
 
     Returns {text, lang, mode, latency_ms, detected}. Never raises to the caller."""
@@ -286,7 +286,7 @@ def transcribe(path_or_bytes, lang: str | None = None, mode: str = DEFAULT_MODE)
         text = (out if isinstance(out, str) else str(out)).strip()
         return {"text": text, "lang": use_lang, "mode": mode,
                 "latency_ms": ms, "detected": detected}
-    except Exception as e:  # noqa: BLE001 — STT must never crash the command post
+    except Exception as e:  # noqa: BLE001 - STT must never crash the command post
         print(f"[stt] transcription failed: {e}")
         return {"text": "", "lang": hint or DEFAULT_LANG, "mode": mode,
                 "latency_ms": 0, "detected": detected, "error": True}

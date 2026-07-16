@@ -2,7 +2,7 @@
 daily build into a local PMTiles archive (offline demo tiles).
 
 Reads the huge remote build (build.protomaps.com/<date>.pmtiles) over HTTP range
-requests — only the header, directories, and the ~2k tiles inside the Bangalore
+requests - only the header, directories, and the ~2k tiles inside the Bangalore
 bounding box are fetched, never the whole planet. Output tiles stay GZIP-compressed
 (matching the /vtiles Content-Encoding: gzip the FastAPI server sets).
 
@@ -50,7 +50,7 @@ def get_bytes(offset, length):
                 with _lock:
                     _cache[key] = data
             return data
-        except Exception as e:  # noqa: BLE001 — retry transient range failures
+        except Exception as e:  # noqa: BLE001 - retry transient range failures
             if attempt == 3:
                 raise
     raise RuntimeError("unreachable")
@@ -105,7 +105,7 @@ def main():
 
     print(f"non-empty tiles: {len(results)}")
     if not results:
-        print("ERROR: no tiles found in bbox — aborting", file=sys.stderr)
+        print("ERROR: no tiles found in bbox - aborting", file=sys.stderr)
         sys.exit(1)
 
     with open(OUT, "wb") as f:

@@ -3,12 +3,12 @@ Durable edge-link client: Pi LoRa gateway → AI-PC command post (EDGE-LINK.md).
 
 Bidirectional, lossless, venue-independent:
   - a persistent WebSocket to ws://<mac>:9000/gateway,
-  - a SQLite **durable outbox** — an envelope is deleted only after the Mac ACKs it
+  - a SQLite **durable outbox** - an envelope is deleted only after the Mac ACKs it
     by id, so a link blip / Mac reload / Pi restart never loses an SOS,
   - priority flush on reconnect (criticals first),
   - auto-reconnect with backoff + a best-effort HTTP-POST /sos fallback while the
     socket is down,
-  - a downlink handler for dispatches (ACCEPTED / instructions) the Mac sends back —
+  - a downlink handler for dispatches (ACCEPTED / instructions) the Mac sends back -
     the return path to the victim.
 
 Wire into gateway.py: replace the fire-and-forget `_make_uplink` with an EdgeUplink;
@@ -45,7 +45,7 @@ except Exception:  # pragma: no cover
 
 
 # An urgency-5 SOS is always accepted, even past the cap; only lower-urgency traffic is
-# refused when the outbox is full (mesh-transmission.md D4 — never drop an accepted one).
+# refused when the outbox is full (mesh-transmission.md D4 - never drop an accepted one).
 CRITICAL_URGENCY = 5
 
 
@@ -116,7 +116,7 @@ class CompletedVoice:
 
 @dataclass(frozen=True)
 class AcceptOutcome:
-    """What accepting one chunk did — enough for send_voice_chunk to narrate it."""
+    """What accepting one chunk did - enough for send_voice_chunk to narrate it."""
     complete: CompletedVoice | None
     started_clip: bool      # this chunk opened a brand-new clip
     filled_gap: bool        # it filled an index that was still missing
@@ -137,7 +137,7 @@ class VoiceAssembler:
 
     Threading: every method mutates ``_clips`` and must run on the gateway's single
     event-loop thread only. ``accept`` is driven off LoRa/BLE RX (both marshalled onto
-    the loop) and ``due_for_nack`` off the sweeper task — no two touch ``_clips`` at
+    the loop) and ``due_for_nack`` off the sweeper task - no two touch ``_clips`` at
     once, so no lock is needed. Do not call these from a bare radio-RX thread.
     """
 
@@ -228,7 +228,7 @@ class VoiceUploadOutbox:
     def _sweep_orphans(self) -> None:
         """A crash between enqueue's two atomic renames can leave a half-written pair:
         a `.tmp` that never got promoted, or an audio/meta whose sibling is missing.
-        `pending()` globs `*.json`, so an orphan audio is invisible but never reclaimed — a
+        `pending()` globs `*.json`, so an orphan audio is invisible but never reclaimed - a
         slow disk leak. Reclaim `.tmp`s and any file whose partner is gone, on startup."""
         for tmp in self.root.glob(".*.tmp"):
             with contextlib.suppress(OSError):
@@ -276,7 +276,7 @@ class VoiceUploadOutbox:
         """Retire clips that have sat un-uploaded longer than ttl_s. Voice is best-effort: if
         a clip's SOS never reached the command post (so it keeps getting 409'd) or the AI PC
         stayed unreachable, stop retrying rather than 409-spamming forever. A fresh recording
-        is untouched — its clock only starts when it is enqueued. Returns how many dropped."""
+        is untouched - its clock only starts when it is enqueued. Returns how many dropped."""
         if ttl_s <= 0:
             return 0
         now = time.time()
@@ -343,14 +343,14 @@ class EdgeUplink:
         voice_outbox_ttl_s: float = 180.0,
     ) -> None:
         self.ws_url = ws_url
-        self.http_url = http_url  # e.g. http://<mac>:9000/sos — fallback only
+        self.http_url = http_url  # e.g. http://<mac>:9000/sos - fallback only
         self.outbox = DurableOutbox(outbox_path, max_rows=outbox_max)
         self.voice_outbox = VoiceUploadOutbox(outbox_path)
         self.voice_assembler = VoiceAssembler()
         self.on_dispatch = on_dispatch
         self.log = logger
         self._wake = asyncio.Event()          # WS path: envelopes / peers / status
-        self._voice_wake = asyncio.Event()    # voice upload path — decoupled from the WS
+        self._voice_wake = asyncio.Event()    # voice upload path - decoupled from the WS
         self._ws = None
         self._sos_context: dict[str, dict[str, Any]] = {}
         self._peer_states: dict[str, dict[str, Any]] = {}
@@ -369,8 +369,8 @@ class EdgeUplink:
         self._voice_sema = asyncio.Semaphore(self._voice_concurrency)
         self._voice_timeout = (float(voice_connect_s), float(voice_read_s))
         # Voice is best-effort: a clip that can't attach (its SOS never reached the command
-        # post, so it keeps getting 409'd) is retired after this long instead of retrying —
-        # and 409-spamming — forever. A fresh recording is never affected.
+        # post, so it keeps getting 409'd) is retired after this long instead of retrying -
+        # and 409-spamming - forever. A fresh recording is never affected.
         self._voice_ttl_s = float(voice_outbox_ttl_s)
         # One reused session (keep-alive) instead of one per POST; never via a proxy.
         self._session = None
@@ -389,7 +389,7 @@ class EdgeUplink:
             self.voice_url = None
 
     # Idle loops re-stamp their heartbeat at least this often, so the watchdog (max_age 30s)
-    # only fires on a genuinely wedged flush — never on a quiet link.
+    # only fires on a genuinely wedged flush - never on a quiet link.
     _HEARTBEAT_S = 10.0
 
     def _beat(self, who: str) -> None:
@@ -410,7 +410,7 @@ class EdgeUplink:
     def send_envelope(self, env: dict[str, Any]) -> None:
         """Enqueue durably and nudge the sender. Never blocks; never loses an ACCEPTED
         envelope. A NEW low-urgency envelope may be refused (and alarmed) if the outbox is
-        capped and full — urgency-5 is always accepted (mesh-transmission.md D4)."""
+        capped and full - urgency-5 is always accepted (mesh-transmission.md D4)."""
         if env.get("t") == "SOS" and env.get("o"):
             self._sos_context[str(env["o"])] = dict(env)
             if len(self._sos_context) > 64:
@@ -418,11 +418,11 @@ class EdgeUplink:
         try:
             self.outbox.enqueue(env)
         except OutboxFull:
-            # Rule 10: no stack trace on the dashboard — a loud local log + an alarm flag
+            # Rule 10: no stack trace on the dashboard - a loud local log + an alarm flag
             # the operator sees on the status frame. The accepted backlog is untouched.
             self.outbox_alarm = True
             self.log.error(
-                "OUTBOX FULL — refused a new urgency-%s %s from %s; the durable SOS queue "
+                "OUTBOX FULL - refused a new urgency-%s %s from %s; the durable SOS queue "
                 "is at its cap (%s). Accepted messages are safe and still being delivered; "
                 "this rejects only NEW low-urgency traffic. Check the link to the AI PC.",
                 env.get("u", "?"), env.get("t", "?"), env.get("o", "?"),
@@ -458,7 +458,7 @@ class EdgeUplink:
                 audio=complete.audio,
             )
         self.voice_outbox.enqueue(complete, context)
-        self.log.info("voice %s complete (%d bytes) — queued for AI PC",
+        self.log.info("voice %s complete (%d bytes) - queued for AI PC",
                       complete.clip_id, len(complete.audio))
         self._voice_wake.set()   # wake the voice uploader; NOT the SOS/WS sender
         self._wake.set()         # refresh voice_queued on the status frame
@@ -469,7 +469,7 @@ class EdgeUplink:
         the mesh (gateway node) so the victim phone resends the pieces we never got."""
         nacks, abandoned = self.voice_assembler.due_for_nack(quiet_s, requester_origin)
         if abandoned:
-            self._wake.set()  # a dropped clip changes voice_inflight — refresh the dashboard
+            self._wake.set()  # a dropped clip changes voice_inflight - refresh the dashboard
         return nacks, abandoned
 
     def connected(self) -> bool:
@@ -488,11 +488,11 @@ class EdgeUplink:
     # ---- run loop ----
     async def run(self, stop: asyncio.Event) -> None:
         if websockets is None:
-            self.log.error("`websockets` not installed — uplink cannot start "
+            self.log.error("`websockets` not installed - uplink cannot start "
                            "(pip install websockets). Falling back to HTTP only.")
             await self._http_only(stop)
             return
-        # Voice upload is plain HTTP and independent of the dashboard WebSocket — run it for
+        # Voice upload is plain HTTP and independent of the dashboard WebSocket - run it for
         # the whole session so a flaky or absent WS never blocks a victim's audio from
         # reaching the command post. Still fully decoupled from the SOS/WS sender (C1): a
         # slow clip cannot delay an SOS, and it no-ops when nothing is queued.
@@ -548,10 +548,10 @@ class EdgeUplink:
 
     async def _sender(self, ws, stop: asyncio.Event) -> None:
         """WS path ONLY: envelopes (SOS-first), peer states, status. Voice upload lives in
-        its own task (_voice_uploader) so a slow HTTP clip can never stall this loop —
+        its own task (_voice_uploader) so a slow HTTP clip can never stall this loop -
         mesh-transmission.md C1/B1. No voice work here by design."""
         while not stop.is_set():
-            self._beat("sender")      # stamp even while idle — a quiet link is not wedged
+            self._beat("sender")      # stamp even while idle - a quiet link is not wedged
             # Wake on new work OR every _HEARTBEAT_S; either way fall through and flush, so
             # anything still pending (unacked) is retried on the timer, not only on a new wake.
             with contextlib.suppress(asyncio.TimeoutError):
@@ -605,13 +605,13 @@ class EdgeUplink:
             return
         expired = self.voice_outbox.drop_expired(self._voice_ttl_s)
         if expired:
-            self.log.info("cleared %d stale voice clip(s) — no matching SOS within %.0fs; "
+            self.log.info("cleared %d stale voice clip(s) - no matching SOS within %.0fs; "
                           "newer clips are unaffected", expired, self._voice_ttl_s)
         loop = asyncio.get_running_loop()
 
         async def _one(meta_path: Path, meta: dict[str, Any], audio: bytes) -> None:
             async with self._voice_sema:
-                # Dedicated voice pool — NOT the default executor (reserved for radio TX).
+                # Dedicated voice pool - NOT the default executor (reserved for radio TX).
                 ok = await loop.run_in_executor(
                     self._voice_pool, self._post_voice, meta, audio)
             if ok:
@@ -625,7 +625,7 @@ class EdgeUplink:
     def _post_voice(self, meta: dict[str, Any], audio: bytes) -> bool:
         """Blocking HTTP POST of one clip, run on the dedicated voice pool. A dead/slow AI
         PC pins one voice-pool worker for at most voice_read_s (never a radio thread), so
-        voice throughput degrades to zero while the AI PC is unreachable — acceptable
+        voice throughput degrades to zero while the AI PC is unreachable - acceptable
         (voice is best-effort; SOS is on its own path). Do not widen the pool to 'fix' this."""
         if self._session is None:
             return False
@@ -685,7 +685,7 @@ class EdgeUplink:
         def _post(env: dict[str, Any]) -> bool:
             try:
                 self._session.post(self.http_url, json=env, timeout=4)
-                # NOTE: we do NOT ack here — the WS ACK is the source of truth so the
+                # NOTE: we do NOT ack here - the WS ACK is the source of truth so the
                 # envelope stays queued until confirmed, avoiding loss if the POST lied.
                 return True
             except Exception:
