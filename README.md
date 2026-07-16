@@ -1,33 +1,85 @@
 <div align="center">
-  <h1>Sankat-Mochan</h1>
-  <p><strong>Autonomous Off-Grid Disaster Rescue Mesh | Snapdragon Multiverse Hackathon National Finalist</strong></p>
 
-  <p>
-    <img src="https://img.shields.io/badge/Award-National%20Finalist-gold?style=for-the-badge&logo=qualcomm" alt="National Finalist" />
-    <img src="https://img.shields.io/badge/AI-Snapdragon%20NPU%20%7C%20Whisper%20%7C%20Gemma%204-orange?style=for-the-badge" alt="AI Tech Stack" />
-    <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Raspberry%20Pi-blue?style=for-the-badge" alt="Platforms" />
-    <img src="https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/python.yml/badge.svg" alt="CI Build Status" />
-  </p>
+# Sankat-Mochan
+
+**Autonomous Off-Grid Disaster Rescue Mesh | Snapdragon Multiverse Hackathon National Finalist**
+
+Distributed offline SOS orchestration, real-time edge AI triage, and mesh network communication across smartphones, LoRa bridges, and Snapdragon NPU execution planes.
+
+[![Award](https://img.shields.io/badge/Award-National%20Finalist-gold?style=for-the-badge&logo=qualcomm)](#)
+[![AI Stack](https://img.shields.io/badge/AI-Snapdragon%20NPU%20%7C%20Whisper%20%7C%20Gemma%204-orange?style=for-the-badge)](#)
+[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Raspberry%20Pi-blue?style=for-the-badge)](#)
+[![CI](https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/python.yml/badge.svg)](#)
+
 </div>
 
 ---
 
-![Sankat-Mochan System Architecture](docs/architecture.svg)
+## Overview
 
-## 🌪️ The Problem
+When floods, earthquakes, or blackouts knock out cell towers and the internet, communication is severed when it's needed most. **Sankat-Mochan** is a highly resilient, offline mesh network where smartphones and localized IoT nodes autonomously form an independent radio network to coordinate disaster rescue.
 
-When floods, earthquakes, or blackouts knock out cell towers and the internet, communication is severed when it's needed most. In regions where satellite messengers are inaccessible or restricted, a localized, resilient communication fallback is critical for survival.
+<div align="center">
+  <img src="docs/sankat_arch.png" alt="Sankat-Mochan Hybrid Concept — BLE Ants and LoRa Cannon" width="100%">
+  <br>
+  <em>Victim SOS travels via BLE mesh, shot across LoRa bridge to Command Post for NPU AI Triage.</em>
+</div>
 
-## 📡 The Solution
+### Key Features
 
-**Sankat-Mochan** is a highly resilient, offline mesh network where smartphones and localized IoT nodes autonomously form an independent radio network.
+- 📱 **Voice-First SOS** — Direct on-device speech-to-text using IndicConformer
+- 🐜 **BLE Mesh Transport** — Smartphone-to-smartphone ad-hoc store-and-forward networking
+- 🚀 **LoRa Hardware Bridge** — Kilometer-scale range extension via Arduino and Raspberry Pi
+- 🧠 **NPU AI Triage** — Offline LLM (Sahayak-E2B) running natively on Snapdragon Hexagon NPUs
+- 🗺️ **Offline Dispatch** — Live ops dashboard (MapLibre GL) executing completely without internet access
+- 🗣️ **Cross-Language Translation** — Multi-lingual SOS extraction converting native Indian languages to English
 
-1. **Voice-First SOS & Edge Processing:** A victim simply speaks an SOS. Their phone compresses and transcribes it on-device.
-2. **BLE & LoRa Mesh Relay:** The message relays phone-to-phone via **Bluetooth Low Energy (BLE)**. For kilometer-scale gaps, a **LoRa** hardware bridge spans the distance.
-3. **Offline AI Command Post:** At a forward relief camp, an **offline AI command post** powered by **Snapdragon NPUs** leverages local LLMs (**Sahayak-E2B**, based on Gemma 4 E2B) and Whisper for urgency triage, cross-language translation, and plotting victims on a fully offline map.
-4. **Responder Dispatch:** The nearest responder is automatically pinpointed and dispatched with a single tap, sending a native-language confirmation back through the mesh to reassure the victim.
+---
 
-The result is a **legal, subscription-free, completely offline SOS coordination system**, built to enterprise standards and capable of running multi-modal triage entirely on local edge hardware.
+## Architecture
+
+```mermaid
+flowchart LR
+    %% Safe Styling
+    classDef ui fill:#0f172a,stroke:#334155,stroke-width:1px,color:#f8fafc
+    classDef mesh fill:#1e1b4b,stroke:#4f46e5,stroke-width:1px,color:#f8fafc
+    classDef hardware fill:#4c0519,stroke:#e11d48,stroke-width:1px,color:#f8fafc
+    classDef ai fill:#022c22,stroke:#10b981,stroke-width:1px,color:#f8fafc
+
+    %% Nodes
+    Victim(["📱 Victim Phone\nKotlin Jetpack"]):::ui
+    BLE["🐜 BLE Mesh\nGATT Relay"]:::mesh
+    LoRaGateway["📡 LoRa Bridge\nRaspberry Pi + UNO"]:::hardware
+    CommandPost["🧠 AI Command Post\nFastAPI · Snapdragon NPU"]:::ai
+    Responder(["🚑 Responder\nNative Android"]):::ui
+
+    %% Linear Flow
+    Victim -->|"SOS Audio"| BLE
+    BLE -->|"Store & Forward"| LoRaGateway
+    LoRaGateway -->|"433 MHz SF9"| CommandPost
+    CommandPost -->|"Dispatch"| Responder
+    
+    %% Asynchronous Callbacks
+    Responder -.->|"Audio Confirmation"| Victim
+```
+
+### Component Summary
+
+| Component | Technology | Role |
+|-----------|-----------|------|
+| **Android Mesh App** | Kotlin, Jetpack Compose, BLE | T0 transport slice forming the GATT mesh (Victim, Responder, Relay) |
+| **LoRa Gateway** | Python, Raspberry Pi | Bridging phone ⇄ BLE ⇄ LoRa ⇄ mesh serving as the command post uplink |
+| **Field Node Modem** | C++, Arduino UNO Q | Field-side LoRa modem logic to drive the Ra-02 transceiver |
+| **AI Command Post** | FastAPI, React, MapLibre GL | Offline backend receiving envelopes, executing NLP triage/translation |
+| **Edge AI Finetuning** | PyTorch, Unsloth, QLoRA | Hardware-agnostic pipeline used to train the Sahayak-E2B edge models |
+
+### Data Flow
+
+1. **Submit** → Victim speaks an SOS. Phone compresses and transcribes it on-device using IndicConformer.
+2. **Transport** → Message relays phone-to-phone via BLE GATT. For long distance, the LoRa bridge spans the gap.
+3. **Triage** → The AI Command Post processes the envelope via Gemma 4 E2B on the Snapdragon NPU.
+4. **Dispatch** → The dispatcher assigns the nearest responder using the offline map.
+5. **Acknowledge** → Responder taps accept, sending a native-language audio confirmation back down the chain to the victim.
 
 ---
 
@@ -40,29 +92,22 @@ We engineered and released custom fine-tuned weights tailored for robust convers
 
 ---
 
-## 🏆 Achievements
+## Project Structure
 
-* **National Finalist:** Snapdragon Multiverse Hackathon (Bengaluru, 11–12 July 2026).
-* **Hardware Acceleration:** Native on-device inference leveraging Qualcomm's Hexagon NPU.
-* **Zero-Internet Architecture:** 100% operational without external dependencies or cloud connectivity.
-
----
-
-## 📁 Repository Architecture
-
-| Component | Path | Description |
-| :--- | :--- | :--- |
-| **Android Mesh App** | `mesh-app/` | Native Android (Kotlin) BLE mesh app forming the T0 transport slice. Supports Victim, Responder, and Relay roles. |
-| **LoRa Gateway** | `pi-code/` | Python-based gateway bridging phone ⇄ BLE ⇄ LoRa ⇄ mesh. Runs on a Raspberry Pi serving as the command post uplink. |
-| **Field Node Modem** | `arduino-unoq/` | Field-side LoRa modem logic for the Arduino UNO Q, enabling the STM32 sketch to drive the Ra-02 transceiver. |
-| **AI Command Post** | `command-post/` | Offline FastAPI backend receiving envelopes, executing NLP triage/translation, and serving the tactical dashboard. |
-| **Edge AI Fine-Tuning**| `finetune/` | Hardware-agnostic QLoRA pipeline used to train the Sahayak-E2B edge models. |
-| **Pitch Deck** | `deck/` | Self-contained HTML presentation highlighting our vision and architecture. |
-| **Hackathon Docs** | `docs/reference/` | Official guidelines and reference material for the Qualcomm event. |
+```
+Sankat-Mochan/
+├── mesh-app/                    # Android BLE mesh app (Kotlin)
+├── pi-code/                     # LoRa gateway bridge (Python)
+├── arduino-unoq/                # Field node modem (C++)
+├── command-post/                # Offline AI backend (FastAPI)
+├── finetune/                    # Hardware-agnostic QLoRA pipeline
+├── deck/                        # HTML presentation deck
+└── docs/                        # Architecture diagrams & references
+```
 
 ---
 
-## 🚀 Getting Started
+## Quick Start
 
 ### 1. Run the Mesh Application
 
