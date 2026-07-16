@@ -23,7 +23,7 @@ pmtiles>=3.5.0            # BSD-3
 # onnxruntime is REQUIRED: the model's trust_remote_code modeling file (model_onnx.py)
 # imports it — without it every transcription fails with "No module named 'onnxruntime'".
 # These are the CPU builds (STT runs on CPU by design; the NPU stays free for the triage LLM).
-torch==2.13.0            # BSD-3   — CPU build; loads the conformer weights
-transformers==5.13.1     # Apache-2.0 — AutoModel(trust_remote_code) loader
-huggingface-hub==1.23.0  # Apache-2.0 — model download/cache
-onnxruntime==1.27.0      # MIT      — CPU EP; required by the model's remote code
+torch>=2.1.0            # BSD-3   — CPU build; loads the conformer weights
+transformers>=4.40.0     # Apache-2.0 — AutoModel(trust_remote_code) loader
+huggingface-hub>=0.23.0  # Apache-2.0 — model download/cache
+onnxruntime>=1.18.0      # MIT      — CPU EP; required by the model's remote code
