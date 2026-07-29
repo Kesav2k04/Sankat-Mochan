@@ -10,7 +10,7 @@ from the network.
 
 *Snapdragon Multiverse Hackathon 2026 — National Finalist*
 
-[![Evaluation report: 22 of 22 assertions pass](https://img.shields.io/badge/evaluation-22%2F22_assertions_pass-2f6f4e?style=for-the-badge)](https://sahayak-e2b-benchmark.vercel.app/)
+[![Evaluation report: 22 of 22 assertions pass](https://img.shields.io/badge/evaluation-22%2F22_assertions_pass-2f6f4e?style=for-the-badge)](https://report-page-ten.vercel.app/)
 
 [Try it without hardware](#try-it-without-hardware) · [How it works](#how-it-works) · [Proof it crossed the air](#proof-it-actually-crossed-the-air) · [What is real and what is not](#what-is-real-and-what-is-not) · [Security](#security-and-privacy-read-this-before-deploying)
 
@@ -257,7 +257,7 @@ three. **[H]**
 python docs/benchmarks/verify_benchmarks.py     # 22/22 assertions pass · no GPU, no network
 ```
 
-**📄 [Read the full evaluation report →](https://sahayak-e2b-benchmark.vercel.app/)** — including the
+**📄 [Read the full evaluation report →](https://report-page-ten.vercel.app/)** — including the
 negative results and a reviewer-grade critique of our own method. [`docs/benchmarks/`](docs/benchmarks/)
 holds the protocol, the per-category tables, and the verifier.
 
@@ -482,5 +482,5 @@ all permissive.
 ```
 
 The Sahayak-E2B model has [its own citation and evaluation
-record](https://sahayak-e2b-benchmark.vercel.app/). It is a Gemma 4 E2B fine-tune, distinct from the
+record](https://report-page-ten.vercel.app/). It is a Gemma 4 E2B fine-tune, distinct from the
 Qwen3-4B model kept in `deploy/npu/alt-aihub-qwen/` for reference only.

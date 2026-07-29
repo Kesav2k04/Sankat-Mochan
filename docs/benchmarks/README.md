@@ -4,7 +4,7 @@ Evaluation and on-device measurement record for **Sahayak-E2B**, a QLoRA fine-tu
 `google/gemma-4-E2B-it` for offline disaster response, deployed as a Q4_0 GGUF on a
 Snapdragon Hexagon NPU.
 
-**📄 [Read the whole record as one page →](https://sahayak-e2b-benchmark.vercel.app/)** — the same
+**📄 [Read the whole record as one page →](https://report-page-ten.vercel.app/)** — the same
 numbers, tiered and cross-linked, with the negative results and the reviewer critique in line.
 
 This directory separates claims into three tiers, and never mixes them:
@@ -80,7 +80,7 @@ Current status: **22/22 assertions pass.**
 | [`chart_data.json`](chart_data.json) | Output of the above; the single source for every figure |
 | [`make_figures.py`](make_figures.py) | Draws each figure as responsive HTML from that JSON, so no chart coordinate is hand-typed |
 | [`verify_page_numbers.py`](verify_page_numbers.py) | Checks the report page quotes those numbers correctly — 50/50 pass |
-| [`report-page/`](report-page/) | Source for the [single-page report](https://sahayak-e2b-benchmark.vercel.app/) |
+| [`report-page/`](report-page/) | Source for the [single-page report](https://report-page-ten.vercel.app/) |
 
 ### The figure pipeline
 
