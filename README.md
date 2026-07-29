@@ -88,7 +88,22 @@ flowchart LR
 We engineered and released custom fine-tuned weights tailored for robust conversational SOS extraction on edge hardware. 
 
 * **[Sahayak-E2B (Base Gemma 4 E2B Fine-tune)](https://huggingface.co/kesav2k04/sahayak-e2b):** Optimized for low-latency native English/Indic language extraction.
-* **[Sahayak-E2B GGUF (Quantized for NPUs)](https://huggingface.co/kesav2k04/sahayak-e2b-gguf):** Merged and quantized (`q4_k_m`) for direct injection into Snapdragon NPU architectures via the `llama.cpp` runtime, guaranteeing 100% offline inference.
+* **[Sahayak-E2B GGUF (Quantized for NPUs)](https://huggingface.co/kesav2k04/sahayak-e2b-gguf):** Merged and quantized to **`Q4_0`** — the quantisation the Hexagon HTP backend prefers — for direct injection into Snapdragon NPU architectures via the `llama.cpp` runtime, guaranteeing 100% offline inference.
+
+### 📊 Evaluation record
+
+Every number we publish about these models is separated by evidence tier — **[R]** reproducible by a
+script you can run, **[H]** human-graded, **[M]** measured once — and the negative results are published
+alongside the wins.
+
+* **[📄 Read the evaluation report →](https://sahayak-e2b-benchmark.vercel.app/)** — the full record as a single page
+* **[`docs/benchmarks/`](docs/benchmarks/)** — protocol, per-category results, reviewer critique, and the verifier
+
+Headline: on 50 held-out prompts **verified free of training contamination** (max 8-gram Jaccard
+**0.168**), the fine-tune produced valid `SOS|WHO:|LOC:|NEED:` relay packets on **4/4** prompts requiring
+one where the base model produced **0/4**, and correctly emitted **none** on the 4 prompts where a packet
+would be wrong. Mean response length fell **43.9%**. Reproduce it with
+`python docs/benchmarks/verify_benchmarks.py` — **22/22 assertions pass**, no GPU and no network needed.
 
 ---
 
@@ -102,7 +117,9 @@ Sankat-Mochan/
 ├── command-post/                # Offline AI backend (FastAPI)
 ├── finetune/                    # Hardware-agnostic QLoRA pipeline
 ├── deck/                        # HTML presentation deck
-└── docs/                        # Architecture diagrams & references
+└── docs/
+    ├── benchmarks/              # Evaluation record + reproducible verifier
+    └── ...                      # Architecture diagrams & references
 ```
 
 ---

@@ -1,0 +1,83 @@
+/* Hallmark · tokens.css — portable design-system export
+ * Project: Sahayak-E2B held-out evaluation & on-device measurement report (Sankat-Mochan)
+ * theme: custom (tuned) · vibe: "saffron field-manual, spec-sheet clarity, laboratory restraint"
+ * axes: light / grotesk-sans / warm
+ * Mirrors the :root block in index.html. Kept in sync by hand — index.html is authoritative.
+ */
+
+:root {
+  /* ── Colour · OKLCH, warm-tinted neutrals, one saffron accent ───────── */
+  --color-paper:        oklch(97.5% 0.008 75);  /* base surface, warm off-white   */
+  --color-paper-2:      oklch(95.5% 0.010 75);  /* one elevation step — panels    */
+  --color-paper-3:      oklch(93%   0.012 75);  /* two steps — highlighted rows   */
+  --color-ink:          oklch(20%   0.010 50);  /* primary text                   */
+  --color-ink-2:        oklch(32%   0.010 50);  /* secondary text, body prose     */
+  --color-muted:        oklch(48%   0.012 55);  /* de-emphasised text, captions   */
+  --color-neutral:      oklch(64%   0.010 60);  /* mid — badge outlines           */
+  --color-rule:         oklch(84%   0.010 75);  /* hairline dividers              */
+  --color-rule-2:       oklch(89%   0.008 75);  /* secondary dividers             */
+  --color-rule-invert:  oklch(42%   0.012 55);  /* dividers on ink surfaces       */
+  --color-accent:       oklch(56%   0.17  42);  /* saffron — marks, rail dot      */
+  --color-accent-deep:  oklch(45%   0.16  40);  /* saffron as text / [R] fill     */
+  --color-accent-lift:  oklch(74%   0.15  62);  /* saffron on ink surfaces        */
+  --color-accent-soft:  oklch(94%   0.040 60);  /* [M] tier fill                  */
+  --color-accent-ink:   oklch(98%   0.008 75);  /* text on accent-deep fill       */
+  --color-focus:        oklch(54%   0.20  42);  /* focus ring                     */
+
+  /* ── Type · 2+1 · grotesk display, engineering body sans, mono outlier ─
+   * The mono outlier is reserved for measured values and code — never prose. */
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body:    "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-outlier: "JetBrains Mono", ui-monospace, monospace;
+
+  /* ── Scale · ~1.21 ratio from 16px, deliberately shallow for a document ─ */
+  --text-xs:   0.7rem;
+  --text-sm:   0.8125rem;
+  --text-base: 1rem;
+  --text-md:   1.1875rem;
+  --text-lg:   1.4375rem;
+  --text-xl:   1.75rem;
+  --text-display: clamp(1.9rem, 3.4vw + 0.4rem, 2.9rem);
+
+  --lh-display: 1.14;
+  --lh-body:    1.68;
+
+  /* ── Space · 4pt base ───────────────────────────────────────────────── */
+  --space-3xs: 0.125rem;
+  --space-2xs: 0.25rem;
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1rem;
+  --space-lg:  1.5rem;
+  --space-xl:  2.5rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+
+  --rail-w:       3rem;   /* N3 side-rail width; rail is hidden below 64rem */
+  --page-gutter:  clamp(1.125rem, 4vw, 2.75rem);
+  --measure:      70ch;
+  --measure-wide: 92ch;   /* tables and code blocks only */
+
+  /* ── Rules & radii ──────────────────────────────────────────────────── */
+  --rule-hair: 1px;
+  --rule-bold: 2px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+
+  /* ── Motion ─────────────────────────────────────────────────────────── */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:     cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long:  420ms;
+
+  /* ── Z-index · seven named levels ───────────────────────────────────── */
+  --z-base:     1;
+  --z-raised:   10;
+  --z-dropdown: 100;
+  --z-sticky:   200;
+  --z-modal:    400;
+  --z-toast:    500;
+  --z-tooltip:  600;
+}

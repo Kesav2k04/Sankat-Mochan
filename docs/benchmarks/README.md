@@ -4,14 +4,18 @@ Evaluation and on-device measurement record for **Sahayak-E2B**, a QLoRA fine-tu
 `google/gemma-4-E2B-it` for offline disaster response, deployed as a Q4_0 GGUF on a
 Snapdragon Hexagon NPU.
 
-This directory separates claims into two tiers, and never mixes them:
+**📄 [Read the whole record as one page →](https://sahayak-e2b-benchmark.vercel.app/)** — the same
+numbers, tiered and cross-linked, with the negative results and the reviewer critique in line.
+
+This directory separates claims into three tiers, and never mixes them:
 
 | Tier | Meaning | Where |
 |---|---|---|
 | **Reproducible** | Recomputed from released artefacts by `verify_benchmarks.py`. Anyone can rerun it and get the same number. | tagged **[R]** below |
 | **Human-graded** | Assigned by the project team against a written rubric. Defensible, but not independently reproducible — the per-row grades are not stored in the released CSVs. | tagged **[H]** below |
+| **Measured once** | A real hardware measurement, but a single run with no variance and no thermal control. | tagged **[M]** below |
 
-Confusing those two tiers is the most common way a small-team benchmark loses credibility, so
+Confusing those tiers is the most common way a small-team benchmark loses credibility, so
 every table in this directory labels which one it is.
 
 ---
@@ -20,7 +24,9 @@ every table in this directory labels which one it is.
 
 **Capability — 50 held-out prompts, base vs fine-tune, identical system prompt and greedy decoding.**
 
-- **[H] Overall rubric accuracy: 41.0% → 81.6%.** Graded by the project team on a 0 / 0.5 / 1.0 rubric.
+- **[H] Overall rubric accuracy: 41.0% → ~82%.** Graded by the project team on a 0 / 0.5 / 1.0 rubric.
+  Reported as `~82%` rather than `81.6%` because the denominator is disputed — see correction 3 below.
+  Unblinded, single grader, per-row grades not released.
 - **[R] Relay-packet compliance: 0/4 → 4/4** on the prompts where a `SOS|WHO:|LOC:|NEED:` packet is the
   correct output — and **0/4 → 0/4** on the four relay prompts where emitting a packet would be *wrong*
   (ambiguous prompts must ask for the missing fields; adversarial prompts must refuse to broadcast).
@@ -36,7 +42,8 @@ every table in this directory labels which one it is.
 
 **Deployment — one measured run, 12 July 2026, OnePlus 15 (Snapdragon 8 Elite Gen 5, Hexagon v81).**
 
-- **[R] 15.6 tok/s** generation, all 35 layers on `HTP0`, greedy decoding.
+- **[M] 15.6 tok/s** generation, all 35 layers on `HTP0`, greedy decoding. One run, no thermal control,
+  no time-to-first-token, no energy measurement.
 - **[R] 3.119 GiB (3.35 GB)** on disk — exactly 3,349,514,592 bytes.
 
 Full detail: [`02-ON-DEVICE-NPU-RUNTIME.md`](02-ON-DEVICE-NPU-RUNTIME.md).
@@ -69,6 +76,7 @@ Current status: **22/22 assertions pass.**
 | [`03-LIMITS-AND-ROADMAP.md`](03-LIMITS-AND-ROADMAP.md) | Reviewer-grade critique: every gap, why it matters, and the specific experiment that closes it |
 | [`verify_benchmarks.py`](verify_benchmarks.py) | Reproduces all **[R]** claims |
 | [`verification_report.json`](verification_report.json) | Machine-readable output of the above |
+| [`report-page/`](report-page/) | Source for the [single-page report](https://sahayak-e2b-benchmark.vercel.app/) |
 
 ## Underlying artefacts
 
