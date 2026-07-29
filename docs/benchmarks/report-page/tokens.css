@@ -23,6 +23,12 @@
   --color-accent-soft:  oklch(94%   0.040 60);  /* [M] tier fill                  */
   --color-accent-ink:   oklch(98%   0.008 75);  /* text on accent-deep fill       */
   --color-focus:        oklch(54%   0.20  42);  /* focus ring                     */
+  --color-cool:         oklch(52%   0.13  250); /* the one cool hue: Figure 4's    */
+                                                /* "longer than base" pole. Warm   */
+                                                /* vs cool because that figure     */
+                                                /* encodes a direction. OKLab dE   */
+                                                /* 22.8 vs accent-deep under       */
+                                                /* deuteranopia; floor is 8.       */
 
   /* ── Type · 2+1 · grotesk display, engineering body sans, mono outlier ─
    * The mono outlier is reserved for measured values and code — never prose. */

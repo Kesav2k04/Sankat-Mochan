@@ -62,13 +62,14 @@ The published GGUF is **exactly 3,349,514,592 bytes**:
 
 Earlier docs said "3.11 GB" (actually GiB) and the model card said "~3.35 GB" (decimal GB). Same file.
 Always state the unit. Applying the same discipline: E4B is **4.80 GiB = 5.15 GB**, and the saving is
-**1.69 GiB = 1.82 GB**.
+**1.68 GiB = 1.80 GB** (5,152,613,920 - 3,349,514,592 = 1,803,099,328 bytes).
 
 ### 2.2 The honest reading
 
 - Sahayak is **second** on raw throughput, 0.7 tok/s behind stock E2B — the LoRA adapter is merged into
-  the weights, so it adds no architectural cost, and the gap is within single-run noise.
-- Against E4B: **2.2× the throughput** (15.6 vs 7.0 tok/s) and **1.69 GiB less** on disk, plus roughly
+  the weights, so it adds no architectural cost. Whether the 4% gap is real is unknown: one run per
+  model gives no variance to compare it against, so "within noise" is not a claim this data supports.
+- Against E4B: **2.2× the throughput** (15.6 vs 7.0 tok/s) and **1.68 GiB less** on disk, plus roughly
   **5.5 GB vs 3.5 GB RAM** to load. On a phone that difference decides whether the model loads at all.
 - E4B scored marginally better than *stock* E2B on the single prompt, but it is not worth 2.2× the
   latency on-device.

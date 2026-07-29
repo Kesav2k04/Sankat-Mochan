@@ -26,11 +26,26 @@ part of the argument, and a page can carry it in a way a list of files cannot:
   *below* it with its three problems attached.
 - The negative results and the reviewer critique are sections of the page, not an appendix.
 
+## The figures are HTML, not SVG
+
+All four figures are generated into this file by
+[`make_figures.py`](../make_figures.py) from `chart_data.json`, as plain HTML.
+
+They were SVG with a fixed 660-unit viewBox. An SVG scales its type along with its geometry, so on a
+360 px phone the axis labels rendered at roughly 5 px, and the only available fix was to give every
+figure its own horizontal scrollbar — a chart you cannot read rather than a chart that fits. Built as
+HTML the text is real text at every viewport and the figures reflow instead of scrolling.
+
+The generator emits **geometry only** — percentages, counts, and `title` text. Every colour, size and
+weight is a CSS class in the `:root`-driven stylesheet, and `verify_page_numbers.py` fails the build if
+a generated block contains a literal colour, a `viewBox`, a `min-width`, or an inline `style` that sets
+anything other than position and size.
+
 ## Verified at
 
-320 / 375 / 414 / 768 / 1280 px. No horizontal overflow at any width; 309/309 text nodes meet WCAG AA
-against their computed backgrounds; tables restructure into labelled cards below 768 px; the side rail
-appears at 1024 px and up. Motion respects `prefers-reduced-motion`.
+320 / 360 / 375 / 414 / 480 / 640 / 768 / 1024 / 1280 / 1440 / 1920 / 2560 px. No horizontal overflow at
+any width, no nested scroll region, and no text rendered below 10 px. Tables restructure into labelled
+cards below 768 px; the side rail appears at 1024 px and up. Motion respects `prefers-reduced-motion`.
 
 ## Editing
 

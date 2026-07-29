@@ -78,8 +78,8 @@ Current status: **22/22 assertions pass.**
 | [`verification_report.json`](verification_report.json) | Machine-readable output of the above |
 | [`compute_chart_data.py`](compute_chart_data.py) | Derives the distributions behind the claims: per-prompt contamination spread, paired answer lengths, exact binomial intervals, and a 20,000-rep bootstrap at a fixed seed |
 | [`chart_data.json`](chart_data.json) | Output of the above; the single source for every figure |
-| [`make_figures.py`](make_figures.py) | Draws each figure as inline SVG from that JSON, so no chart coordinate is hand-typed |
-| [`verify_page_numbers.py`](verify_page_numbers.py) | Checks the report page quotes those numbers correctly — 42/42 pass |
+| [`make_figures.py`](make_figures.py) | Draws each figure as responsive HTML from that JSON, so no chart coordinate is hand-typed |
+| [`verify_page_numbers.py`](verify_page_numbers.py) | Checks the report page quotes those numbers correctly — 50/50 pass |
 | [`report-page/`](report-page/) | Source for the [single-page report](https://sahayak-e2b-benchmark.vercel.app/) |
 
 ### The figure pipeline
@@ -87,8 +87,8 @@ Current status: **22/22 assertions pass.**
 ```bash
 python docs/benchmarks/verify_benchmarks.py      # claims hold          22/22
 python docs/benchmarks/compute_chart_data.py     # -> chart_data.json
-python docs/benchmarks/make_figures.py           # -> figures.svg.html
-python docs/benchmarks/verify_page_numbers.py    # page matches data    42/42
+python docs/benchmarks/make_figures.py           # -> figures.html
+python docs/benchmarks/verify_page_numbers.py    # page matches data    50/50
 ```
 
 Figures are generated, not drawn. That is the point: a chart is an assertion about

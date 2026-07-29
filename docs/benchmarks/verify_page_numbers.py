@@ -182,7 +182,8 @@ def main() -> int:
         if not ok:
             failures.append(f"{tier} never used")
 
-    # every figure must be generated, aria-labelled and inside a scroll region
+    # Every figure must be generated, accessibly labelled, free of hard-coded
+    # colour, and free of the fixed-width scroll hack the SVG build needed.
     figs = re.findall(r"<!-- FIG-([A-Z]+) start -->(.*?)<!-- FIG-\1 end -->", html, re.S)
     checks += 1
     ok = len(figs) == 4
@@ -191,17 +192,45 @@ def main() -> int:
         failures.append(f"expected 4 generated figure blocks, found {len(figs)}")
     for name, body in figs:
         checks += 1
-        good = 'role="img"' in body and "aria-label=" in body and "chart-scroll" in body
-        print(f"  [{'PASS' if good else 'FAIL'}] FIG-{name} is labelled and scrollable")
+        good = 'role="img"' in body and "aria-label=" in body
+        print(f"  [{'PASS' if good else 'FAIL'}] FIG-{name} is labelled for screen readers")
         if not good:
-            failures.append(f"FIG-{name} missing role/aria-label/scroll region")
+            failures.append(f"FIG-{name} missing role=img or aria-label")
+
+        # Geometry only. A literal colour in generated markup means a figure can
+        # drift from the theme, which is the whole reason colour lives in CSS.
         checks += 1
-        inline = re.findall(r'<(?:rect|line|circle|text|tspan)[^>]*\s(?:fill|stroke)=', body)
-        if inline:
-            print(f"  [FAIL] FIG-{name} has {len(inline)} inline colour attribute(s)")
+        hard = re.findall(r"(?:#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|oklch\()", body)
+        if hard:
+            print(f"  [FAIL] FIG-{name} has {len(hard)} hard-coded colour value(s)")
             failures.append(f"FIG-{name} hard-codes colour instead of using a class")
         else:
-            print(f"  [PASS] FIG-{name} carries no inline colour")
+            print(f"  [PASS] FIG-{name} carries no hard-coded colour")
+
+        # The figures are HTML so they reflow. A viewBox or a min-width would
+        # mean one had regressed to a fixed canvas that needs sideways scrolling.
+        checks += 1
+        rigid = [t for t in ("viewBox", "min-width", "chart-scroll") if t in body]
+        if rigid:
+            print(f"  [FAIL] FIG-{name} is not responsive: found {', '.join(rigid)}")
+            failures.append(f"FIG-{name} reintroduces a fixed-width canvas ({', '.join(rigid)})")
+        else:
+            print(f"  [PASS] FIG-{name} is responsive (no fixed canvas)")
+
+        # Inline style is allowed, but only for position and size.
+        checks += 1
+        props = set()
+        for decl in re.findall(r'style="([^"]*)"', body):
+            for part in decl.split(";"):
+                if ":" in part:
+                    props.add(part.split(":", 1)[0].strip())
+        allowed = {"inset-inline-start", "inset-block-end", "inline-size", "block-size"}
+        stray = sorted(props - allowed)
+        if stray:
+            print(f"  [FAIL] FIG-{name} inline style sets non-geometry: {', '.join(stray)}")
+            failures.append(f"FIG-{name} inline style sets {', '.join(stray)}")
+        else:
+            print(f"  [PASS] FIG-{name} inline style is geometry only")
 
     print("\n" + "=" * 68)
     if failures:

@@ -54,3 +54,6 @@ command-post/backends.json
 
 # External tools
 ruflo/
+
+# Screenshot exports for social posts — regenerate, do not commit
+linkedin-assets/

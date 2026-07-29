@@ -44,9 +44,13 @@ humans. Disagreement is itself a publishable result. **Effort: 1–2 days.**
 
 ### G3. n = 50 with no confidence intervals
 
-**Objection.** No error bars anywhere. At n = 50, a 41% → 82% difference is real (a two-proportion test
-clears p < 0.001 by a wide margin), **but** every per-category claim rests on n = 3–8, where a single
-grade flip swings a category by 12–25 points. "relay 100%, opsec 100%" reads as precision that 7–8 items
+**Objection.** No error bars anywhere. At n = 50 the overall 41% → 82% gap is large enough that no
+plausible amount of grading noise closes it — **but** it has not been significance-tested, and an
+earlier draft's claim that it "clears a two-proportion test at p < 0.001" is withdrawn: the rubric
+awards half marks, so these are not binomial proportions, and the design is paired (both models answer
+the same 50 prompts). The test that would actually license a p-value needs the per-row grades, which
+are not released — see G1. Every per-category claim then rests on n = 3–8, where a single grade flip
+swings a category by 12–25 points. "relay 100%, opsec 100%" reads as precision that 7–8 items
 cannot support.
 
 **Experiment.** Score all **150** held-out records — 100 are already written and unscored, so this is
