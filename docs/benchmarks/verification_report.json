@@ -1,0 +1,174 @@
+{
+  "split.train": {
+    "got": 1628,
+    "expected": 1628,
+    "pass": true,
+    "note": ""
+  },
+  "split.val": {
+    "got": 172,
+    "expected": 172,
+    "pass": true,
+    "note": ""
+  },
+  "split.holdout": {
+    "got": 150,
+    "expected": 150,
+    "pass": true,
+    "note": ""
+  },
+  "split.total": {
+    "got": 1950,
+    "expected": 1950,
+    "pass": true,
+    "note": ""
+  },
+  "eval.n_questions": {
+    "got": 50,
+    "expected": 50,
+    "pass": true,
+    "note": ""
+  },
+  "eval.n_rows_finetuned": {
+    "got": 50,
+    "expected": 50,
+    "pass": true,
+    "note": ""
+  },
+  "eval.n_rows_base": {
+    "got": 50,
+    "expected": 50,
+    "pass": true,
+    "note": ""
+  },
+  "eval.is_subset_of_holdout": {
+    "got": true,
+    "expected": true,
+    "pass": true,
+    "note": "the 50 scored questions must come from the 150 held-out records"
+  },
+  "eval.holdout_unscored": {
+    "got": 100,
+    "expected": 100,
+    "pass": true,
+    "note": "held-out records that exist but were never scored"
+  },
+  "eval.empty_answers_finetuned": {
+    "got": 0,
+    "expected": 0,
+    "pass": true,
+    "note": ""
+  },
+  "eval.empty_answers_base": {
+    "got": 0,
+    "expected": 0,
+    "pass": true,
+    "note": ""
+  },
+  "contamination.train_user_turns": {
+    "value": 1690,
+    "note": ""
+  },
+  "contamination.exact_overlap": {
+    "got": 0,
+    "expected": 0,
+    "pass": true,
+    "note": "ids=[]"
+  },
+  "contamination.max_jaccard": {
+    "value": 0.168,
+    "note": "closest eval question to any training prompt: G-0264"
+  },
+  "contamination.near_dupes_over_0.55": {
+    "got": false,
+    "expected": false,
+    "pass": true,
+    "note": "8-gram Jaccard threshold for a near-duplicate"
+  },
+  "relay.expected.n": {
+    "got": 4,
+    "expected": 4,
+    "pass": true,
+    "note": "['B-0304', 'B-0313', 'B-0323', 'B-0325']"
+  },
+  "relay.expected.base_valid": {
+    "got": 0,
+    "expected": 0,
+    "pass": true,
+    "note": ""
+  },
+  "relay.expected.finetuned_valid": {
+    "got": 4,
+    "expected": 4,
+    "pass": true,
+    "note": ""
+  },
+  "relay.not_expected.n": {
+    "got": 4,
+    "expected": 4,
+    "pass": true,
+    "note": "['B-0315', 'B-0316', 'B-0320', 'B-0322']"
+  },
+  "relay.not_expected.base_emitted": {
+    "got": 0,
+    "expected": 0,
+    "pass": true,
+    "note": ""
+  },
+  "relay.not_expected.finetuned_emitted": {
+    "got": 0,
+    "expected": 0,
+    "pass": true,
+    "note": "correctly abstaining is the right behaviour here"
+  },
+  "relay.rows_with_validator": {
+    "got": 8,
+    "expected": 8,
+    "pass": true,
+    "note": "only the 8 relay-category rows carry the flag; multilingual relay prompts are NOT machine-validated"
+  },
+  "verbosity.base_mean_chars": {
+    "value": 420,
+    "note": ""
+  },
+  "verbosity.finetuned_mean_chars": {
+    "value": 235,
+    "note": ""
+  },
+  "verbosity.base_median_chars": {
+    "value": 438,
+    "note": ""
+  },
+  "verbosity.finetuned_median_chars": {
+    "value": 215,
+    "note": ""
+  },
+  "verbosity.mean_reduction_pct": {
+    "value": 43.9,
+    "note": ""
+  },
+  "verbosity.finetuned_is_shorter": {
+    "got": true,
+    "expected": true,
+    "pass": true,
+    "note": ""
+  },
+  "gguf.bytes": {
+    "value": 3349514592,
+    "note": "huggingface.co/kesav2k04/sahayak-e2b-gguf"
+  },
+  "gguf.GiB": {
+    "value": 3.119,
+    "note": ""
+  },
+  "gguf.GB": {
+    "value": 3.35,
+    "note": ""
+  },
+  "gguf.GiB_is_3.119": {
+    "got": true,
+    "expected": true,
+    "pass": true,
+    "note": "llama.cpp prints GiB; the model card's 3.35 GB is decimal GB - same file"
+  }
+}
