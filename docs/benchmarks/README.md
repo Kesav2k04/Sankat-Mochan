@@ -1,5 +1,7 @@
 # Sahayak-E2B — benchmarks
 
+[![Hugging Face Model](https://img.shields.io/badge/Hugging%20Face-Model-FFD21E?style=for-the-badge&logo=huggingface&logoColor=000)](https://huggingface.co/kesav2k04/sahayak-e2b-gguf)
+
 Evaluation and on-device measurement record for **Sahayak-E2B**, a QLoRA fine-tune of
 `google/gemma-4-E2B-it` for offline disaster response, deployed as a Q4_0 GGUF on a
 Snapdragon Hexagon NPU.

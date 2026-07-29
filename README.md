@@ -11,6 +11,7 @@ from the network.
 *Snapdragon Multiverse Hackathon 2026 — National Finalist*
 
 [![Evaluation report: 22 of 22 assertions pass](https://img.shields.io/badge/evaluation-22%2F22_assertions_pass-2f6f4e?style=for-the-badge)](https://report-page-ten.vercel.app/)
+[![Hugging Face Model](https://img.shields.io/badge/Hugging%20Face-Model-FFD21E?style=for-the-badge&logo=huggingface&logoColor=000)](https://huggingface.co/kesav2k04/sahayak-e2b-gguf)
 
 [Try it without hardware](#try-it-without-hardware) · [How it works](#how-it-works) · [Proof it crossed the air](#proof-it-actually-crossed-the-air) · [What is real and what is not](#what-is-real-and-what-is-not) · [Security](#security-and-privacy-read-this-before-deploying)
 
