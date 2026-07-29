@@ -10,7 +10,13 @@ from the network.
 
 *Snapdragon Multiverse Hackathon 2026 — National Finalist*
 
-[![android CI](https://img.shields.io/github/actions/workflow/status/Kesav2k04/Sankat-Mochan/android.yml?branch=main&style=flat-square&label=android%20CI)](https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/android.yml) [![python CI](https://img.shields.io/github/actions/workflow/status/Kesav2k04/Sankat-Mochan/python.yml?branch=main&style=flat-square&label=python%20CI)](https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/python.yml) [![Evaluation report](https://img.shields.io/badge/evaluation-22%2F22%20assertions%20pass-2f6f4e?style=flat-square)](https://sahayak-e2b-benchmark.vercel.app/) [![Model](https://img.shields.io/badge/model-Sahayak--E2B-FFD21E?style=flat-square&logo=huggingface&logoColor=black)](https://huggingface.co/kesav2k04/sahayak-e2b-gguf) [![Code licence](https://img.shields.io/badge/code-MIT-1f6feb?style=flat-square)](LICENSE)
+<p align="center">
+  <a href="https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/android.yml"><img src="https://img.shields.io/github/actions/workflow/status/Kesav2k04/Sankat-Mochan/android.yml?branch=main&style=flat-square&label=android%20CI" alt="Android CI status"/></a>
+  <a href="https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/python.yml"><img src="https://img.shields.io/github/actions/workflow/status/Kesav2k04/Sankat-Mochan/python.yml?branch=main&style=flat-square&label=python%20CI" alt="Python CI status"/></a>
+  <a href="https://sahayak-e2b-benchmark.vercel.app/"><img src="https://img.shields.io/badge/evaluation-22%2F22%20assertions%20pass-2f6f4e?style=flat-square" alt="Evaluation report: 22 of 22 assertions pass"/></a>
+  <a href="https://huggingface.co/kesav2k04/sahayak-e2b-gguf"><img src="https://img.shields.io/badge/model-Sahayak--E2B-FFD21E?style=flat-square&logo=huggingface&logoColor=black" alt="Sahayak-E2B on Hugging Face"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/code-MIT-1f6feb?style=flat-square" alt="Code licensed MIT"/></a>
+</p>
 
 [Try it without hardware](#try-it-without-hardware) · [How it works](#how-it-works) · [Proof it crossed the air](#proof-it-actually-crossed-the-air) · [What is real and what is not](#what-is-real-and-what-is-not) · [Security](#security-and-privacy-read-this-before-deploying)
 
