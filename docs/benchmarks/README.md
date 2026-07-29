@@ -74,9 +74,49 @@ Current status: **22/22 assertions pass.**
 | [`01-HELDOUT-CAPABILITY-EVAL.md`](01-HELDOUT-CAPABILITY-EVAL.md) | The 50-prompt held-out evaluation: protocol, per-category results, safety findings, negative results |
 | [`02-ON-DEVICE-NPU-RUNTIME.md`](02-ON-DEVICE-NPU-RUNTIME.md) | Throughput / size / latency on the Hexagon NPU, and the runtime caveats |
 | [`03-LIMITS-AND-ROADMAP.md`](03-LIMITS-AND-ROADMAP.md) | Reviewer-grade critique: every gap, why it matters, and the specific experiment that closes it |
-| [`verify_benchmarks.py`](verify_benchmarks.py) | Reproduces all **[R]** claims |
+| [`verify_benchmarks.py`](verify_benchmarks.py) | Asserts all **[R]** claims against the artefacts — 22/22 pass |
 | [`verification_report.json`](verification_report.json) | Machine-readable output of the above |
+| [`compute_chart_data.py`](compute_chart_data.py) | Derives the distributions behind the claims: per-prompt contamination spread, paired answer lengths, exact binomial intervals, and a 20,000-rep bootstrap at a fixed seed |
+| [`chart_data.json`](chart_data.json) | Output of the above; the single source for every figure |
+| [`make_figures.py`](make_figures.py) | Draws each figure as inline SVG from that JSON, so no chart coordinate is hand-typed |
+| [`verify_page_numbers.py`](verify_page_numbers.py) | Checks the report page quotes those numbers correctly — 42/42 pass |
 | [`report-page/`](report-page/) | Source for the [single-page report](https://sahayak-e2b-benchmark.vercel.app/) |
+
+### The figure pipeline
+
+```bash
+python docs/benchmarks/verify_benchmarks.py      # claims hold          22/22
+python docs/benchmarks/compute_chart_data.py     # -> chart_data.json
+python docs/benchmarks/make_figures.py           # -> figures.svg.html
+python docs/benchmarks/verify_page_numbers.py    # page matches data    42/42
+```
+
+Figures are generated, not drawn. That is the point: a chart is an assertion about
+data, and one whose coordinates are typed by hand can drift from its source
+silently. `verify_page_numbers.py` closes the same loop for the prose and tables,
+and it also fails the build if a figure hard-codes a colour instead of using a
+token class, or if a superseded number reappears outside the sentence retracting it.
+
+Three results only became visible once the distributions were computed rather than
+summarised:
+
+- Contamination is measurable on **46 of 50** prompts, not all 50 — four questions
+  are shorter than the 40-character floor 8-gram shingling needs. Median max-Jaccard
+  is **0.048** against the 1,428 of 1,690 unique training turns long enough to shingle.
+- The length reduction carries a paired bootstrap interval: **43.9%, 95% CI 30.2 to
+  55.1%**; mean difference −184 chars (−259 to −112).
+- The fine-tune is shorter on **35 of 50** prompts and **longer on 15**. The mean is
+  driven by large savings on a subset, not by a uniform effect — which the single
+  mean concealed.
+
+Relay packets are reported with exact Clopper–Pearson intervals rather than bare
+counts: **4/4 at n=4 is [0.40, 1.00]**, so the point estimate is real and the
+precision is not.
+
+**Not computed, deliberately:** intervals for the per-category rubric accuracies.
+Those grades exist only as prose in `eval_comparison.md` with no per-item score
+column, so there is no sample to interval, and drawing error bars from a mean and
+an *n* would be inventing the variance. See [`03-LIMITS-AND-ROADMAP.md`](03-LIMITS-AND-ROADMAP.md) G1 and G3.
 
 ## Underlying artefacts
 
