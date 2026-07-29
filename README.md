@@ -10,17 +10,9 @@ from the network.
 
 *Snapdragon Multiverse Hackathon 2026 — National Finalist*
 
-[![Android CI](https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/android.yml/badge.svg)](https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/android.yml)
-[![Python CI](https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/python.yml/badge.svg)](https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/python.yml)
-[![Evaluation report](https://img.shields.io/badge/evaluation-22%2F22%20assertions%20pass-2f6f4e?style=flat-square)](https://sahayak-e2b-benchmark.vercel.app/)
-[![Model](https://img.shields.io/badge/model-Sahayak--E2B%20on%20%F0%9F%A4%97-FFD21E?style=flat-square)](https://huggingface.co/kesav2k04/sahayak-e2b-gguf)
-[![Code licence](https://img.shields.io/badge/code-MIT-1f6feb?style=flat-square)](LICENSE)
+[![android CI](https://img.shields.io/github/actions/workflow/status/Kesav2k04/Sankat-Mochan/android.yml?branch=main&style=flat-square&label=android%20CI)](https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/android.yml) [![python CI](https://img.shields.io/github/actions/workflow/status/Kesav2k04/Sankat-Mochan/python.yml?branch=main&style=flat-square&label=python%20CI)](https://github.com/Kesav2k04/Sankat-Mochan/actions/workflows/python.yml) [![Evaluation report](https://img.shields.io/badge/evaluation-22%2F22%20assertions%20pass-2f6f4e?style=flat-square)](https://sahayak-e2b-benchmark.vercel.app/) [![Model](https://img.shields.io/badge/model-Sahayak--E2B-FFD21E?style=flat-square&logo=huggingface&logoColor=black)](https://huggingface.co/kesav2k04/sahayak-e2b-gguf) [![Code licence](https://img.shields.io/badge/code-MIT-1f6feb?style=flat-square)](LICENSE)
 
-[Try it without hardware](#try-it-without-hardware) ·
-[How it works](#how-it-works) ·
-[Proof it crossed the air](#proof-it-actually-crossed-the-air) ·
-[What is real and what is not](#what-is-real-and-what-is-not) ·
-[Security](#security-and-privacy-read-this-before-deploying)
+[Try it without hardware](#try-it-without-hardware) · [How it works](#how-it-works) · [Proof it crossed the air](#proof-it-actually-crossed-the-air) · [What is real and what is not](#what-is-real-and-what-is-not) · [Security](#security-and-privacy-read-this-before-deploying)
 
 </div>
 
